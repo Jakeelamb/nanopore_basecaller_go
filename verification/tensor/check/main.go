@@ -54,7 +54,7 @@ func main() {
 func run() (ret error) {
 	backend := flag.String("backend", "", "compiled tensor library")
 	weight := flag.String("weight", "", "optional real Dorado weight, captured by builder -weight")
-	oldBackend := flag.String("old-backend", "", "retained ABI 1 library for actual version rejection")
+	oldBackend := flag.String("old-backend", "", "retained ABI 2 library for actual version rejection")
 	out := flag.String("out", filepath.Join("artifacts", "tensor", time.Now().UTC().Format("20060102T150405.000000000Z")+"-checks"), "new receipt directory")
 	flag.Parse()
 	if *backend == "" {
@@ -183,7 +183,24 @@ func run() (ret error) {
 	if err := execute("native", native, "go", "test", "-count=1", "-v", "./internal/tensor"); err != nil {
 		return err
 	}
+	if err := execute("c-compiler", nil, "cc", "--version"); err != nil {
+		return err
+	}
+	probe := filepath.Join(*out, "abi-probe")
+	if err := execute("compile-abi-probe", nil, "cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-Iinternal/tensor", "verification/tensor/abi_probe.c", "-ldl", "-o", probe); err != nil {
+		return err
+	}
+	m.Inputs[probe], err = hash(probe)
+	if err != nil {
+		return err
+	}
+	if err := execute("abi-probe", nil, probe, *backend); err != nil {
+		return err
+	}
 	if err := execute("race", native, "go", "test", "-count=1", "-race", "./internal/tensor"); err != nil {
+		return err
+	}
+	if err := execute("vet", nil, "go", "vet", "./internal/tensor", "./verification/tensor/..."); err != nil {
 		return err
 	}
 	m.Status = "passed"

@@ -146,9 +146,9 @@ func TestNativeDecoderPrimitives(t *testing.T) {
 func TestNativeRejectPriorABI(t *testing.T) {
 	path := os.Getenv("NANOPORE_TENSOR_OLD_BACKEND")
 	if path == "" {
-		t.Skip("set NANOPORE_TENSOR_OLD_BACKEND for retained ABI 1 rejection")
+		t.Skip("set NANOPORE_TENSOR_OLD_BACKEND for retained ABI 2 rejection")
 	}
-	if _, err := Open(path); err == nil || !strings.Contains(err.Error(), "unsupported tensor ABI version 1") {
+	if _, err := Open(path); err == nil || !strings.Contains(err.Error(), "unsupported tensor ABI version 2") {
 		t.Fatalf("prior ABI rejection: %v", err)
 	}
 }

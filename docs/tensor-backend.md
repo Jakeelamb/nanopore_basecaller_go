@@ -18,7 +18,7 @@ The independent fixture producer applies the same initialization.
 
 ## Ownership and types
 
-`tensor.Open(path)` loads a separately built shared library and requires ABI 2.
+`tensor.Open(path)` loads a separately built shared library and requires ABI 3.
 The Go package needs Linux, cgo, the C compiler, and `libdl`. Building the package
 does not require LibTorch headers or link flags. A disabled cgo build returns
 `ErrUnsupported`. Ordinary tests explicitly skip the native gate when
@@ -50,24 +50,30 @@ thread-local error retrieval on a subsequent Go call.
 
 The float32 API includes the following methods.
 
-- `MatMul`, `Add`, `Mul`, `AddScalar`, and `MulScalar` provide arithmetic.
+- `MatMul`, `Add`, `Sub`, `Mul`, `Square`, `AddScalar`, and `MulScalar` provide arithmetic.
+- `Rsqrt`, `Reciprocal`, `Sin`, and `Cos` provide float32 elementwise functions.
 - `Clamp`, `Tanh`, `Sigmoid`, and `SiLU` provide elementwise activations.
 - `Transpose`, `Permute`, `Contiguous`, `Flip`, `Reshape`, `Narrow`, `Concat`,
   `Stack`, and `Unsqueeze` provide tensor layouts.
 - `Conv1d` accepts stride, padding, dilation, and groups. `Linear` accepts a
   weight. Both accept a nil bias.
-- `Zeros` allocates float32 state. `LogSumExp` reduces one dimension and accepts
+- `Zeros` allocates float32 state. `Mean` and `LogSumExp` reduce one dimension and accept
   `keepdim`. `Softmax` operates along one dimension.
 - `IndexSelect` accepts a float tensor, a dimension, and an `IndexTensor`.
   `ArgSort` accepts an `IndexTensor` and preserves ATen's ascending, unstable
   default, including its tie order.
+- `ScaledDotProductAttention(q, k, v, maskShape, mask)` calls ATen with zero
+  dropout, causal false, default scale, and grouped-query attention false.
+  Both mask arguments nil omit the mask. Otherwise, the shape describes copied
+  0/1 bytes, where 1 allows attention. ATen validates broadcast compatibility.
+  The mask is not a general tensor handle and cannot enter float arithmetic.
 
 `LoadWeight(path)` matches Dorado's `torch_utils/tensor_utils.cpp` vector archive
 reader. It requires exactly one float32 tensor per file and maps storage to CPU.
 It rejects int64, empty, and multiple-tensor archives. The native archive parser
 is a dependency boundary, not a newly implemented file format.
 
-ABI 1 attempts remain immutable evidence. Current Go code deliberately rejects
+ABI 1 and ABI 2 attempts remain immutable evidence. Current Go code deliberately rejects
 those old libraries. There is one production ABI and no compatibility loader.
 
 ## Rebuild and verify
@@ -78,17 +84,17 @@ Choose fresh output names for every attempt.
 
 ```sh
 TORCH_ROOT=/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/dependencies/torch-2.9.0.0-ont-CUDA-13.0-linux-x64-cxx11-abi/libtorch
-DORADO_SOURCE=/home/jake/Projects/nanopore_basecaller/software/dorado-src
+DORADO_SOURCE="$PWD/external/dorado-source"
 TORCH_ARCHIVE=/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/archives/torch-2.9.0.0-ont-CUDA-13.0-linux-x64-cxx11-abi.zip
 HAC_WEIGHT=/home/jake/Projects/nanopore_basecaller/models/dna_r10.4.1_e8.2_400bps_hac@v6.0.0/0.conv.weight.tensor
 
 go run ./verification/tensor/build -torch "$TORCH_ROOT" -archive "$TORCH_ARCHIVE" \
-  -dorado-source "$DORADO_SOURCE" -weight "$HAC_WEIGHT" -out artifacts/tensor/attempt-004
+  -dorado-source "$DORADO_SOURCE" -weight "$HAC_WEIGHT" -out artifacts/tensor/attempt-005-sup-abi3
 
 go run ./verification/tensor/check \
-  -backend artifacts/tensor/attempt-004/libnanopore_tensor.so \
-  -old-backend artifacts/tensor/attempt-001/libnanopore_tensor.so \
-  -weight "$HAC_WEIGHT" -out artifacts/tensor/checks-005
+  -backend artifacts/tensor/attempt-005-sup-abi3/libnanopore_tensor.so \
+  -old-backend artifacts/tensor/attempt-004/libnanopore_tensor.so \
+  -weight "$HAC_WEIGHT" -out artifacts/tensor/checks-008-sup-abi3
 ```
 
 The builder verifies the full archive SHA256
@@ -103,12 +109,15 @@ The native test also hashes the actual loaded backend, `libtorch_cpu.so`, and
 `libc10.so` found in `/proc/self/maps`, then checks their build manifest pins.
 
 The check command records the current Git head and exact source hashes. It runs
-ordinary tests, the cgo-disabled path, real native tests, and the race detector.
+ordinary tests, the cgo-disabled path, real native tests, a direct C ABI probe,
+the race detector, and vet.
 The real gate exercises allocation, copying, arithmetic, views, convolution,
 linear operations, reductions, gather ordering, native argsort ties, weight
 loading, and closure. Its rejection controls include malformed shapes, buffers,
 dtypes, operation arity, dimensions, stale IDs, foreign owners, missing libraries,
-missing symbols, and the actual retained ABI 1 library.
+missing symbols including `nt_sdpa`, and the actual retained ABI 2 library.
+The direct C probe verifies that ATen exceptions publish no result handle and
+respect zero, one-byte, and truncated error-buffer capacities.
 
 The native fixture producer writes independent ATen outputs for stable
 `LogSumExp`, `Softmax`, `IndexSelect`, and `ArgSort` cases. Tests compare float32
@@ -117,11 +126,19 @@ against every bit of an independent native snapshot. These checks qualify the
 operation and serialization contracts. Source-linked model algorithm parity
 belongs to the model and decoder verification units.
 
+The independent attention producer also records float32 bit patterns for `Mean`,
+`Rsqrt`, `Reciprocal`, `Sin`, `Cos`, `Sub`, `Square`, and SDPA. SDPA cases cover
+noncontiguous queries, a sliced source mask, broadcast masks, omitted masks, and
+fully blocked masks. Separate head-dimension-64 probes compare the pinned source's
+mask row strides 173 and 271 against contiguous copies bitwise. Go retains RoPE,
+the 12 attention splits, and model scheduling. The backend contains no complete
+attention layer or transformer layer.
+
 For the smaller acceptance commands, use the following forms.
 
 ```sh
 go test ./internal/tensor
-NANOPORE_TENSOR_BACKEND="$PWD/artifacts/tensor/attempt-004/libnanopore_tensor.so" \
+NANOPORE_TENSOR_BACKEND="$PWD/artifacts/tensor/attempt-005-sup-abi3/libnanopore_tensor.so" \
   go test -count=1 -v ./internal/tensor
 ```
 
@@ -133,12 +150,11 @@ qualification.
 ## Local acceptance
 
 The final library is retained at
-`artifacts/tensor/attempt-004/libnanopore_tensor.so`, with SHA256
-`ef23a4ee0ec9f4ca499b3106aaf83ffe597277bde83e27892e352bc8c4282837`.
-Its build manifest matches 4,553 distribution members against the verified
-archive. `artifacts/tensor/checks-005/manifest.json` retains the final ordinary,
-cgo-disabled, native, and race checks. `go vet ./internal/tensor
-./verification/tensor/...` also passes.
+`artifacts/tensor/attempt-005-sup-abi3/libnanopore_tensor.so`, with SHA256
+`9d215db7abc78150807769677602c917f645a913829e418b10fa02147f61984f`.
+Its build manifest records distribution members matched against the verified
+archive. `artifacts/tensor/checks-008-sup-abi3/manifest.json` retains the final
+ordinary, cgo-disabled, native, direct C ABI, race, and vet checks.
 
 `artifacts/tensor/rejected-archive-001/manifest.json` retains an expected failed
 builder invocation with a wrong archive hash. The command exits 1 before

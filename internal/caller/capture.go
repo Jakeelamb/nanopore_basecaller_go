@@ -303,7 +303,11 @@ func Replay(ctx context.Context, path string) (CalledRead, error) {
 	if err != nil {
 		return CalledRead{}, err
 	}
-	if run.Schema != 1 || run.Spec.ConfigSHA256 != model.HACConfigSHA256 || cc != run.Chunks || opt != run.Decode || len(run.Weights) != 50 || len(run.TensorLibrarySHA256) != 64 {
+	weightCount := 50
+	if spec.Architecture == model.SUP {
+		weightCount = 139
+	}
+	if run.Schema != 1 || cc != run.Chunks || opt != run.Decode || len(run.Weights) != weightCount || len(run.TensorLibrarySHA256) != 64 {
 		return CalledRead{}, errors.New("unsupported capture model or configuration pins")
 	}
 	raw, err := readPayload(dir, input.Raw)
@@ -360,7 +364,7 @@ func Replay(ctx context.Context, path string) (CalledRead, error) {
 		if err := ctx.Err(); err != nil {
 			return CalledRead{}, err
 		}
-		if s.States != 256 || s.Blocks != int(cc.ChunkSize/cc.Stride) || s.Decoded.Offset != offsets[i] || s.Decoded.RawSize != min(cc.ChunkSize, input.NormalizedSamples-offsets[i]) || s.Decoded.Granularity != cc.ChunkSize {
+		if s.States != int(spec.OutputChannels/4) || s.Blocks != int(cc.ChunkSize/cc.Stride) || s.Decoded.Offset != offsets[i] || s.Decoded.RawSize != min(cc.ChunkSize, input.NormalizedSamples-offsets[i]) || s.Decoded.Granularity != cc.ChunkSize {
 			return CalledRead{}, errors.New("captured chunk shape or coordinates differ")
 		}
 		result := crf.Result{Blocks: s.Blocks, States: s.States}
@@ -393,10 +397,18 @@ func Replay(ctx context.Context, path string) (CalledRead, error) {
 	if err != nil {
 		return CalledRead{}, err
 	}
-	out := CalledRead{ID: r.ID.String(), Sequence: result.Sequence, Qstring: result.Qstring, Moves: result.Moves, NumSamples: r.NumSamples, Trimmed: input.Trimmed}
+	metadata, err := fastqMetadata(r, run.Spec)
+	if err != nil {
+		return CalledRead{}, err
+	}
+	out := CalledRead{ID: r.ID.String(), Sequence: result.Sequence, Qstring: result.Qstring, Moves: result.Moves, NumSamples: r.NumSamples, Trimmed: input.Trimmed, FASTQ: metadata}
 	var expected CalledRead
 	if err := readJSON(dir, m.Output, &expected); err != nil {
 		return CalledRead{}, err
+	}
+	// Schema 1 captures before FASTQ metadata retain their original output bytes.
+	if expected.FASTQ == nil {
+		expected.FASTQ = metadata
 	}
 	if !reflect.DeepEqual(out, expected) {
 		return CalledRead{}, errors.New("replayed endpoint differs from capture")

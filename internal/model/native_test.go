@@ -225,7 +225,7 @@ func TestNativeModelParity(t *testing.T) {
 		if err != nil || len(fs) != 1 {
 			t.Fatalf("stock fixture %v", err)
 		}
-		checkFixture(t, fs[0], stock, m.graph)
+		checkFixture(t, fs[0], stock, m.graph.(*hacGraph))
 		b, err := json.MarshalIndent(m.Weights(), "", "  ")
 		if err != nil {
 			t.Fatal(err)
@@ -402,9 +402,6 @@ func testRejections(t *testing.T, e *tensor.Engine, library, source, modelDir st
 	}
 	if spec.Architecture != SUP {
 		t.Fatal(spec)
-	}
-	if _, err = Open(e, supDir); !errors.Is(err, ErrUnsupported) {
-		t.Fatalf("SUP must reject Open: %v", err)
 	}
 	// A source-byte change invalidates extraction before any C++ compilation.
 	fake := t.TempDir()

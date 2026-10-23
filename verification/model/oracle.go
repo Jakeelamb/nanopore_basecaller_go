@@ -29,10 +29,12 @@ type Source struct {
 	Slices       []Slice
 }
 
-var pins = []struct {
+type sourcePin struct {
 	path, hash string
 	ranges     [][2]int
-}{
+}
+
+var pins = []sourcePin{
 	{"dorado/nn/FLSTMStack.cpp", "97c2df7d81b7e8bb7c1d3c807ff4e80f39973df0bbc63cd2e2aa38d203a20160", [][2]int{{19, 93}}},
 	{"dorado/nn/ConvStack.cpp", "d71cbdb1100010991753e4b3b80b8866265d97a08855f0b8ff1e41c00c91f6b2", [][2]int{{110, 128}, {169, 188}}},
 	{"dorado/nn/CRFModules.cpp", "b74290106409135e9eeafc97f031f996a63898b356af194ed75a944f2dffed09", [][2]int{{15, 34}, {125, 134}}},
@@ -56,8 +58,12 @@ func Hash(path string) (string, error) {
 func digest(b []byte) string { h := sha256.Sum256(b); return hex.EncodeToString(h[:]) }
 
 func Extract(root string) ([]Source, error) {
+	return extract(root, pins)
+}
+
+func extract(root string, selected []sourcePin) ([]Source, error) {
 	var out []Source
-	for _, pin := range pins {
+	for _, pin := range selected {
 		data, err := os.ReadFile(filepath.Join(root, pin.path))
 		if err != nil {
 			return nil, err
@@ -95,6 +101,10 @@ type Manifest struct {
 // Build requires a completed qualified backend receipt beside the chosen library.
 // Every attempt gets a fresh output directory; failed build logs are preserved.
 func Build(sourceRoot, library, output string) (exe string, ret error) {
+	return build(sourceRoot, library, output, adapter, pins, false)
+}
+
+func build(sourceRoot, library, output, adapter string, selected []sourcePin, sup bool) (exe string, ret error) {
 	if err := os.Mkdir(output, 0755); err != nil {
 		return "", err
 	}
@@ -111,7 +121,7 @@ func Build(sourceRoot, library, output string) (exe string, ret error) {
 			ret = err
 		}
 	}()
-	sources, err := Extract(sourceRoot)
+	sources, err := extract(sourceRoot, selected)
 	if err != nil {
 		return "", err
 	}
@@ -141,6 +151,13 @@ func Build(sourceRoot, library, output string) (exe string, ret error) {
 		return "", fmt.Errorf("backend hash differs from receipt")
 	}
 	m.Inputs[library] = h
+	if sup {
+		path, hash, err := TorchNNLinearHeader(library)
+		if err != nil {
+			return "", err
+		}
+		m.Inputs[path] = hash
+	}
 	for _, name := range []string{"libtorch_cpu.so", "libc10.so"} {
 		p := filepath.Join(backend.Torch, "lib", name)
 		h, err := Hash(p)
@@ -150,12 +167,24 @@ func Build(sourceRoot, library, output string) (exe string, ret error) {
 		m.Inputs[p] = h
 	}
 	m.Inputs["adapter.cpp"] = digest([]byte(adapter))
-	var defs, initialization, modelForward, modelSequence strings.Builder
+	var defs, initialization, modelForward, modelSequence, configDefs, mathDefs, attentionCapture strings.Builder
 	for _, s := range sources {
 		for _, slice := range s.Slices {
 			dst := &defs
+			if s.Path == "dorado/nn/TxModules.cpp" && slice.Start == 350 {
+				dst = &attentionCapture
+			}
 			if s.Path == "dorado/torch_utils/torch_utils.cpp" {
 				dst = &initialization
+			}
+			if s.Path == "dorado/config/include/config/BasecallModelConfig.h" {
+				dst = &configDefs
+			}
+			if s.Path == "dorado/utils/include/utils/math_utils.h" {
+				dst = &mathDefs
+			}
+			if s.Path == "dorado/basecall/model/TxModel.cpp" {
+				dst = &modelForward
 			}
 			if s.Path == "dorado/basecall/model/CRFModel.cpp" {
 				if slice.Start == 66 {
@@ -171,6 +200,12 @@ func Build(sourceRoot, library, output string) (exe string, ret error) {
 	body = strings.Replace(body, "// INITIALIZATION_FUNCTIONS", initialization.String(), 1)
 	body = strings.Replace(body, "// MODEL_FORWARD", modelForward.String(), 1)
 	body = strings.Replace(body, "// MODEL_SEQUENCE", modelSequence.String(), 1)
+	body = strings.Replace(body, "// CONFIG_DEFINITIONS", configDefs.String(), 1)
+	body = strings.Replace(body, "// MATH_FUNCTIONS", mathDefs.String(), 1)
+	body = strings.Replace(body, "// ATTENTION_CAPTURE", attentionCapture.String(), 1)
+	if sup {
+		m.Inputs["dev_options"] = "mha_num_splits=12;mha_use_mask=true;use_uswiglu=false;koi_use_i8=true CPU branch inactive"
+	}
 	cpp := filepath.Join(output, "reference.cpp")
 	if err = os.WriteFile(cpp, []byte(body), 0644); err != nil {
 		return "", err

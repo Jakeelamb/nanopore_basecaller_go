@@ -340,7 +340,10 @@ func TestNativeLoaderABIRejections(t *testing.T) {
 	}
 	for _, tt := range []struct{ name, source, want string }{
 		{"version", "unsigned int nt_version(void) { return 99; }", "unsupported tensor ABI version 99"},
-		{"symbol", "unsigned int nt_version(void) { return 2; }", "missing ABI symbol nt_open"},
+		{"symbol", "unsigned int nt_version(void) { return 3; }", "missing ABI symbol nt_open"},
+		{"attention symbol", "unsigned int nt_version(void) { return 3; }\n" +
+			"void nt_open(void){} void nt_close(void){} void nt_new(void){} void nt_load(void){} void nt_release(void){}\n" +
+			"void nt_shape(void){} void nt_data(void){} void nt_run(void){} void nt_new_int64(void){} void nt_data_int64(void){}\n", "missing ABI symbol nt_sdpa"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()

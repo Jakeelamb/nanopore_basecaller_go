@@ -4,6 +4,7 @@ package caller
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"os"
 	"reflect"
@@ -41,6 +42,17 @@ func TestCapturedNativeEndpoint(t *testing.T) {
 	if len(fields) == 0 || got.ID != fields[0] || got.Sequence != lines[1] || got.Qstring != lines[3] {
 		t.Fatal("captured Go endpoint differs from retained stock UUID, sequence or quality")
 	}
+	raw, err := os.ReadFile(stock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var formatted bytes.Buffer
+	if err := got.WriteFASTQ(&formatted); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(formatted.Bytes(), raw) {
+		t.Fatal("replayed FASTQ differs from retained stock raw bytes")
+	}
 	second, err := Replay(context.Background(), manifest)
 	if err != nil {
 		t.Fatal(err)
@@ -48,5 +60,5 @@ func TestCapturedNativeEndpoint(t *testing.T) {
 	if !reflect.DeepEqual(second, got) {
 		t.Fatal("replay changed sequence, quality or moves")
 	}
-	t.Logf("exact stock UUID/sequence/quality; read=%s bases=%d; Go moves replay exact; native moves unavailable", got.ID, len(got.Sequence))
+	t.Logf("exact stock raw FASTQ bytes; read=%s bases=%d; Go moves replay exact; native moves unavailable", got.ID, len(got.Sequence))
 }

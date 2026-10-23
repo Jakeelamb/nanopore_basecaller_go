@@ -94,7 +94,7 @@ func run() (ret error) {
 	if err := os.MkdirAll(*out, 0755); err != nil {
 		return err
 	}
-	m := manifest{ABI: 2, Qualification: "CPU development backend using ONT LibTorch CUDA13 headers and CPU libraries; not official stock CUDA12.8 runtime parity", Torch: *torch, Archive: *archive, Inputs: map[string]string{}, Runtime: map[string]string{}, ArchiveMatched: map[string]string{}, Status: "failed"}
+	m := manifest{ABI: 3, Qualification: "CPU development backend using ONT LibTorch CUDA13 headers and CPU libraries; not official stock CUDA12.8 runtime parity", Torch: *torch, Archive: *archive, Inputs: map[string]string{}, Runtime: map[string]string{}, ArchiveMatched: map[string]string{}, Status: "failed"}
 	defer func() {
 		if ret != nil {
 			m.Error = ret.Error()
@@ -233,7 +233,7 @@ func run() (ret error) {
 	if err != nil {
 		return err
 	}
-	for _, name := range []string{"float32.tensor", "int64.tensor", "multiple.tensor", "empty.tensor", "primitive-reference.json", "argsort-reference.json"} {
+	for _, name := range []string{"float32.tensor", "int64.tensor", "multiple.tensor", "empty.tensor", "primitive-reference.json", "argsort-reference.json", "attention-reference.json"} {
 		path := filepath.Join(*out, name)
 		m.Inputs[path], err = hash(path)
 		if err != nil {

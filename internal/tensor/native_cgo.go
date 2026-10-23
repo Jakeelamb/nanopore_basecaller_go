@@ -110,3 +110,9 @@ func (b *nativeBackend) dataInt64(id uint64, n int) ([]int64, error) {
 	code := C.nt_call_data_int64(b.library, b.id, C.uint64_t(id), (*C.int64_t)(unsafe.Pointer(pointer(data))), C.size_t(n), &buf[0], C.NT_ERROR_CAP)
 	return data, nativeError(code, &buf)
 }
+func (b *nativeBackend) sdpa(q, k, v uint64, shape []int64, mask []byte) (uint64, error) {
+	var id C.uint64_t
+	var buf [C.NT_ERROR_CAP]C.char
+	code := C.nt_call_sdpa(b.library, b.id, C.uint64_t(q), C.uint64_t(k), C.uint64_t(v), (*C.int64_t)(unsafe.Pointer(pointer(shape))), C.size_t(len(shape)), (*C.uint8_t)(unsafe.Pointer(pointer(mask))), C.size_t(len(mask)), &id, &buf[0], C.NT_ERROR_CAP)
+	return uint64(id), nativeError(code, &buf)
+}

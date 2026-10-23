@@ -1,4 +1,4 @@
-// Package caller composes the pinned Go-owned CPU HAC basecalling path.
+// Package caller composes the pinned Go-owned CPU DNA basecalling path.
 package caller
 
 import (
@@ -20,19 +20,20 @@ import (
 )
 
 var ErrClosed = errors.New("caller is closed")
-var ErrUnsupported = errors.New("caller supports only pinned DNA 5000Hz CPU HAC with no adapter trimming or read splitting")
+var ErrUnsupported = errors.New("caller supports only pinned DNA 5000Hz CPU HAC or SUP with no adapter trimming or read splitting")
 
 type Config struct {
 	TensorLibrary, ModelDir, CaptureDir string
 	ChunkSize, Overlap                  uint64
 }
 type CalledRead struct {
-	ID         string  `json:"id"`
-	Sequence   string  `json:"sequence"`
-	Qstring    string  `json:"qstring"`
-	Moves      []uint8 `json:"moves"`
-	NumSamples uint64  `json:"num_samples"`
-	Trimmed    int     `json:"trimmed"`
+	ID         string         `json:"id"`
+	Sequence   string         `json:"sequence"`
+	Qstring    string         `json:"qstring"`
+	Moves      []uint8        `json:"moves"`
+	NumSamples uint64         `json:"num_samples"`
+	Trimmed    int            `json:"trimmed"`
+	FASTQ      *FASTQMetadata `json:"fastq,omitempty"`
 }
 type Caller struct {
 	mu      sync.Mutex
@@ -45,7 +46,7 @@ type Caller struct {
 }
 
 func configuration(s model.Spec, c Config) (chunk.Config, decode.Options, error) {
-	if s.Architecture != model.HAC || s.SampleRate != 5000 || s.Stride != 6 {
+	if (s.Architecture != model.HAC && s.Architecture != model.SUP) || s.SampleRate != 5000 || s.Stride != 6 || s.InnerStride <= 0 || s.Granularity <= 0 {
 		return chunk.Config{}, decode.Options{}, ErrUnsupported
 	}
 	size, overlap := c.ChunkSize, c.Overlap
@@ -61,6 +62,9 @@ func configuration(s model.Spec, c Config) (chunk.Config, decode.Options, error)
 	cc := chunk.Config{ChunkSize: size, Overlap: overlap, Stride: uint64(s.Stride), Granularity: size}
 	if size < uint64(s.Stride) || size > uint64(s.ChunkSize) {
 		return cc, decode.Options{}, errors.New("caller chunk size must be between stride and the model default")
+	}
+	if size%uint64(s.Granularity) != 0 || overlap%uint64(s.InnerStride) != 0 {
+		return cc, decode.Options{}, fmt.Errorf("chunk size must be divisible by %d and overlap by %d", s.Granularity, s.InnerStride)
 	}
 	if _, err := chunk.Fixed(1, cc); err != nil {
 		return cc, decode.Options{}, err
@@ -183,6 +187,10 @@ func (c *Caller) Call(ctx context.Context, r pod5.Read) (CalledRead, error) {
 		return CalledRead{}, err
 	}
 	spec := c.model.Spec()
+	metadata, err := fastqMetadata(r, spec)
+	if err != nil {
+		return CalledRead{}, err
+	}
 	normalized, err := signal.Normalize(r.Signal, signal.Calibration{Scale: r.CalibrationScale, Offset: r.CalibrationOffset}, signal.Standardisation{Mean: spec.Mean, Stdev: spec.Stdev}, adjustment(r.FlowCellProductCode, r.OpenPoreLevel, r.CalibrationScale))
 	if err != nil {
 		return CalledRead{}, err
@@ -238,7 +246,7 @@ func (c *Caller) Call(ctx context.Context, r pod5.Read) (CalledRead, error) {
 	if err != nil {
 		return CalledRead{}, err
 	}
-	out := CalledRead{ID: r.ID.String(), Sequence: assembled.Sequence, Qstring: assembled.Qstring, Moves: assembled.Moves, NumSamples: r.NumSamples, Trimmed: normalized.Trimmed}
+	out := CalledRead{ID: r.ID.String(), Sequence: assembled.Sequence, Qstring: assembled.Qstring, Moves: assembled.Moves, NumSamples: r.NumSamples, Trimmed: normalized.Trimmed, FASTQ: metadata}
 	if capture != nil {
 		if err := capture.finish(out); err != nil {
 			return CalledRead{}, err

@@ -75,13 +75,16 @@ type WeightReceipt struct {
 //go:embed hac_weights.json
 var hacWeightManifest []byte
 
+//go:embed sup_weights.json
+var supWeightManifest []byte
+
 // Model borrows its Engine. Close and Forward serialize; Close never closes the
 // Engine or caller input/output handles.
 type Model struct {
 	mu       sync.Mutex
 	engine   *tensor.Engine
 	spec     Spec
-	graph    *hacGraph
+	graph    modelGraph
 	weights  []*tensor.Tensor
 	receipts []WeightReceipt
 	closed   bool
@@ -96,11 +99,12 @@ func Open(engine *tensor.Engine, directory string) (*Model, error) {
 		return nil, err
 	}
 	m := &Model{engine: engine, spec: spec}
+	manifestBytes := hacWeightManifest
 	if spec.Architecture == SUP {
-		return nil, fmt.Errorf("%s: %w", spec.Name, ErrUnsupported)
+		manifestBytes = supWeightManifest
 	}
 	var manifest []WeightReceipt
-	if err := json.Unmarshal(hacWeightManifest, &manifest); err != nil {
+	if err := json.Unmarshal(manifestBytes, &manifest); err != nil {
 		return nil, err
 	}
 	var loadErr error
@@ -116,7 +120,30 @@ func Open(engine *tensor.Engine, directory string) (*Model, error) {
 	if loadErr != nil {
 		return nil, errors.Join(loadErr, m.Close())
 	}
-	m.graph = bindHAC(m.weights)
+	if spec.Architecture == HAC {
+		m.graph = bindHAC(m.weights)
+	} else {
+		scaled, err := engine.MulScalar(m.weights[138], 5)
+		if err != nil {
+			return nil, errors.Join(err, m.Close())
+		}
+		original := m.weights[138]
+		m.weights[138] = scaled
+		if err = original.Close(); err != nil {
+			return nil, errors.Join(err, m.Close())
+		}
+		rotary, err := newRotary(engine, 64, 4096, 10000)
+		if err != nil {
+			return nil, errors.Join(err, m.Close())
+		}
+		m.weights = append(m.weights, rotary.cos, rotary.sin)
+		alpha, err := engine.NewFloat32(nil, []float32{2.4494897})
+		if err != nil {
+			return nil, errors.Join(err, m.Close())
+		}
+		m.weights = append(m.weights, alpha)
+		m.graph = bindSUP(m.weights, rotary, alpha)
+	}
 	return m, nil
 }
 
@@ -220,9 +247,6 @@ func (m *Model) Forward(ctx context.Context, input *tensor.Tensor) (*tensor.Tens
 	if m.closed {
 		return nil, ErrClosed
 	}
-	if m.spec.Architecture != HAC {
-		return nil, fmt.Errorf("%s: %w", m.spec.Name, ErrUnsupported)
-	}
 	if ctx == nil {
 		return nil, errors.New("nil context")
 	}
@@ -238,6 +262,9 @@ func (m *Model) Forward(ctx context.Context, input *tensor.Tensor) (*tensor.Tens
 	}
 	if len(shape) != 3 || shape[0] < 1 || shape[1] != 1 || shape[2] < 1 || shape[2]%m.spec.Granularity != 0 {
 		return nil, fmt.Errorf("input must be positive [N,1,L] with L divisible by %d: %v", m.spec.Granularity, shape)
+	}
+	if m.spec.Architecture == SUP && shape[2]/m.spec.InnerStride > 4096 {
+		return nil, errors.New("SUP transformer sequence exceeds rotary maximum 4096")
 	}
 	data, err := input.Data()
 	if err != nil {

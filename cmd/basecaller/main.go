@@ -33,11 +33,7 @@ func (f *idsFlag) Set(value string) error {
 	return nil
 }
 func fastq(w io.Writer, r caller.CalledRead) error {
-	if len(r.Sequence) != len(r.Qstring) {
-		return errors.New("sequence and quality lengths differ")
-	}
-	_, err := fmt.Fprintf(w, "@%s\n%s\n+\n%s\n", r.ID, r.Sequence, r.Qstring)
-	return err
+	return r.WriteFASTQ(w)
 }
 func run(ctx context.Context, args []string, stdout, stderr io.Writer) (err error) {
 	fs := flag.NewFlagSet("basecaller", flag.ContinueOnError)

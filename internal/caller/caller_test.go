@@ -34,9 +34,28 @@ func TestConfiguration(t *testing.T) {
 			t.Fatalf("accepted config %+v", cfg)
 		}
 	}
-	s.Architecture = model.SUP
+	s.Architecture = "unknown"
 	if _, _, err := configuration(s, Config{}); !errors.Is(err, ErrUnsupported) {
 		t.Fatal(err)
+	}
+}
+func TestSUPConfiguration(t *testing.T) {
+	s := testSpec()
+	s.Architecture, s.ConfigSHA256 = model.SUP, model.SUPConfigSHA256
+	s.InnerStride, s.Granularity = 12, 768
+	s.QScale, s.QBias = 1.05, .3
+	cc, opt, err := configuration(s, Config{})
+	if err != nil || cc.ChunkSize != 12288 || cc.Stride != 6 || cc.Overlap != 600 || opt.QScale != s.QScale || opt.QShift != s.QBias {
+		t.Fatalf("SUP defaults: %+v %+v %v", cc, opt, err)
+	}
+	cc, _, err = configuration(s, Config{ChunkSize: 768})
+	if err != nil || cc.ChunkSize != 768 || cc.Overlap != 0 {
+		t.Fatalf("SUP minimum and explicit zero overlap: %+v %v", cc, err)
+	}
+	for _, cfg := range []Config{{ChunkSize: 6}, {ChunkSize: 12}, {ChunkSize: 774}, {ChunkSize: 768, Overlap: 6}, {ChunkSize: 768, Overlap: 768}} {
+		if _, _, err := configuration(s, cfg); err == nil {
+			t.Fatalf("accepted unnormalized SUP config %+v", cfg)
+		}
 	}
 }
 func TestChemistryAndAdjustment(t *testing.T) {

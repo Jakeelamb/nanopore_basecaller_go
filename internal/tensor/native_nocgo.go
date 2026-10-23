@@ -16,3 +16,6 @@ func (*nativeBackend) run(int, []uint64, []int64, []float64) (uint64, error) {
 }
 func (*nativeBackend) newInt64([]int64, []int64) (uint64, error) { return 0, ErrUnsupported }
 func (*nativeBackend) dataInt64(uint64, int) ([]int64, error)    { return nil, ErrUnsupported }
+func (*nativeBackend) sdpa(uint64, uint64, uint64, []int64, []byte) (uint64, error) {
+	return 0, ErrUnsupported
+}

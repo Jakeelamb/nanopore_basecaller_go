@@ -17,6 +17,7 @@ struct nt_library {
  int (*data)(uint64_t,uint64_t,float*,size_t,char*,size_t);
  int (*data_int64)(uint64_t,uint64_t,int64_t*,size_t,char*,size_t);
  int (*run)(uint64_t,int,const uint64_t*,size_t,const int64_t*,size_t,const double*,size_t,uint64_t*,char*,size_t);
+ int (*sdpa)(uint64_t,uint64_t,uint64_t,uint64_t,const int64_t*,size_t,const uint8_t*,size_t,uint64_t*,char*,size_t);
 };
 nt_library* nt_library_open(const char* path,char* err,size_t cap) {
  nt_library* l=calloc(1,sizeof(*l));
@@ -30,6 +31,7 @@ nt_library* nt_library_open(const char* path,char* err,size_t cap) {
  LOAD(new_tensor,"nt_new"); LOAD(load,"nt_load"); LOAD(release,"nt_release");
  LOAD(shape,"nt_shape"); LOAD(data,"nt_data"); LOAD(run,"nt_run");
  LOAD(new_int64,"nt_new_int64");LOAD(data_int64,"nt_data_int64");
+ LOAD(sdpa,"nt_sdpa");
  #undef LOAD
  return l;
 }
@@ -44,3 +46,4 @@ int nt_call_shape(nt_library*l,uint64_t id,uint64_t t,int64_t*s,size_t n,size_t*
 int nt_call_data(nt_library*l,uint64_t id,uint64_t t,float*d,size_t n,char*e,size_t c){return l->data(id,t,d,n,e,c);}
 int nt_call_data_int64(nt_library*l,uint64_t id,uint64_t t,int64_t*d,size_t n,char*e,size_t c){return l->data_int64(id,t,d,n,e,c);}
 int nt_call_run(nt_library*l,uint64_t id,int op,const uint64_t*t,size_t n,const int64_t*p,size_t pn,const double*f,size_t fn,uint64_t*out,char*e,size_t c){return l->run(id,op,t,n,p,pn,f,fn,out,e,c);}
+int nt_call_sdpa(nt_library*l,uint64_t id,uint64_t q,uint64_t k,uint64_t v,const int64_t*s,size_t rank,const uint8_t*m,size_t n,uint64_t*out,char*e,size_t c){return l->sdpa(id,q,k,v,s,rank,m,n,out,e,c);}

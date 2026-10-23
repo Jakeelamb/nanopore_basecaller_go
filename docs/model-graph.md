@@ -264,12 +264,13 @@ spec, err := model.Inspect(modelDirectory) // config metadata without loading we
 receipts := m.Weights()                   // copied names, hashes and shapes
 ```
 
-`Model.Spec()` returns a value. `Open` succeeds only for the implemented HAC
-graph. `Inspect` recognizes SUP, while `Open` returns `ErrUnsupported` for SUP
-before allocating weights. The runtime keeps no metadata-only model that can
-be mistaken for usable inference. The embedded HAC weight manifest pins all
-50 archive hashes. Each load checks the hash before and after native loading,
-requires one CPU F32 tensor and validates its exact shape.
+`Model.Spec()` returns a value. `Open` dispatches through one private `modelGraph`
+interface to typed `hacGraph` and `supGraph` implementations. The embedded HAC
+and SUP manifests pin all 50 and 139 consumed archive hashes. Each load checks
+the hash before and after native loading, requires one CPU F32 tensor, and
+validates its exact shape. SUP owns immutable RoPE tables and a config-derived
+alpha scalar. Its CRF handle replaces the original loaded handle after one F32
+multiply by five. The weight receipts continue to describe the original files.
 
 The initial tensor Engine methods already selected with its owner are
 `LoadWeight`, `NewFloat32`, `Zeros`, `Conv1d(x,w,b,stride,padding,dilation,groups)`,
@@ -277,10 +278,20 @@ The initial tensor Engine methods already selected with its owner are
 `AddScalar`, `MulScalar`, `Clamp`, `Sigmoid`, `SiLU`, `Tanh`, `Narrow`, `Concat`,
 `Stack`, `Reshape`. Methods return `(*Tensor,error)`; `Tensor.Shape/Data` return
 copied slices and errors. Nil bias is supported. All operations are out of place.
-This suffices for HAC. SUP additionally needs primitive mean, reciprocal square
-root, sine/cosine and boolean-mask scaled-dot-product attention; Go must still
-own rotary construction, split scheduling and residual order. Prefer these
-ATen operations over exporting a native MHA or transformer layer.
+This suffices for HAC. SUP uses ABI3 `Mean`, `Rsqrt`, `Reciprocal`, `Sin`, `Cos`,
+`Sub`, `Square`, and `ScaledDotProductAttention`. Attention copies a Go-owned
+0/1 byte mask and its shape into a native boolean tensor. Go constructs each
+split's mask and bounds. The native call uses zero dropout, noncausal attention,
+the default scale, and no grouped-query attention. The copied masks matched
+source-strided masks bit for bit in the tensor unit's CPU probes.
+
+The shipped C++ `torch::nn::functional::linear` has different rank-three bias
+semantics from the generic ATen `linear` operation. It runs matmul and then adds
+bias separately. SUP therefore uses Go `linearNTCBias` at attention output
+projection and upsample. That function schedules `Transpose -> MatMul -> Add`.
+The generic tensor `Linear` remains the ATen operation. The pinned header is
+`include/torch/csrc/api/include/torch/nn/functional/linear.h`, SHA256
+`fdb854ec80107b177287e63be43a9b12923cec01a62f2b96b05cbc9d1743fd87`.
 
 Validate input rank, batch/channels/length, granularity, finite numeric input,
 weight shapes and engine ownership at the external seam. Tensor operations
@@ -336,8 +347,8 @@ linear and score output is compared by float32 bits, with no tolerance.
 
 Rejection controls cover altered config/weight/source hashes, missing weights
 including a partial load, wrong shape, wrong dtype, multiple or zero tensors,
-invalid input shape, nonfinite input, closed and foreign-engine handles, SUP
-runtime opening and cancellation. A deterministic midgraph cancellation test
+invalid input shape, nonfinite input, closed and foreign-engine handles, the
+then-unimplemented SUP runtime opening, and cancellation. A deterministic midgraph cancellation test
 then successfully reuses the same model. Inputs and synthetic weight values
 remain unchanged. Closing a model preserves the caller's input and score tensor;
 closing it again is harmless. Temporary handles are scoped per recurrent step.
@@ -377,21 +388,107 @@ the first extraction omitted the stack's closing brace, and the initial C++17
 flag did not support upstream `std::ssize`. The corrected extraction includes
 line 93 and uses C++20. No original source was changed.
 
-## Remaining SUP and runtime qualification
+## Implemented source-linked SUP oracle
 
-For SUP, compile original `TxModules.cpp`, `RMSNorm.cpp` and
-`LinearUpsample.cpp` CPU paths with the same pin discipline. First test RoPE
-halves and V copying, RMSNorm epsilon, gated-MLP split order, DeepNorm residuals,
-upsample interleaving, weight-side scale-once, and an attention sequence longer
-than the window crossing multiple split boundaries. Test repeated forward
-calls to catch accidental repeated scaling. Pin default dev options. Then
-compare a reduced-dimension original TxEncoder graph and a bounded real-weight
-prefix/full forward once native loading is available. Shape metadata alone
-does not qualify weight values or graph numerical behavior.
+`verification/model/sup.go` checks ten whole source files and extracts these
+verbatim definitions into the separate SUP adapter:
 
-HAC evidence now includes genuine loading of all pinned weights and a complete
-CPU forward on a short synthetic signal, plus exact source-linked numerical
-parity. SUP graph execution, full-sized chunks, real-read inference, GPU parity,
-complete-input processing, biological accuracy and performance remain
-unqualified. CPU13 development evidence does not qualify stock CUDA-12.8 GPU
-behavior.
+| Source | Included lines |
+| --- | --- |
+| `nn/TxModules.cpp` | 128-400, 756-958; 350-380 also captures the original split-attention statements |
+| `nn/RMSNorm.cpp` | 8-17 |
+| `nn/include/nn/RMSNorm.h` | Whole-file hash pins `eps=1e-5f` |
+| `nn/LinearUpsample.cpp` | 7-23 |
+| `nn/ConvStack.cpp` | 110-128, 169-188 |
+| `config/include/config/common.h` | Included unchanged, whole-file hash checked |
+| `config/include/config/BasecallModelConfig.h` | 46-89, exact transformer and CRF parameter structures |
+| `utils/include/utils/math_utils.h` | 19-26, exact split rounding helpers |
+| `torch_utils/torch_utils.cpp` | 15-34, original CPU initialization and deterministic controls |
+| `basecall/model/TxModel.cpp` | 20-48, original full model forward |
+
+The adapter declares module storage, fixes development options to their source
+defaults, and uses the same CPU-only compilation contract as HAC. It does not
+parse arbitrary configs or reproduce Dorado's original class ABI. The full
+oracle calls the original `TxModelImpl::forward`, including the original
+encoder stack and scale-once CRF layer. Detailed encoder captures additionally
+call the original component methods. The attention capture reuses the exact
+source statements and returns the intermediate NTC result.
+
+The component gate passed 11 fixtures, 116 stages, and 335,730 F32 values with
+zero differing bits. It covers full 4096-position RoPE tables, both half
+rotations and unchanged V, RMS epsilon, gated MLP order, both DeepNorm residuals,
+upsample interleaving, repeated CRF calls, one and two reduced encoders, and
+reduced five-convolution graphs for batches one and two. A T=260 fixture crosses
+multiple split and window boundaries. The native oracle explicitly rejects
+that fixture if full masked attention and split attention are equal.
+
+The bounded real-weight unit then passed all 139 consumed weights, five
+convolutions, 18 encoders, upsample, and the final scaled weight projection on
+normalized synthetic input `[1,1,768]`. Output is `[1,128,4096]`. Repeated graph
+and public `Model.Forward` calls match the same native scores. Model close
+preserves caller input and output handles. Combined evidence is 12 fixtures,
+287 stages, and 15,228,786 F32 comparisons with zero differing bits. The current
+Go source hashes and C++ linear header pin appear in
+`artifacts/model/sup/attempt-20261023T033405.423939301Z/parity.json`.
+
+The native component source/build receipt is
+`artifacts/model/sup/attempt-20261023T030858.529216804Z/oracle/manifest.json`.
+The real-weight producer ran once and exited zero. Its immutable capture is
+`artifacts/model/sup/attempt-20261023T030944.360998280Z/stock`. That capture was
+reused for the corrected Go comparisons. Raw corrected gate command, clocks,
+exit zero, and output are in
+`artifacts/model/sup-checks/attempt-20261023T033405.107841Z`.
+
+Two failed attempts remain retained. The first compiler error came from an
+attention capture ending at line 379 before the scope closed at line 380.
+The first real-weight comparison found a one-ULP error at encoder-zero output
+projection after every preceding stage matched. The isolated retained-input
+probe in `artifacts/model/sup-linear-probe/attempt-20261023T033208.683463Z` showed
+that ATen fused linear differed at 2,294 of 32,768 values. C++ module linear,
+functional linear, and separate matmul plus add each matched all original
+projection values. This is the evidence for `linearNTCBias`; no tolerance was
+introduced. The original failed comparison and native producer receipt remain
+under `attempt-20261023T030944.360998280Z`.
+
+Run ordinary checks without native execution:
+
+```sh
+go test ./internal/model ./verification/model/...
+go vet ./internal/model ./verification/model/...
+CGO_ENABLED=0 go test ./internal/model ./verification/model/...
+```
+
+Replay the retained component and stock captures without a native producer:
+
+```sh
+NANOPORE_TENSOR_BACKEND="$PWD/artifacts/tensor/attempt-005-sup-abi3/libnanopore_tensor.so" \
+DORADO_SOURCE="$PWD/external/dorado-source" \
+SUP_MODEL_ARTIFACT_DIR="$PWD/artifacts/model/sup" \
+SUP_ORACLE_ATTEMPT="$PWD/artifacts/model/sup/attempt-20261023T030858.529216804Z/oracle" \
+SUP_STOCK_CAPTURE="$PWD/artifacts/model/sup/attempt-20261023T030944.360998280Z/stock" \
+SUP_MODEL_DIR=/home/jake/Projects/nanopore_basecaller/models/dna_r10.4.1_e8.2_400bps_sup@v5.2.0 \
+go test -count=1 -v -run TestNativeSUPParity ./internal/model
+```
+
+Each Go replay creates a fresh receipt directory. Reuse validates all declared
+native source, adapter, compiler, library, and generated payload pins. A new
+native oracle is generated only when `SUP_ORACLE_ATTEMPT` is absent. A new
+bounded stock producer runs only when `SUP_MODEL_DIR` is present and
+`SUP_STOCK_CAPTURE` is absent. To check the existing HAC public API against its
+retained 16,384 score values, set `HAC_MODEL_DIR`, `HAC_STOCK_CAPTURE`, and the
+same tensor backend, then run `-run TestRetainedHACModelScores`.
+
+The SUP gate also rejects altered native source bytes, foreign-engine input,
+nonfinite input, unaligned or excessive lengths, and malformed RoPE dimensions.
+It cancels during an encoder and reuses the same graph successfully afterward.
+It does not establish a SUP POD5 endpoint, stock CPU12 endpoint agreement, GPU
+behavior, larger inputs or cohorts, biological accuracy, or performance. Those
+remain separate qualifications.
+
+HAC and SUP graph evidence includes genuine loading of every consumed pinned
+weight and complete CPU forwards on short synthetic signals, with exact
+source-linked numerical parity. The separate [caller evidence](caller.md)
+records both models' full-sized chunks and real-read FASTQ endpoints. Those
+bounded demonstrations do not qualify larger cohorts, complete-input
+processing, GPU behavior, biological accuracy, or performance. CPU13 development
+evidence does not qualify stock CUDA-12.8 GPU behavior.

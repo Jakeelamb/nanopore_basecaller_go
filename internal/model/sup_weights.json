@@ -1,0 +1,1059 @@
+[
+  {
+    "name": "conv.0.conv.weight.tensor",
+    "sha256": "bdcd827f698585b549a2471cc459830ab0406b78375c013adabe52dc4a2b5d00",
+    "shape": [
+      64,
+      1,
+      5
+    ]
+  },
+  {
+    "name": "conv.0.conv.bias.tensor",
+    "sha256": "a02235def6abb286981fb03088ae841e023beabb0fe75a30ae748b3fc3bd1498",
+    "shape": [
+      64
+    ]
+  },
+  {
+    "name": "conv.1.conv.weight.tensor",
+    "sha256": "3ba57f646ba80c505b164a6958f1bc4e8a5669a5696923bb493d45d707f3e41d",
+    "shape": [
+      64,
+      64,
+      5
+    ]
+  },
+  {
+    "name": "conv.1.conv.bias.tensor",
+    "sha256": "c61c868eb0d05534dc558af43dc57c382e93b4bf4f776493478ec65f1b58c617",
+    "shape": [
+      64
+    ]
+  },
+  {
+    "name": "conv.2.conv.weight.tensor",
+    "sha256": "0f2852a65e95b03efbd443c3ae5bfba259607eb68fee835baeeac2b479b45be8",
+    "shape": [
+      128,
+      64,
+      9
+    ]
+  },
+  {
+    "name": "conv.2.conv.bias.tensor",
+    "sha256": "a65295887df77585827f32d79a504a330d98f919ee38e335190124f055b72043",
+    "shape": [
+      128
+    ]
+  },
+  {
+    "name": "conv.3.conv.weight.tensor",
+    "sha256": "58f0d660777209c3f8f0c331369e2bfc5b2f7a48a596cecad51f74847b42cb1d",
+    "shape": [
+      128,
+      128,
+      9
+    ]
+  },
+  {
+    "name": "conv.3.conv.bias.tensor",
+    "sha256": "b07a65e761ccae4fee37c8968906aba676b2b517a676044fa3c8a19091a9f6dc",
+    "shape": [
+      128
+    ]
+  },
+  {
+    "name": "conv.4.conv.weight.tensor",
+    "sha256": "ff245ab178fc74b9820cf54f465dd29b7d4fbc618b7c8fad1d4fe90c57ed55b5",
+    "shape": [
+      512,
+      128,
+      5
+    ]
+  },
+  {
+    "name": "conv.4.conv.bias.tensor",
+    "sha256": "6746f35e9a119f66e56a83441ff83f27cf9f5b6e7cfc256ae8c29b40de6b09cb",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.0.self_attn.Wqkv.weight.tensor",
+    "sha256": "b2260c11cadaf34d4bc14f0a9875829a51ecad7f4f6268604b2d3ae8d848f47d",
+    "shape": [
+      1536,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.0.self_attn.out_proj.weight.tensor",
+    "sha256": "6865e8311852a0e1ab5ed6747af237216e63a6969b633611608e808f759d9952",
+    "shape": [
+      512,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.0.self_attn.out_proj.bias.tensor",
+    "sha256": "938ab3c371950d4797eb53f3fd0df519fbe5d7f9683536a01aa46c989cd2a630",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.0.ff.fc1.weight.tensor",
+    "sha256": "15c60797c47ea31cd33ad388975068eb7c4f7309b2a92e0faa2a7e6baf8d0141",
+    "shape": [
+      4096,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.0.ff.fc2.weight.tensor",
+    "sha256": "997e05330eda916551c246f1a82afc555ab0d958ce27b96d09208d9143442ab3",
+    "shape": [
+      512,
+      2048
+    ]
+  },
+  {
+    "name": "transformer_encoder.0.norm1.weight.tensor",
+    "sha256": "33f49a8aa9c025f4a9e3477307eaf6adf171bc82cc4a3b81fdef144e54c48b53",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.0.norm2.weight.tensor",
+    "sha256": "928eb34d88144d28c9ab5fe202593c0bb1f5391b4e0823fb86fda63199d5860e",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.1.self_attn.Wqkv.weight.tensor",
+    "sha256": "62cbe87f48cb935be714df9485d24cbd09a61f74586730f4948b56b4f800328e",
+    "shape": [
+      1536,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.1.self_attn.out_proj.weight.tensor",
+    "sha256": "50845c99693e387f27f39077d772722a9d204b90e6a1674e1d8240ddafb94462",
+    "shape": [
+      512,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.1.self_attn.out_proj.bias.tensor",
+    "sha256": "bd32557670e278c37b58eb99f19188393af1211f3e4dbdf0283cc87e232c1c66",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.1.ff.fc1.weight.tensor",
+    "sha256": "39639163adbbb3f4eb44001dd7582786e079420e04fee386eba4be5d1e5bda39",
+    "shape": [
+      4096,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.1.ff.fc2.weight.tensor",
+    "sha256": "bbe060a125c70d7e20b07ee967f14da2e098b8aa3bad5c1d4dbd09beb9833f76",
+    "shape": [
+      512,
+      2048
+    ]
+  },
+  {
+    "name": "transformer_encoder.1.norm1.weight.tensor",
+    "sha256": "ddee13bbf51c90deba301fd45ea7061ee84ad26db116e9ca2b378e0651e1d287",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.1.norm2.weight.tensor",
+    "sha256": "7e5196f089466ea2db5da71af52cb8a066260209804b9275b8809e2a9479e4cd",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.2.self_attn.Wqkv.weight.tensor",
+    "sha256": "a9b5c5ad97b8431595486f9c91692319a4cacaec940c8ae768947b8a19ea5ef8",
+    "shape": [
+      1536,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.2.self_attn.out_proj.weight.tensor",
+    "sha256": "91235e589a012b462db725923c364b8f64db45b0e1eda19855b6a6d841000fb1",
+    "shape": [
+      512,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.2.self_attn.out_proj.bias.tensor",
+    "sha256": "62d0bbda0d2084d51115a0b9536de5cdf11dc0515b100684b79253e454bbb9da",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.2.ff.fc1.weight.tensor",
+    "sha256": "4f924acf3cc11a185ec834e7d87da73903dfceb96e9029668d4bf248313895f8",
+    "shape": [
+      4096,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.2.ff.fc2.weight.tensor",
+    "sha256": "571daae03067288939014df0b5e34db9462905f50e3f3bf5d324983f4109e48a",
+    "shape": [
+      512,
+      2048
+    ]
+  },
+  {
+    "name": "transformer_encoder.2.norm1.weight.tensor",
+    "sha256": "cb73fea10ce63692fa31daf25cb37116a5ded8aeb79fce8f3c31e49103e4cdd5",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.2.norm2.weight.tensor",
+    "sha256": "108b0e4e12ccef05f3e111d07d1940dfb05d6c45bb7449ade291ff10abdf14c0",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.3.self_attn.Wqkv.weight.tensor",
+    "sha256": "635d0596c021da9d7a4aec6d66c23e4e1b0b8b495e4a5180bfa24e8dfedaa8fd",
+    "shape": [
+      1536,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.3.self_attn.out_proj.weight.tensor",
+    "sha256": "1659191ed52743abf6a457099b32f2707cb68d1ad33b1f2064ba37bc7e9f53e5",
+    "shape": [
+      512,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.3.self_attn.out_proj.bias.tensor",
+    "sha256": "a7bbefd76b9f879b1d9c6b3eac08d95d3ab3a5159c9affdc2a310c314322102d",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.3.ff.fc1.weight.tensor",
+    "sha256": "5e8824e95f69662e6f2ed45164432475aefdcc7963515739b016b81b2353fe08",
+    "shape": [
+      4096,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.3.ff.fc2.weight.tensor",
+    "sha256": "d05aee2c0c003c62a02ee3949cdc9d8dc1cf2f3446e1b23f503f6eec356b933e",
+    "shape": [
+      512,
+      2048
+    ]
+  },
+  {
+    "name": "transformer_encoder.3.norm1.weight.tensor",
+    "sha256": "1f16e507aa110463fcbaa4f720e050dc2d3ca6ce00d653fb95592585d805d646",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.3.norm2.weight.tensor",
+    "sha256": "814c21e23c1f43715d8d026b146d34b80f2dad22bcf90154727dec0e78996ca6",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.4.self_attn.Wqkv.weight.tensor",
+    "sha256": "c6c5821bdf688ef82db34962e9dd384665ab0fec9eab58e6c069de8274d3886c",
+    "shape": [
+      1536,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.4.self_attn.out_proj.weight.tensor",
+    "sha256": "36c23d9f46c2293bb462fe3b3bc6789da0c7369f563746e1edb7e0499454bd60",
+    "shape": [
+      512,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.4.self_attn.out_proj.bias.tensor",
+    "sha256": "cddbcf3eed6f16804bde7f0dd60fa55d75df6ca3452761baaaa4b0cc6116292a",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.4.ff.fc1.weight.tensor",
+    "sha256": "d06b4befa5f47b0d6e5f3e754ebe0ca29291ce88ec0dc8b6607bd3056307d70b",
+    "shape": [
+      4096,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.4.ff.fc2.weight.tensor",
+    "sha256": "03cff76d805aec20b3a3e8f2219b206ea702a2942adbc8a99e9a979622469c48",
+    "shape": [
+      512,
+      2048
+    ]
+  },
+  {
+    "name": "transformer_encoder.4.norm1.weight.tensor",
+    "sha256": "e39a1a0399ef83cea2e22c5cb4e783fbd2ad3d0fa38f70a126dd9271fe253a57",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.4.norm2.weight.tensor",
+    "sha256": "5915c0e2096e26d47066f69f40f34d0f27fbcabe3c6628c6e31ec5adaf8bbf8f",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.5.self_attn.Wqkv.weight.tensor",
+    "sha256": "c40248a9a480066fac28992828988c97a9086b2bbd3467eb93b0fc6451c05e45",
+    "shape": [
+      1536,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.5.self_attn.out_proj.weight.tensor",
+    "sha256": "7eb67a28f343c8e020b4f326b8ca90e30508684e94a89bdbf7ee178ccb9fd81b",
+    "shape": [
+      512,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.5.self_attn.out_proj.bias.tensor",
+    "sha256": "b19a246fbc04e2ce0d017b2602549820dc563d9355a85ec4c2ba7ec000176d67",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.5.ff.fc1.weight.tensor",
+    "sha256": "e05819d2a70be4e22c9d0a72ddc963e3925dd0f4bc4838adc694c4b3b2fabfca",
+    "shape": [
+      4096,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.5.ff.fc2.weight.tensor",
+    "sha256": "a3c6940cb6ce802896f65d4ffdd0d20180ddfd85c4c55fde990acfee8722a79b",
+    "shape": [
+      512,
+      2048
+    ]
+  },
+  {
+    "name": "transformer_encoder.5.norm1.weight.tensor",
+    "sha256": "e9f94ac5bfa08cbe0c25e50aecf931232d536714ca0ebbf44f2ff578bbe949a1",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.5.norm2.weight.tensor",
+    "sha256": "404afd6504e8546b8f5056c8e6db677281243735656296581cdfde49354ae6c6",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.6.self_attn.Wqkv.weight.tensor",
+    "sha256": "8c82d84a14e4add79d7057b725232d77354413b71f1daca35f33cbb17147c606",
+    "shape": [
+      1536,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.6.self_attn.out_proj.weight.tensor",
+    "sha256": "dbba3f3e926b652975b8e968f00ce44dc135cba387d631223e9880ba24a05837",
+    "shape": [
+      512,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.6.self_attn.out_proj.bias.tensor",
+    "sha256": "6d9b1e16e277d93f0b6a923a3b02d4b9592c43897ad9f1e199a0335f0062a0d9",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.6.ff.fc1.weight.tensor",
+    "sha256": "bca9167399dfcde94dc8996b574484b76ca698d7fa2a0fbd25388b3b41e24fd5",
+    "shape": [
+      4096,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.6.ff.fc2.weight.tensor",
+    "sha256": "d8ae5f79dbe44705276c74b9eae91052f25a0d139682cb3d462f9ef4339bbeb6",
+    "shape": [
+      512,
+      2048
+    ]
+  },
+  {
+    "name": "transformer_encoder.6.norm1.weight.tensor",
+    "sha256": "669622ce9547ff1782b70128972db8d017e1e693f7d7133283f7aaa2de5fbd21",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.6.norm2.weight.tensor",
+    "sha256": "918b23c35ee9f45c2b0c13fe708c0db80cbf995d4d84d8a8a98ecebafb2d639c",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.7.self_attn.Wqkv.weight.tensor",
+    "sha256": "7f3c96f43544d877ba930196ca4292125d0475312291ce47bff310bca1ac0b09",
+    "shape": [
+      1536,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.7.self_attn.out_proj.weight.tensor",
+    "sha256": "4aef46d121626598ecb87d9b2c257c27a532b7bb70e1af1473842b56bc5327e6",
+    "shape": [
+      512,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.7.self_attn.out_proj.bias.tensor",
+    "sha256": "2ae6bb744b8c570dd5192d114ce6c20cd47d1f4d294221e6d35985fba73f4a4c",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.7.ff.fc1.weight.tensor",
+    "sha256": "7539656e9ebfdd680809ad1d7391281a085d92936ca711a1607c5f7a76ed5e17",
+    "shape": [
+      4096,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.7.ff.fc2.weight.tensor",
+    "sha256": "d5f98c0fbbf2a4b52be4b871ada3871a839aeb7c0c5539ed0110bce5aa0fb26d",
+    "shape": [
+      512,
+      2048
+    ]
+  },
+  {
+    "name": "transformer_encoder.7.norm1.weight.tensor",
+    "sha256": "35bc15b2adc8c5babc77c576b76fb3c9599235b403e9a70076c9417c2272455d",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.7.norm2.weight.tensor",
+    "sha256": "97858d791c60c57b91bb67c9ed996e67212d1ebdc2bcedb8c364c686ed70a030",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.8.self_attn.Wqkv.weight.tensor",
+    "sha256": "0e0ef72b2da0da087e944c4eea0c38fc3620a00457c079c57a324bca5fddd3b2",
+    "shape": [
+      1536,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.8.self_attn.out_proj.weight.tensor",
+    "sha256": "ac1965524c00cfd31388975b6b25e3ee773a0154a960e4d7c9989fab979598ff",
+    "shape": [
+      512,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.8.self_attn.out_proj.bias.tensor",
+    "sha256": "05dce73c7e0d383f80c571f4549bd4d1dcc16d096efbeee887e19710d61a5220",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.8.ff.fc1.weight.tensor",
+    "sha256": "44705c7f9734da500fcee2cb3c32c257f012736320976f60e818b94c24736efb",
+    "shape": [
+      4096,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.8.ff.fc2.weight.tensor",
+    "sha256": "5de0fafef3dcd540e13747d700166a2be4130bde63331094991be352f29a6d3f",
+    "shape": [
+      512,
+      2048
+    ]
+  },
+  {
+    "name": "transformer_encoder.8.norm1.weight.tensor",
+    "sha256": "fb80eed2c0ae48456edb4a77920f8c71acd20d817a97e5a7320520edce92fb86",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.8.norm2.weight.tensor",
+    "sha256": "f06ca6a766ee111eab0a24cb5ff5f7f2cd2dd1eb8413981fd9d377dff29bafb5",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.9.self_attn.Wqkv.weight.tensor",
+    "sha256": "1f56656d191b7ad19406e77c074102f19bdb84538337ae5505fa51f3e1bbe8fa",
+    "shape": [
+      1536,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.9.self_attn.out_proj.weight.tensor",
+    "sha256": "31b4903aa9524d14ecaa7fda72f04db9813e25118616527db1a3a12f065c984c",
+    "shape": [
+      512,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.9.self_attn.out_proj.bias.tensor",
+    "sha256": "5c1d70737a93340247aff7de0a9788ab0ae873bb03a44b26e91019dfafd1c112",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.9.ff.fc1.weight.tensor",
+    "sha256": "ac6c79c66636e1f98dd72fa8db514892aae5fa7a7cc969900bae5cfd3b04852e",
+    "shape": [
+      4096,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.9.ff.fc2.weight.tensor",
+    "sha256": "dcbbb79b62fabb76abcb43e16b7adc0d5e1f1fe569a4b70184da98f2a5ad199d",
+    "shape": [
+      512,
+      2048
+    ]
+  },
+  {
+    "name": "transformer_encoder.9.norm1.weight.tensor",
+    "sha256": "aa79720ce0ffdc75838fa53ba622aa17dbd60868f1e28ffaa394e930bc5a2431",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.9.norm2.weight.tensor",
+    "sha256": "7f24f067cb1069d25ea0ad3b1a722acc0b94b48b5a7a62a06d6250a4a6c33c0c",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.10.self_attn.Wqkv.weight.tensor",
+    "sha256": "289aa01c4c2be6770f18eceff8a08cda1b53c39a3a16de8028f7d6aa2acb05e2",
+    "shape": [
+      1536,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.10.self_attn.out_proj.weight.tensor",
+    "sha256": "cc0e1fe3ce226f246b5059140e92110ce6ade57ab06fa588208cfb04103e68fd",
+    "shape": [
+      512,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.10.self_attn.out_proj.bias.tensor",
+    "sha256": "d6dbbbed4a711f7c382cd74a95353181c0ec1de14d51273fecf28ac4c2fe8c43",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.10.ff.fc1.weight.tensor",
+    "sha256": "ff49d228eb25d9dcb5d1ca12740fcb7adabcb56cdee6caf2a90e9d7edb2d7bd3",
+    "shape": [
+      4096,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.10.ff.fc2.weight.tensor",
+    "sha256": "3cccab5077e75e32b99fdc8b09179d1d3e0f122a022ea92a6795dced2aaba37a",
+    "shape": [
+      512,
+      2048
+    ]
+  },
+  {
+    "name": "transformer_encoder.10.norm1.weight.tensor",
+    "sha256": "27a83fe13d180a9023755bc41075eeece4c9b2a9c086057844f47ef0af8428af",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.10.norm2.weight.tensor",
+    "sha256": "ddb7cccae5ce852f7a0ef875424c56f5f0a8171c09c44436337e730ba5aeb795",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.11.self_attn.Wqkv.weight.tensor",
+    "sha256": "77bee2c27c095fb2af6d89a013b0c82cfcc573f804e75ce6e8e111830d7e557c",
+    "shape": [
+      1536,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.11.self_attn.out_proj.weight.tensor",
+    "sha256": "b4ffa0ccf0cbb9d3cb9c78567d706c54ff1c85beddbd2597207bda9ec014cf7b",
+    "shape": [
+      512,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.11.self_attn.out_proj.bias.tensor",
+    "sha256": "06aa63d851f38a34439085458092e8cfd4a94e6b08008eb22e3879d4663e2650",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.11.ff.fc1.weight.tensor",
+    "sha256": "70ba9103be02cc3d4b147704b2c005f940af175e11be9ea4c6f36065f137afe3",
+    "shape": [
+      4096,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.11.ff.fc2.weight.tensor",
+    "sha256": "99d25de61f3826efb159c21a818e9b69c34e12027340798caec6f457aee1c28b",
+    "shape": [
+      512,
+      2048
+    ]
+  },
+  {
+    "name": "transformer_encoder.11.norm1.weight.tensor",
+    "sha256": "0947e07d87596d1693a101dc0b916f476b934541d0017a362b4a75a5800167ad",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.11.norm2.weight.tensor",
+    "sha256": "b26d92171203edfc34bf0921d43e42ff07a99c1e6f2480a286e543c6b1d20719",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.12.self_attn.Wqkv.weight.tensor",
+    "sha256": "6a7347f7ef54c5114e8b083d4e1000f754147e48795ed5aa9cfc8af1374431ed",
+    "shape": [
+      1536,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.12.self_attn.out_proj.weight.tensor",
+    "sha256": "87ee7c8e34a37b4b9ba5c8ed542a9bcf136a023dd4cad00230276f76194217cf",
+    "shape": [
+      512,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.12.self_attn.out_proj.bias.tensor",
+    "sha256": "fcd6428c54e7a66c459d06161675e6943e926dc33b0e031a7f36c718ebab8c65",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.12.ff.fc1.weight.tensor",
+    "sha256": "6dd3977e771ddaafaa7558e6bfa9cd512b5f977448ff88c6f31bdeab9d356d28",
+    "shape": [
+      4096,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.12.ff.fc2.weight.tensor",
+    "sha256": "ab11be7fadad13f2a4d23e84ee48d73f844b94b8b8b40abdf11fc810d2f87c58",
+    "shape": [
+      512,
+      2048
+    ]
+  },
+  {
+    "name": "transformer_encoder.12.norm1.weight.tensor",
+    "sha256": "f729806364ac843c4f1605127d632324b4b6528ba8fd0f1785a0f64737da58a8",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.12.norm2.weight.tensor",
+    "sha256": "c48eaecc5e3a9e7a87766a36fd0c4f90093345e47764f148040b2fc9726a8add",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.13.self_attn.Wqkv.weight.tensor",
+    "sha256": "1a8262c9035573feeed24caffe4eb0233f7d818477586d5a2986438b321c0606",
+    "shape": [
+      1536,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.13.self_attn.out_proj.weight.tensor",
+    "sha256": "c88c18e32e63de071d90c16e85619080fd8e9759fec4ced5a29178097a9c8508",
+    "shape": [
+      512,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.13.self_attn.out_proj.bias.tensor",
+    "sha256": "5643c0b4080e1c6e098cc695ed14a104f7d7b48f5536cee1fa0227131a2978e9",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.13.ff.fc1.weight.tensor",
+    "sha256": "0717da72407ecd7d5a5c4216be736a73d4c940ef643837e168bc629ed0b5e93f",
+    "shape": [
+      4096,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.13.ff.fc2.weight.tensor",
+    "sha256": "e026320d28fc7b76554df3f60a123172422c4ad44c67abd0e5ea613129b9fb8a",
+    "shape": [
+      512,
+      2048
+    ]
+  },
+  {
+    "name": "transformer_encoder.13.norm1.weight.tensor",
+    "sha256": "f951c52e40b020bb8cebea7633ec2668527144a6f19ea7f47ab5d36193b6a562",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.13.norm2.weight.tensor",
+    "sha256": "ebb3e306b9ab108aa2fb1ee550c26ece2cee9ad30e2cb6e1cd50a4a31af9a885",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.14.self_attn.Wqkv.weight.tensor",
+    "sha256": "15cc504772ed87851e98fb133cf6268f3810292f42475a6ae12d74a96ab68eb7",
+    "shape": [
+      1536,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.14.self_attn.out_proj.weight.tensor",
+    "sha256": "dfec3bda102d445c08ced03e2a7ed9665c9a1beb285f09f5356a98aa26b4aa9f",
+    "shape": [
+      512,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.14.self_attn.out_proj.bias.tensor",
+    "sha256": "77767fb49652a559eebe6411bc564ad5b4f1c9c9289fdb93072a0158231afadd",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.14.ff.fc1.weight.tensor",
+    "sha256": "13172f5e5111d6fabf5fa0db769b0294d237817d67471503332514c6a93dbe72",
+    "shape": [
+      4096,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.14.ff.fc2.weight.tensor",
+    "sha256": "1e7cac5cb124483b44e70893202dd7198bcdbbd2cda28ec664dc12e6f57cf8ab",
+    "shape": [
+      512,
+      2048
+    ]
+  },
+  {
+    "name": "transformer_encoder.14.norm1.weight.tensor",
+    "sha256": "3e42c5df18fedd1fc70b1f1eb8753bf585c30754bd1999a5aadee5db54612313",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.14.norm2.weight.tensor",
+    "sha256": "06874713a9262e4d27949083f03c4e8bc3e303c252f01dff7718bf97e742c097",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.15.self_attn.Wqkv.weight.tensor",
+    "sha256": "6541e843afea6d49fcfec5554e1398f8a2b62de0b5f6614383fcafddd68e1529",
+    "shape": [
+      1536,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.15.self_attn.out_proj.weight.tensor",
+    "sha256": "3e2889f3af928bc9a6277dd9a6a4fbd665b7d178a2c878994411d67faaa70d24",
+    "shape": [
+      512,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.15.self_attn.out_proj.bias.tensor",
+    "sha256": "1c8942cd193d8bfe10ad089868d82c12fad30c4b39116e9867ec1c6a0b62a5e4",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.15.ff.fc1.weight.tensor",
+    "sha256": "b7457da0de9fc0bff72817c6d3a9d3475898dc3422eccfde97533c002ec28021",
+    "shape": [
+      4096,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.15.ff.fc2.weight.tensor",
+    "sha256": "d2e08348b86717029a4a6e449344ace0bdcfdb0bb1c2b9aebf70ee1054452dee",
+    "shape": [
+      512,
+      2048
+    ]
+  },
+  {
+    "name": "transformer_encoder.15.norm1.weight.tensor",
+    "sha256": "2cc8c69a79b4e2fbc5afe32e46a4cbc4fe3b7bdb7734111d6d864ffae76d2dff",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.15.norm2.weight.tensor",
+    "sha256": "aaf28ef1d54ac25d0ad337b6ceffebf968b57b3259edf4bd3c7d14fe1a415435",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.16.self_attn.Wqkv.weight.tensor",
+    "sha256": "1fb6c47fdbb9fe655590b5ccc12bbcd777f7d32115cdd80aae421c39d65b89f9",
+    "shape": [
+      1536,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.16.self_attn.out_proj.weight.tensor",
+    "sha256": "283c7804d5cb1a305da83c399d56ae6f09664caa27499547a7adf3a1c582b835",
+    "shape": [
+      512,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.16.self_attn.out_proj.bias.tensor",
+    "sha256": "65a52db545f8b04503b5b56290f4e2a9b64ff1a3c405a563f7d507d51e256f73",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.16.ff.fc1.weight.tensor",
+    "sha256": "49abf5553be5d4899cecb3b21751c771f5eac8f76b8bd8232770e1973265c3c2",
+    "shape": [
+      4096,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.16.ff.fc2.weight.tensor",
+    "sha256": "3e772c7cf346ca9472406531ec985d1920ac9ead88c60a40b7f969c7cb50e703",
+    "shape": [
+      512,
+      2048
+    ]
+  },
+  {
+    "name": "transformer_encoder.16.norm1.weight.tensor",
+    "sha256": "d57333972ef72e14374a5963df531b9d649b20d010f3cf3400bb373e98ae2295",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.16.norm2.weight.tensor",
+    "sha256": "7350cb0d4b27b66c7428e986c8ef15cddef0d97d1e2e4403154d892a0dec73c8",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.17.self_attn.Wqkv.weight.tensor",
+    "sha256": "767215358b86cbce9c75e052e6518bccb6fd07b187a6568bae4d516acfbe90f6",
+    "shape": [
+      1536,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.17.self_attn.out_proj.weight.tensor",
+    "sha256": "2116b3273f23f3bdf7e4713b7a28161a5506604c8ea23fdff82d30d2a17700d5",
+    "shape": [
+      512,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.17.self_attn.out_proj.bias.tensor",
+    "sha256": "d73ef71202201977ef237bb88f96995e24513b9a5fb6a3c4c3d48ccaf5cbd2dc",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.17.ff.fc1.weight.tensor",
+    "sha256": "46648724a5913e8cc55700fa6d04e6bdb292f6b46dea94528cb0d5c26c44577d",
+    "shape": [
+      4096,
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.17.ff.fc2.weight.tensor",
+    "sha256": "4c09b8a7d8c624e1ce7c9612de23db83d682c73d2d4998e159a20e01181a336d",
+    "shape": [
+      512,
+      2048
+    ]
+  },
+  {
+    "name": "transformer_encoder.17.norm1.weight.tensor",
+    "sha256": "2fc79a0c579f62e72c1bf12c4d2a99a954eecf2f87f8401c58a2d8298c3241f9",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "transformer_encoder.17.norm2.weight.tensor",
+    "sha256": "ed0131d120bb79bf599036ed57bd230900da1ada567aa42ffdca8f7c8e6005be",
+    "shape": [
+      512
+    ]
+  },
+  {
+    "name": "upsample.linear.weight.tensor",
+    "sha256": "ee0caf517702347b28987d448febeeb38f5eba21d92aa8b97996bf83c48e40a0",
+    "shape": [
+      1024,
+      512
+    ]
+  },
+  {
+    "name": "upsample.linear.bias.tensor",
+    "sha256": "70ceb4b560915531a8b276f807a2e3b9b41b54e8037ed08fddaa1553f5685e9c",
+    "shape": [
+      1024
+    ]
+  },
+  {
+    "name": "crf.linear.weight.tensor",
+    "sha256": "6fbb943493d3fd1840dff58bc2ba1f56ec5cd8249fd7c8b8c80e32be8e76e408",
+    "shape": [
+      4096,
+      512
+    ]
+  }
+]

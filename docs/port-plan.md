@@ -39,20 +39,20 @@ about zero padding does not describe the consuming implementation.
 
 ## Boundary evidence and remaining work
 
-| Boundary | Accepted at HAC freeze `7a0f193` | Remaining acceptance |
+| Boundary | Observed evidence | Remaining acceptance |
 | --- | --- | --- |
 | POD5 loading | Two independent native fixtures, copied signal/calibration/UUID/metadata and selection guards | Broader input versions and complete-file processing |
 | Scaling | Standardized DNA formula and half bits; one whole caller endpoint | Full native ScalerNode/SIMD and other scaling modes |
 | Chunk planning and padding | All three source algorithms, repeat padding, fixed caller chunks | Integrated variable and transformer scheduling |
-| Model config and weights | Exact HAC config and 50 weight hashes/shapes; SUP identified | SUP runtime weight mapping and execution |
+| Model config and weights | Exact HAC/SUP configs and 50/139 consumed weight hashes/shapes | Other models and upstream revisions |
 | HAC inference | 55 source-oracle fixtures and one genuine-weight score capture | Other inputs and device paths |
-| SUP inference | Exact graph and weight trace | Native transformer stage and final caller comparisons |
+| SUP inference | 12 source-oracle fixtures, 287 stages, 15,228,786 exact float32 values and genuine 18-layer weights | Other inputs and device paths |
 | CRF decoding | CPU N=1 scans, posteriors, beam diagnostics and quality bits | Batched scans and GPU kernels |
 | Stitching | Source algorithm fixtures including partial strides | Integration with variable chunk paths |
-| Split and trim | No adapter trimming or splitting in admitted mode | Native split identities, intervals, adapters and filtering |
+| Split and trim | No adapter trimming or splitting in admitted mode; selected input ends with signal_positive | Mux-change tail trim, native split identities, intervals, adapters and filtering |
 | Scheduling | Selected reads, CPU batch one, cancellation, ownership, immutable captures and replay | Batching, GPU streams, complete input accounting |
-| BAM and FASTQ output | One FASTQ UUID/sequence/quality endpoint | Stock FASTQ headers, BAM records and separate raw byte identity |
-| Complete caller | One predeclared unsplit untrimmed HAC development read | SUP, default pipeline, complete declared input sets |
+| BAM and FASTQ output | Raw FASTQ identity for HAC and SUP on one frozen UUID, including headers | BAM records, compression and larger read sets |
+| Complete caller | Two model endpoints on one predeclared unsplit untrimmed development read | Default pipeline, complete declared input sets |
 
 The linked unit documents describe the exact fixture and runtime limits. A
 bounded pass does not close the remaining column. Package tests and CPU CI do

@@ -76,6 +76,10 @@ func syntheticCapture(t *testing.T) (string, CalledRead) {
 		t.Fatal(err)
 	}
 	out := CalledRead{ID: r.ID.String(), Sequence: joined.Sequence, Qstring: joined.Qstring, Moves: joined.Moves, NumSamples: 22, Trimmed: 10}
+	out.FASTQ, err = fastqMetadata(r, s)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := c.finish(out); err != nil {
 		t.Fatal(err)
 	}
@@ -154,5 +158,59 @@ func TestCaptureDoesNotOverwrite(t *testing.T) {
 	}
 	if _, err := startCapture(Config{CaptureDir: dir}, testSpec(), nil, chunk.Config{}, decode.Options{}); err == nil {
 		t.Fatal("capture reused directory")
+	}
+}
+
+func TestReplayLegacyMetadataAndChangedNewMetadata(t *testing.T) {
+	for _, legacy := range []bool{false, true} {
+		path, want := syntheticCapture(t)
+		dir := filepath.Dir(path)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var m manifest
+		if err := json.Unmarshal(data, &m); err != nil {
+			t.Fatal(err)
+		}
+		changed := want
+		if legacy {
+			changed.FASTQ = nil
+		} else {
+			copied := *want.FASTQ
+			copied.Channel++
+			changed.FASTQ = &copied
+		}
+		encoded, err := json.Marshal(changed)
+		if err != nil {
+			t.Fatal(err)
+		}
+		m.Output = payload{File: "output.json", SHA256: digest(encoded), Bytes: int64(len(encoded))}
+		outputPath := filepath.Join(dir, m.Output.File)
+		if err := os.WriteFile(outputPath, encoded, 0600); err != nil {
+			t.Fatal(err)
+		}
+		data, err = json.Marshal(m)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, data, 0600); err != nil {
+			t.Fatal(err)
+		}
+		got, replayErr := Replay(context.Background(), path)
+		if legacy {
+			if replayErr != nil || !reflect.DeepEqual(got, want) {
+				t.Fatalf("legacy metadata derivation: %v", replayErr)
+			}
+			retained, err := os.ReadFile(outputPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(retained) != string(encoded) {
+				t.Fatal("replay rewrote legacy output")
+			}
+		} else if replayErr == nil {
+			t.Fatal("changed captured FASTQ metadata accepted")
+		}
 	}
 }

@@ -1,9 +1,10 @@
 # Go caller ownership
 
-The completed caller gives Go ownership of signal processing, model and decoder
-decisions, scheduling and output. Native GPU kernels can remain behind typed
-tensor operations. The current packages implement three CPU computations; they
-do not constitute a complete basecaller.
+The target gives Go ownership of signal processing, model and decoder decisions,
+scheduling and output. Native kernels remain behind typed tensor operations.
+The implemented CPU HAC and SUP paths join POD5 input, scaling, fixed chunks, Go
+model graph, CRF scans, beam decoding, stitching, and FASTQ output. Default
+trimming and splitting, GPU execution, and complete input accounting remain open.
 
 The reference is Dorado commit
 `8b8fc5d36a9c0baab262a743cb175b5878e38ca6`. The original experiment checkout
@@ -21,8 +22,10 @@ shipping both designs as interchangeable production paths. A coarse chunk-engine
 adapter, if introduced during integration, must be identified as remaining native
 scope and replaced before claiming the full target.
 
-The model outputs are contiguous binary16 tensors in `[N,T,C]` order. Current
-CUDA decoding calls guide, beam, posterior and decode kernels. Preserve their
+The native CUDA model outputs are contiguous binary16 tensors in `[N,T,C]`
+order. The implemented CPU graph uses float32, with binary16 normalized inputs
+expanded exactly. Native CUDA decoding calls guide, beam, posterior and decode
+kernels. Preserve their
 order, dtypes and layouts before considering numerical changes. See
 [`CRFModel.cpp:108-131`](https://github.com/nanoporetech/dorado/blob/8b8fc5d36a9c0baab262a743cb175b5878e38ca6/dorado/basecall/model/CRFModel.cpp#L108-L131)
 and
@@ -35,10 +38,12 @@ and
 | `internal/signal` | Calibration, pA normalization, binary16 rounding, signal trimming and scaling metadata |
 | `internal/chunk` | All three sample-coordinate planners and repeat-padding |
 | `internal/stitch` | Decoded-chunk validation and final sequence, quality and moves |
-| Future `internal/model` | Source-pinned config, weights and Go model graph |
-| Future `internal/gpu` | Opaque native allocations, streams, events and kernel ABI |
-| Future `internal/caller` | Bounded jobs, cancellation, per-read indexed collection and accounting |
-| Future input/output adapters | POD5 metadata and native signal decoding; canonical BAM/FASTQ records |
+| `internal/model` | Source-pinned config, weights and Go model graph |
+| `internal/tensor` | Typed CPU float32 and int64 handles, primitives and native lifetime |
+| `internal/crf` and `internal/decode` | CPU guide/posterior scheduling and beam decisions |
+| `internal/caller` | Selected reads, cancellation, fixed chunk collection, capture/replay and FASTQ |
+| `internal/pod5` | Copied input metadata, selected UUIDs and native signal decompression |
+| Future GPU backend | Native allocations, streams, events and kernel ABI |
 
 The implemented assembly interface is:
 
@@ -130,18 +135,20 @@ it is not evidence of a speedup over Dorado.
 
 ## Remaining qualification
 
-The local official distribution contains LibTorch runtime libraries. Matching
-development headers/configuration, Koi 0.7.5 and POD5 0.3.39 development artifacts
-were not found in the inspected stock software tree. They are required before
-building and qualifying the native tensor boundary. Dorado's build pins are
+The official distribution contains CUDA 12 LibTorch runtime libraries. The
+qualified CPU development backend uses the separately verified CUDA 13 ONT
+LibTorch package and matching headers. POD5 0.3.39 and Koi 0.7.5 archives are
+verified outside Git. Koi is not yet used by the Go caller. Matching stock CUDA
+execution still requires its own backend and evidence. Dorado's build pins are
 [`Koi.cmake:40-91`](https://github.com/nanoporetech/dorado/blob/8b8fc5d36a9c0baab262a743cb175b5878e38ca6/cmake/Koi.cmake#L40-L91),
 [`Torch.cmake:49-95`](https://github.com/nanoporetech/dorado/blob/8b8fc5d36a9c0baab262a743cb175b5878e38ca6/cmake/Torch.cmake#L49-L95)
 and
 [`Pod5.cmake:4-35`](https://github.com/nanoporetech/dorado/blob/8b8fc5d36a9c0baab262a743cb175b5878e38ca6/cmake/Pod5.cmake#L4-L35).
 
 The full caller still needs the boundaries listed in [the port plan](port-plan.md),
-including weight loading, both model architectures, decoding, splitting, output
-and end-to-end read accounting. CPU algorithm parity does not qualify native GPU
-behavior, biological accuracy or performance. Capture expensive inference
-fixtures once when that boundary exists, and replay them for downstream work.
+including GPU kernels, splitting, trimming, BAM and end-to-end
+input accounting. CPU algorithm parity does not qualify native GPU behavior,
+biological accuracy or performance. Retained HAC stage captures replay without
+inference. Capture new expensive producer fixtures once and reuse them for
+downstream work.
 Use HG002 development and validation; never choose an implementation using HG005.

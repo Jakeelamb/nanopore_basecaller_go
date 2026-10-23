@@ -153,8 +153,31 @@ int nt_run(uint64_t e,int op,const uint64_t* ids,size_t count,const int64_t* p,s
         case NT_SOFTMAX: arity(1,1,0); r=at::softmax(t[0],p[0]); break;
         case NT_UNSQUEEZE: arity(1,1,0); r=t[0].unsqueeze(p[0]); break;
         case NT_ARGSORT: arity(1,1,0); r=at::argsort(t[0],p[0],false); break;
+        case NT_MEAN: arity(1,2,0); require(p[1]==0 || p[1]==1,"invalid keepdim flag"); r=at::mean(t[0],{p[0]},p[1]!=0); break;
+        case NT_RSQRT: arity(1,0,0); r=at::rsqrt(t[0]); break;
+        case NT_RECIPROCAL: arity(1,0,0); r=at::reciprocal(t[0]); break;
+        case NT_SIN: arity(1,0,0); r=at::sin(t[0]); break;
+        case NT_COS: arity(1,0,0); r=at::cos(t[0]); break;
+        case NT_SUB: arity(2,0,0); r=t[0]-t[1]; break;
+        case NT_SQUARE: arity(1,0,0); r=t[0].square(); break;
         default: throw std::runtime_error("unknown operation ID");
         }
         *out=op==NT_ARGSORT ? put_indices(ts,std::move(r)) : put(ts,std::move(r)); });
+}
+int nt_sdpa(uint64_t e,uint64_t q_id,uint64_t k_id,uint64_t v_id,const int64_t* dims,size_t rank,const uint8_t* mask,size_t count,uint64_t* out,char* err,size_t cap) {
+    return boundary(err,cap,[&]{auto& ts=engine(e);require(out,"null output");
+        auto q=get(ts,q_id),k=get(ts,k_id),v=get(ts,v_id);
+        for(const auto& t : {q,k,v}) require(t.scalar_type()==at::kFloat,"attention inputs must be CPU float32");
+        std::optional<at::Tensor> opt_mask;
+        if(dims || rank || mask || count) {
+            require(elements(dims,rank)==count,"mask shape and data length differ");
+            require(count==0 || mask,"null mask data");
+            auto m=at::empty(at::IntArrayRef(dims,rank),at::TensorOptions().dtype(at::kBool).device(at::kCPU));
+            auto dst=m.data_ptr<bool>();
+            for(size_t i=0;i<count;++i){require(mask[i]<=1,"mask bytes must be 0 or 1");dst[i]=mask[i]!=0;}
+            opt_mask=std::move(m);
+        }
+        *out=put(ts,at::scaled_dot_product_attention(q,k,v,opt_mask));
+    });
 }
 }

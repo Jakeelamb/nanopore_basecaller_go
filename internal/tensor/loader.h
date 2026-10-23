@@ -12,3 +12,4 @@ int nt_call_shape(nt_library*,uint64_t,uint64_t,int64_t*,size_t,size_t*,char*,si
 int nt_call_data(nt_library*,uint64_t,uint64_t,float*,size_t,char*,size_t);
 int nt_call_data_int64(nt_library*,uint64_t,uint64_t,int64_t*,size_t,char*,size_t);
 int nt_call_run(nt_library*,uint64_t,int,const uint64_t*,size_t,const int64_t*,size_t,const double*,size_t,uint64_t*,char*,size_t);
+int nt_call_sdpa(nt_library*,uint64_t,uint64_t,uint64_t,uint64_t,const int64_t*,size_t,const uint8_t*,size_t,uint64_t*,char*,size_t);

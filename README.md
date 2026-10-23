@@ -3,10 +3,11 @@
 A separate Go port of caller computations from Dorado 2.1.2, pinned to
 `8b8fc5d36a9c0baab262a743cb175b5878e38ca6`.
 
-The Go CPU caller reads POD5 and produces HAC FASTQ. On one predeclared HG002
-development read, its UUID, all 1,653 bases, and every quality byte match
-unchanged Dorado. Raw FASTQ headers differ. This bounded result does not qualify
-other reads, SUP, GPU execution, biological accuracy, or performance.
+The Go CPU caller reads POD5 and produces HAC or SUP FASTQ. On one predeclared
+HG002 development read, both models match unchanged Dorado byte for byte,
+including headers, sequence, and qualities. HAC emits 1,653 bases and SUP 1,650.
+These bounded results do not qualify other reads, GPU execution, biological
+accuracy, or performance.
 The original experiment repository remains the stock control.
 
 Implemented in Go:
@@ -16,15 +17,15 @@ Implemented in Go:
 - CPU float32 CRF beam search from supplied logits, guides and posteriors.
 - Move-based chunk stitching into sequence, quality, and read moves.
 - POD5 selection and metadata through the native POD5 decompressor.
-- The pinned HAC convolution and factorized LSTM graph using native CPU tensor
-  primitives, plus Go-owned forward/backward CRF scans and posterior generation.
+- The pinned HAC convolution/FLSTM and SUP convolution/transformer graphs using
+  native CPU tensor primitives, plus Go-owned CRF scans and posteriors.
 - A CPU caller CLI with immutable stage captures and replay without inference.
 
 Native differential tests compile pinned original C++ algorithms or audited
 source slices. [The architecture](docs/architecture.md), [port coverage](docs/port-plan.md),
 and [decoder qualification](docs/decode.md) describe the boundaries and open work.
 The [caller instructions and retained endpoint](docs/caller.md) describe the
-working mode. Adapter trimming, splitting, SUP, GPU execution, batching, and BAM
+working mode. Adapter trimming, splitting, GPU execution, batching, and BAM
 output remain open. The CLI requires `--no-trim --disable-read-splitting`.
 
 ## Call and replay
@@ -94,7 +95,7 @@ the [CPU tensor ABI](docs/tensor-backend.md), [HAC graph](docs/model-graph.md),
 The qualified development backend uses CPU operations from the pinned CUDA 13
 Torch distribution. Its match to one stock CUDA 12 CPU endpoint does not
 establish general runtime compatibility. Reuse captured outputs when their pins
-match. SUP and GPU execution require separate implementations and acceptance.
+match. GPU execution requires a separate implementation and acceptance.
 
 Changes use feature branches and pull requests targeting `main`. See
 [AGENTS.md](AGENTS.md) for the experiment and evidence rules.
