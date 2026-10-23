@@ -42,21 +42,26 @@ A record is exactly `flag=4`, `refID/pos/next_refID/next_pos = -1`, `mapq=0`,
 sequence and phred bytes converted from the FASTQ quality string. Any other flag
 is rejected.
 
-Tags are appended in the pinned order with their pinned type bytes: `qs:f`,
-`du:f`, `ns:i`, `ts:i`, `mx:i`, `ch:i`, `st:Z`, optional `TS:A`/`RX:Z`,
-`rn:i`, `fn:Z`, `sm:f`, `sd:f`, `sv:Z`, `dx:i`, optional `RG:Z`, optional
-`pi:Z`+`sp:i`, optional `mv:B:c` (first element is the model stride), optional
-`po:Z`, optional `er:Z`, then `me:I`. `Tags` emits `mv` only when `Moves` is
-non-nil and rejects a missing stride. `B:i` and `B:f` arrays are supported for
-the tags that use them. RNA poly-tail tags (`pt`/`pa`) and barcode tags
-(`BC`/`bv`/`bi`) are not emitted by the default plain-DNA path and are rejected
-by omission.
+Tags are appended in the pinned order with their pinned type bytes: optional
+barcode `BC:Z`, `bv:Z`, `bi:B:f`, then `qs:f`, `du:f`, `ns:i`, `ts:i`, `mx:i`,
+`ch:i`, `st:Z`, optional `TS:A`/`RX:Z`, `rn:i`, `fn:Z`, `sm:f`, `sd:f`, `sv:Z`,
+`dx:i`, optional `RG:Z`, optional `pi:Z`+`sp:i`, optional `mv:B:c` (first
+element is the model stride), optional `pt:i`+`pa:B:i`, optional `po:Z`,
+optional `er:Z`, then `me:I`. `Tags` emits `mv` only when `Moves` is non-nil and
+rejects a missing stride. `B:i` and `B:f` arrays are supported for the tags that
+use them.
+
+A duplex read takes the shorter pinned set instead: optional barcode tags, then
+`qs`, `dx=1`, `mx`, `ch`, `st`, optional `RG`, optional `pi`, optional `po`. It
+carries no duration, sample, move, scaling, read-number or minknow tags.
 
 The writer rejects unsupported or inconsistent requests instead of silently
-mis-encoding them: duplex reads (`dx=1` tag set is not ported), moves without a
-stride, `Trimmed` outside `[0, NumSamples]`, a `Duration` that disagrees with
-`NumSamples/SampleRate`, an `RG` tag that does not name the declared read
-group, and B-array subtypes other than `c`/`i`/`f`.
+mis-encoding them: moves without a stride, `Trimmed` outside
+`[0, NumSamples]`, a `Duration` that disagrees with `NumSamples/SampleRate`, an
+`RG` tag that does not name the declared read group, a barcode variant or score
+without a classified barcode, the `unclassified` sentinel paired with a score,
+a non-finite `bi` value, `pt=-2`, `PolyTail` on a duplex read, and B-array
+subtypes other than `c`/`i`/`f`.
 
 BGZF uses one deflate member per 0xff00-byte block, a stored-block fallback when
 compression would exceed 64 KiB, a 28-byte EOF marker, and first-error
@@ -103,7 +108,7 @@ BAMs and, last, `receipt.json`.
 Twelve controls execute on every verification: `comparator-self`, `changed-tag`
 (1 ULP float), `tag-reorder` (payload-negative, canonical-positive),
 `duplicate-record`, `missing-record`, `record-reorder` (payload-negative,
-canonical-positive), `header-mutation`, `dangling-rg`, `duplex-reject`,
+canonical-positive), `header-mutation`, `dangling-rg`, `barcode-array-reject`,
 `flag-reject`, `truncated-bgzf` and `truncated-record`.
 
 Five writer faults execute against synthetic writers: short write, `ENOSPC`,
