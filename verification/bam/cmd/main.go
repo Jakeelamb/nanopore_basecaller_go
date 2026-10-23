@@ -23,9 +23,11 @@ func main() {
 		err = manifestCmd(os.Args[2:])
 	case "verify":
 		err = verifyCmd(os.Args[2:])
-	case "tags-oracle":
-		err = tagsOracleCmd(os.Args[2:])
 	default:
+		if cmd, ok := extraCommands[os.Args[1]]; ok {
+			err = cmd(os.Args[2:])
+			break
+		}
 		usage()
 	}
 	if err != nil {
@@ -33,6 +35,10 @@ func main() {
 		os.Exit(1)
 	}
 }
+
+// extraCommands holds cgo-only commands such as the native tag oracle, so this
+// package still builds and runs its host-only commands without cgo.
+var extraCommands = map[string]func([]string) error{}
 
 func usage() {
 	fmt.Fprintln(os.Stderr, `usage:
@@ -123,27 +129,4 @@ func verifyCmd(args []string) error {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	return enc.Encode(summary)
-}
-
-func tagsOracleCmd(args []string) error {
-	fs := flag.NewFlagSet("tags-oracle", flag.ContinueOnError)
-	src := fs.String("dorado-source", os.Getenv("DORADO_SOURCE"), "read-only pinned Dorado checkout")
-	out := fs.String("out", "", "fresh output directory")
-	cxx := fs.String("cxx", "g++", "C++ compiler")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	if *src == "" || *out == "" {
-		return fmt.Errorf("-dorado-source and -out are required")
-	}
-	receipt, err := bamverify.VerifyTagsOracle(*src, *out, *cxx)
-	for _, c := range receipt.Cases {
-		fmt.Printf("%-24s ported=%-5v passed=%-5v native=%v go=%v %s\n",
-			c.Name, c.Ported, c.Passed, c.NativeTags, c.GoTags, c.Detail)
-	}
-	if err != nil {
-		return err
-	}
-	fmt.Printf("receipt=%s passed=%v cases=%d\n", filepath.Join(*out, "tags-receipt.json"), receipt.Passed, len(receipt.Cases))
-	return nil
 }

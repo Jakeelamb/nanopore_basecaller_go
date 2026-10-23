@@ -1,3 +1,5 @@
+//go:build cgo
+
 // Native tag oracle for the unaligned BAM writer.
 //
 // The oracle compiles the pinned Dorado tag emitters against real htslib and
