@@ -23,6 +23,15 @@ func planChunks(from, to, length int) []ScheduleChunk {
 	return out
 }
 
+func planIDs(from, to int) []string {
+	chunks := planChunks(from, to, 768)
+	out := make([]string, len(chunks))
+	for i, c := range chunks {
+		out[i] = c.ID
+	}
+	return out
+}
+
 func basePlan() SchedulePlan {
 	return SchedulePlan{
 		Schema: SchedulePlanSchema,
@@ -252,18 +261,33 @@ func TestScheduleRecordsInjectedFailure(t *testing.T) {
 	if !strings.Contains(receipt.Result.Steps[1].Error, "injected invocation failure at batch 2") {
 		t.Fatalf("failure not propagated: %+v", receipt.Result.Steps)
 	}
+	// The failure is sticky: shutdown must refuse to drain and report it rather
+	// than dispatch the remaining chunks and return nil.
+	shutdownErr := receipt.Result.Steps[2].Error
+	if !strings.Contains(shutdownErr, scheduler.ErrInvocationFailed.Error()) || !strings.Contains(shutdownErr, "injected invocation failure at batch 2") {
+		t.Fatalf("shutdown hid the sticky failure: %+v", receipt.Result.Steps)
+	}
 	st := receipt.Result.Stats
-	if st.Failed != 1 || st.Dispatched != 2 {
+	if st.FailedBatches != 1 || st.Dispatched != 1 {
 		t.Fatalf("failed batch accounting %+v", st)
 	}
-	if st.RealChunks != 66 || st.PaddedSlots != 128 {
+	if st.RealChunks != 64 || st.PaddedSlots != 64 {
 		t.Fatalf("failed batch reported as successful work: %+v", st)
+	}
+	if st.FailedChunks != 64 || !reflect.DeepEqual(st.FailedChunkIDs, planIDs(64, 128)) {
+		t.Fatalf("failed chunk accounting %+v", st)
+	}
+	if st.Abandoned != 2 || st.Pending != 0 {
+		t.Fatalf("work behind the failure was not abandoned: %+v", st)
+	}
+	if len(receipt.Result.Batches) != 2 {
+		t.Fatalf("shutdown dispatched past the failure: %+v", receipt.Result.Batches)
 	}
 	failed := 0
 	for _, batch := range receipt.Result.Batches {
 		if batch.Failed {
 			failed++
-			if batch.Real != 64 {
+			if batch.Real != 64 || !reflect.DeepEqual(batch.Chunks, planIDs(64, 128)) {
 				t.Fatalf("failed batch record %+v", batch)
 			}
 		}
@@ -273,6 +297,61 @@ func TestScheduleRecordsInjectedFailure(t *testing.T) {
 	}
 	if receipt.Result.Drains != 1 {
 		t.Fatalf("shutdown after failure drained %d times", receipt.Result.Drains)
+	}
+}
+
+func TestScheduleResumeAfterFailureDrainsRemainder(t *testing.T) {
+	plan := basePlan()
+	plan.Steps = []ScheduleStep{
+		{Op: "submit", Chunks: planChunks(0, 130, 768)},
+		{Op: "flush"},
+		{Op: "resume"},
+		{Op: "flush"},
+		{Op: "shutdown"},
+	}
+	plan.FailAtBatch = 2
+	dir, err := runSchedule(t, Import, writePlan(t, plan))
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt := readReceipt(t, dir)
+	steps := receipt.Result.Steps
+	if len(steps) != 5 {
+		t.Fatalf("steps %+v", steps)
+	}
+	if !strings.Contains(steps[1].Error, "injected invocation failure at batch 2") {
+		t.Fatalf("failure not propagated: %+v", steps)
+	}
+	for _, i := range []int{2, 3, 4} {
+		if steps[i].Error != "" {
+			t.Fatalf("step %d after resume: %+v", i, steps[i])
+		}
+	}
+	st := receipt.Result.Stats
+	if st.Dispatched != 2 || st.RealChunks != 66 || st.Pending != 0 || st.Abandoned != 0 {
+		t.Fatalf("resumed drain stats %+v", st)
+	}
+	if st.FailedBatches != 1 || st.FailedChunks != 64 || !reflect.DeepEqual(st.FailedChunkIDs, planIDs(64, 128)) {
+		t.Fatalf("resume cleared the failure record: %+v", st)
+	}
+	if !st.Drained || !st.Closed {
+		t.Fatalf("shutdown state %+v", st)
+	}
+	batches := receipt.Result.Batches
+	if len(batches) != 3 || !reflect.DeepEqual(batches[2].Chunks, planIDs(128, 130)) {
+		t.Fatalf("resumed batches %+v", batches)
+	}
+	if receipt.Result.Drains != 1 {
+		t.Fatalf("resumed run drained %d times", receipt.Result.Drains)
+	}
+
+	replayDir, err := runSchedule(t, Replay, filepath.Join(dir, "schedule-receipt.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	replayed := readReceipt(t, replayDir)
+	if replayed.ResultSHA256 != receipt.ResultSHA256 || !reflect.DeepEqual(replayed.Result, receipt.Result) {
+		t.Fatalf("replay of the resumed plan differs:\n%+v\n%+v", replayed.Result, receipt.Result)
 	}
 }
 
@@ -295,7 +374,7 @@ func TestScheduleRecordsCancelMidBatch(t *testing.T) {
 		}
 	}
 	st := receipt.Result.Stats
-	if st.Dispatched != 1 || st.RealChunks != 64 || st.Failed != 0 {
+	if st.Dispatched != 1 || st.RealChunks != 64 || st.FailedBatches != 0 {
 		t.Fatalf("cancelled drain reported partial success: %+v", st)
 	}
 	if st.Abandoned != 66 || st.Pending != 0 {

@@ -43,6 +43,13 @@ var (
 	ErrClosed = errors.New("scheduler: scheduler is closed")
 	// ErrDrainInProgress reports a second concurrent flush or shutdown.
 	ErrDrainInProgress = errors.New("scheduler: a drain is already in progress")
+	// ErrInvocationFailed marks the sticky failure a drain leaves behind. Until
+	// Resume is called, Flush and Shutdown refuse to drain again and return the
+	// original invocation error wrapped with this sentinel.
+	ErrInvocationFailed = errors.New("scheduler: an invocation failed")
+	// ErrInvocationPanic reports an Invocation.Call that panicked. The batch is
+	// failed as a whole, the panic value is reported and the stack is not kept.
+	ErrInvocationPanic = errors.New("scheduler: invocation panicked")
 )
 
 // AutomaticSelectionError is returned for any request that asks the scheduler
@@ -136,19 +143,24 @@ type Invocation interface {
 }
 
 // Stats is a snapshot. Dispatched counts only batches whose invocation returned
-// nil; a failed batch contributes to Failed and to none of the work counters.
-// PaddedSlots and PaddedSamples are reserved capacity, not real chunks.
+// nil; a failed batch contributes to FailedBatches and to none of the work
+// counters, and the chunks it held are counted in FailedChunks and listed in
+// FailedChunkIDs. Resume does not clear that accounting: it is the record of
+// work the caller must fail. PaddedSlots and PaddedSamples are reserved capacity,
+// not real chunks.
 type Stats struct {
-	Submitted     int
-	Dispatched    int
-	Failed        int
-	RealChunks    int
-	PaddedSlots   int
-	PaddedSamples int
-	Abandoned     int
-	Pending       int
-	Closed        bool
-	Drained       bool
+	Submitted      int
+	Dispatched     int
+	FailedBatches  int
+	FailedChunks   int
+	FailedChunkIDs []string
+	RealChunks     int
+	PaddedSlots    int
+	PaddedSamples  int
+	Abandoned      int
+	Pending        int
+	Closed         bool
+	Drained        bool
 }
 
 // Scheduler forms and dispatches batches. It is safe for concurrent Submit
@@ -166,8 +178,10 @@ type Scheduler struct {
 	closed      bool
 	draining    bool
 	shutdownErr error
+	stickyErr   error
 
-	// cur and formErr are owned by the drain path only.
+	// cur and formErr are the batch former. Both are guarded by mu: only the
+	// drain path writes them, but plan reads them while Submit and Stats may run.
 	cur     *gpubatch.Batch
 	formErr error
 }
@@ -244,6 +258,11 @@ func (s *Scheduler) Submit(ctx context.Context, chunks ...gpubatch.Chunk) error 
 // dispatched are returned to the front of the queue in order and ctx.Err() is
 // returned. On an invocation error that batch is failed as a whole, later
 // batches are returned to the queue and the first error is returned.
+//
+// The invocation error is sticky: it is recorded on the scheduler and every
+// later Flush returns it, wrapped with ErrInvocationFailed, until Resume is
+// called. The chunks the failed batch held are dropped from the queue and are
+// listed in Stats().FailedChunkIDs; the caller must fail those reads.
 func (s *Scheduler) Flush(ctx context.Context) error {
 	s.mu.Lock()
 	if s.closed {
@@ -254,16 +273,40 @@ func (s *Scheduler) Flush(ctx context.Context) error {
 		s.mu.Unlock()
 		return ErrDrainInProgress
 	}
+	if s.stickyErr != nil {
+		err := s.stickyLocked()
+		s.mu.Unlock()
+		return err
+	}
 	s.draining = true
 	s.mu.Unlock()
 	defer s.endDrain()
 	return s.drainPending(ctx)
 }
 
+// Resume clears the sticky invocation failure so the next Flush or Shutdown may
+// drain again. It does not repair the failed batch: the caller must still fail
+// the reads whose chunks are in Stats().FailedChunkIDs. Chunks that were
+// requeued behind the failure stay pending and are dispatched by the next drain.
+// Resume is a no-op when no failure is recorded and reports ErrClosed once
+// Shutdown has closed the scheduler, which never drains again.
+func (s *Scheduler) Resume() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return fmt.Errorf("%w: cannot resume", ErrClosed)
+	}
+	s.stickyErr = nil
+	return nil
+}
+
 // Shutdown stops new submissions, drains pending real work and then calls
 // Invocation.Drain exactly once. A cancelled or failed drain abandons the work
-// that never ran and reports it as Abandoned. Repeated calls are idempotent and
-// return the first shutdown result without draining again.
+// that never ran and reports it as Abandoned. A recorded invocation failure is
+// sticky: Shutdown refuses to drain the remaining work, counts it as Abandoned,
+// releases the invocation resources and returns the failure instead of reporting
+// the hole as success. Repeated calls are idempotent and return the first
+// shutdown result without draining again.
 func (s *Scheduler) Shutdown(ctx context.Context) error {
 	s.mu.Lock()
 	if s.draining {
@@ -277,10 +320,22 @@ func (s *Scheduler) Shutdown(ctx context.Context) error {
 	}
 	s.closed = true
 	s.draining = true
+	var stickyErr error
+	if s.stickyErr != nil {
+		stickyErr = s.stickyLocked()
+	}
 	s.mu.Unlock()
 	defer s.endDrain()
 
-	flushErr := s.drainPending(ctx)
+	var flushErr error
+	if stickyErr != nil {
+		// Refuse the drain. The failed batch was already dropped and recorded;
+		// whatever is still queued is abandoned below rather than dispatched
+		// behind the caller's back.
+		flushErr = stickyErr
+	} else {
+		flushErr = s.drainPending(ctx)
+	}
 
 	s.mu.Lock()
 	s.stats.Abandoned = len(s.pending)
@@ -299,13 +354,20 @@ func (s *Scheduler) Shutdown(ctx context.Context) error {
 	return err
 }
 
-// Stats returns a snapshot with the current pending count.
+// Stats returns a snapshot with the current pending count. The failed chunk list
+// is copied, so the caller cannot mutate the scheduler's record.
 func (s *Scheduler) Stats() Stats {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	st := s.stats
+	st.FailedChunkIDs = append([]string(nil), s.stats.FailedChunkIDs...)
 	st.Pending = len(s.pending)
 	return st
+}
+
+// stickyLocked wraps the recorded invocation failure. Callers must hold s.mu.
+func (s *Scheduler) stickyLocked() error {
+	return fmt.Errorf("%w: %w (call Resume to drain again)", ErrInvocationFailed, s.stickyErr)
 }
 
 func (s *Scheduler) endDrain() {
@@ -355,32 +417,51 @@ func (s *Scheduler) drainPending(ctx context.Context) error {
 		}
 		s.mu.Unlock()
 
-		callErr := s.inv.Call(ctx, b)
-
-		s.mu.Lock()
-		s.inflight = nil
-		if callErr != nil {
-			s.stats.Failed++
-		} else {
-			s.stats.Dispatched++
-			s.stats.RealChunks += b.Real
-			s.stats.PaddedSlots += b.PaddedSlots
-			s.stats.PaddedSamples += b.PaddedSamples
-		}
-		s.mu.Unlock()
-
-		if callErr != nil {
+		if err := s.dispatch(ctx, b); err != nil {
 			s.requeue(snapshot[pb.to:])
-			return callErr
+			return err
 		}
 	}
 	return nil
 }
 
+// dispatch runs one batch and always releases its in-flight claims, so a failed
+// or panicking invocation cannot leave chunks permanently unsubmittable. A
+// non-nil result fails the batch as a whole: its chunks are counted in
+// FailedChunks and listed in FailedChunkIDs and the failure is recorded as
+// sticky, so no later drain can report the missing work as success.
+func (s *Scheduler) dispatch(ctx context.Context, b Batch) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("%w: %v", ErrInvocationPanic, r)
+		}
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		s.inflight = nil
+		if err == nil {
+			s.stats.Dispatched++
+			s.stats.RealChunks += b.Real
+			s.stats.PaddedSlots += b.PaddedSlots
+			s.stats.PaddedSamples += b.PaddedSamples
+			return
+		}
+		s.stats.FailedBatches++
+		s.stats.FailedChunks += len(b.Placements)
+		for _, p := range b.Placements {
+			s.stats.FailedChunkIDs = append(s.stats.FailedChunkIDs, p.Chunk.ID)
+		}
+		s.stickyErr = err
+	}()
+	return s.inv.Call(ctx, b)
+}
+
 // plan applies the source batch formation to the snapshot in order. It keeps
 // one former across normal flushes so the HAC part accumulator survives, as the
-// pinned worker thread does.
+// pinned worker thread does. cur and formErr are read and written under s.mu; the
+// drain path is their only writer.
 func (s *Scheduler) plan(chunks []gpubatch.Chunk) ([]plannedBatch, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.formErr != nil {
 		return nil, s.formErr
 	}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"reflect"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -69,6 +70,7 @@ type fakeInvocation struct {
 	drains   int
 	drainErr error
 	failAt   int
+	panicAt  int
 	cancelAt int
 	cancel   context.CancelFunc
 	onCall   func(scheduler.Batch)
@@ -99,6 +101,9 @@ func (f *fakeInvocation) Call(ctx context.Context, b scheduler.Batch) error {
 	f.mu.Lock()
 	f.calls = append(f.calls, rec)
 	f.mu.Unlock()
+	if b.Sequence == f.panicAt {
+		panic(fmt.Sprintf("injected invocation panic at batch %d", b.Sequence))
+	}
 	return err
 }
 
@@ -417,7 +422,7 @@ func TestCancelMidBatchDrainsInFlightWork(t *testing.T) {
 		t.Fatalf("in-flight batch was not completed exactly once: %+v", calls)
 	}
 	st := s.Stats()
-	if st.Dispatched != 1 || st.RealChunks != 64 || st.Failed != 0 {
+	if st.Dispatched != 1 || st.RealChunks != 64 || st.FailedBatches != 0 {
 		t.Fatalf("cancelled drain reported partial work: %+v", st)
 	}
 	if st.Pending != 6 {
@@ -438,7 +443,7 @@ func TestCancelMidBatchDrainsInFlightWork(t *testing.T) {
 	}
 }
 
-func TestInvocationErrorPropagatesFirstError(t *testing.T) {
+func TestInvocationErrorSticksAndRecordsFailedChunks(t *testing.T) {
 	inv := &fakeInvocation{failAt: 2}
 	s := newScheduler(t, hacFixed(), 256, inv)
 	ctx := context.Background()
@@ -454,14 +459,46 @@ func TestInvocationErrorPropagatesFirstError(t *testing.T) {
 		t.Fatalf("calls %+v", calls)
 	}
 	st := s.Stats()
-	if st.Dispatched != 1 || st.Failed != 1 {
+	if st.Dispatched != 1 || st.FailedBatches != 1 {
 		t.Fatalf("failed batch reported as success: %+v", st)
 	}
 	if st.RealChunks != 64 || st.PaddedSlots != 64 {
 		t.Fatalf("failed batch work counted: %+v", st)
 	}
+	if st.FailedChunks != 64 || !reflect.DeepEqual(st.FailedChunkIDs, ids(64, 128)) {
+		t.Fatalf("failed chunk accounting %+v", st)
+	}
 	if st.Pending != 2 {
 		t.Fatalf("later batches were not returned to the queue: %+v", st)
+	}
+
+	// The failure is sticky: a later drain must not report the hole as success.
+	err = s.Flush(ctx)
+	if !errors.Is(err, scheduler.ErrInvocationFailed) {
+		t.Fatalf("second flush: %v, want ErrInvocationFailed", err)
+	}
+	if !strings.Contains(err.Error(), "injected invocation failure at batch 2") {
+		t.Fatalf("second flush lost the original error: %v", err)
+	}
+	if calls, _ := inv.snapshot(); len(calls) != 2 {
+		t.Fatalf("sticky failure dispatched %d batches", len(calls))
+	}
+	if st := s.Stats(); st.Pending != 2 || st.Dispatched != 1 {
+		t.Fatalf("sticky flush changed the queue: %+v", st)
+	}
+
+	// The record is a copy, so a caller cannot erase the failed chunk list.
+	st = s.Stats()
+	st.FailedChunkIDs[0] = "tampered"
+	if got := s.Stats().FailedChunkIDs[0]; got != "c064" {
+		t.Fatalf("stats snapshot aliases the scheduler record: %q", got)
+	}
+
+	if err := s.Resume(); err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	if err := s.Resume(); err != nil {
+		t.Fatalf("second resume: %v", err)
 	}
 	if err := s.Flush(ctx); err != nil {
 		t.Fatal(err)
@@ -469,6 +506,95 @@ func TestInvocationErrorPropagatesFirstError(t *testing.T) {
 	calls, _ = inv.snapshot()
 	if len(calls) != 3 || calls[2].Sequence != 3 || !reflect.DeepEqual(calls[2].IDs, ids(128, 130)) {
 		t.Fatalf("recovered drain %+v", calls)
+	}
+	st = s.Stats()
+	if st.Dispatched != 2 || st.RealChunks != 66 || st.Pending != 0 {
+		t.Fatalf("recovered stats %+v", st)
+	}
+	if st.FailedBatches != 1 || st.FailedChunks != 64 || !reflect.DeepEqual(st.FailedChunkIDs, ids(64, 128)) {
+		t.Fatalf("resume cleared the failure record: %+v", st)
+	}
+}
+
+func TestShutdownRefusesDrainAfterFailure(t *testing.T) {
+	inv := &fakeInvocation{failAt: 2}
+	s := newScheduler(t, hacFixed(), 256, inv)
+	ctx := context.Background()
+	if err := s.Submit(ctx, chunks(0, 130, 768)...); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Flush(ctx); err == nil {
+		t.Fatal("injected failure was not reported")
+	}
+	err := s.Shutdown(ctx)
+	if !errors.Is(err, scheduler.ErrInvocationFailed) || !strings.Contains(err.Error(), "injected invocation failure at batch 2") {
+		t.Fatalf("shutdown after failure: %v", err)
+	}
+	calls, drains := inv.snapshot()
+	if len(calls) != 2 {
+		t.Fatalf("shutdown drained past the failure: %d calls", len(calls))
+	}
+	if drains != 1 {
+		t.Fatalf("shutdown did not release the invocation: %d drains", drains)
+	}
+	st := s.Stats()
+	if st.Abandoned != 2 || st.Pending != 0 || !st.Closed || !st.Drained {
+		t.Fatalf("shutdown after failure stats %+v", st)
+	}
+	if st.Dispatched != 1 || st.FailedChunks != 64 {
+		t.Fatalf("shutdown after failure work %+v", st)
+	}
+	if err := s.Resume(); !errors.Is(err, scheduler.ErrClosed) {
+		t.Fatalf("resume after shutdown: %v", err)
+	}
+	if err := s.Shutdown(ctx); !errors.Is(err, scheduler.ErrInvocationFailed) {
+		t.Fatalf("repeated shutdown lost the failure: %v", err)
+	}
+}
+
+func TestPanickingInvocationReleasesClaims(t *testing.T) {
+	inv := &fakeInvocation{panicAt: 2}
+	s := newScheduler(t, hacFixed(), 256, inv)
+	ctx := context.Background()
+	if err := s.Submit(ctx, chunks(0, 130, 768)...); err != nil {
+		t.Fatal(err)
+	}
+	err := s.Flush(ctx)
+	if !errors.Is(err, scheduler.ErrInvocationPanic) || !strings.Contains(err.Error(), "injected invocation panic at batch 2") {
+		t.Fatalf("got %v, want ErrInvocationPanic", err)
+	}
+	calls, _ := inv.snapshot()
+	if len(calls) != 2 || !reflect.DeepEqual(calls[1].IDs, ids(64, 128)) {
+		t.Fatalf("panic record %+v", calls)
+	}
+	st := s.Stats()
+	if st.Dispatched != 1 || st.FailedBatches != 1 || st.FailedChunks != 64 || st.Pending != 2 {
+		t.Fatalf("panic accounting %+v", st)
+	}
+	if !reflect.DeepEqual(st.FailedChunkIDs, ids(64, 128)) {
+		t.Fatalf("panic failed chunks %+v", st.FailedChunkIDs)
+	}
+
+	// The panicked batch's claims are released, so its chunks can be resubmitted
+	// once the caller has failed those reads.
+	if err := s.Resume(); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Submit(ctx, chunks(64, 65, 768)...); err != nil {
+		t.Fatalf("chunk from the panicked batch is still claimed: %v", err)
+	}
+	if err := s.Flush(ctx); err != nil {
+		t.Fatal(err)
+	}
+	calls, _ = inv.snapshot()
+	if len(calls) != 3 {
+		t.Fatalf("recovered calls %+v", calls)
+	}
+	if !reflect.DeepEqual(calls[2].IDs, []string{"c128", "c129", "c064"}) {
+		t.Fatalf("recovered order %v", calls[2].IDs)
+	}
+	if st := s.Stats(); st.RealChunks != 67 || st.Pending != 0 {
+		t.Fatalf("recovered stats %+v", st)
 	}
 }
 
@@ -521,7 +647,7 @@ func TestShutdownAbandonsUndispatchedWork(t *testing.T) {
 		t.Fatalf("calls=%d drains=%d", len(calls), drains)
 	}
 	st := s.Stats()
-	if st.Abandoned != 66 || st.RealChunks != 64 || st.Dispatched != 1 || st.Failed != 0 {
+	if st.Abandoned != 66 || st.RealChunks != 64 || st.Dispatched != 1 || st.FailedBatches != 0 {
 		t.Fatalf("abandoned work reported as success: %+v", st)
 	}
 	if err := s.Shutdown(ctx); !errors.Is(err, context.Canceled) {
@@ -636,7 +762,9 @@ func TestNoGoroutineLeak(t *testing.T) {
 	for runtime.NumGoroutine() > baseline && time.Now().Before(deadline) {
 		time.Sleep(time.Millisecond)
 	}
-	if got := runtime.NumGoroutine(); got != baseline {
+	// A leak shows as growth. The baseline can include a transient runtime
+	// goroutine that exits during the loop, so a lower count is not a leak.
+	if got := runtime.NumGoroutine(); got > baseline {
 		t.Fatalf("goroutines %d, baseline %d", got, baseline)
 	}
 }

@@ -22,13 +22,15 @@ import (
 )
 
 const SchedulePlanSchema = "gpu-schedule-plan/1"
-const ScheduleReceiptSchema = "gpu-schedule-receipt/1"
+const ScheduleReceiptSchema = "gpu-schedule-receipt/2"
 const scheduleMaxPlanBytes = 4 << 20
 const scheduleMaxReceiptBytes = 16 << 20
 
 // SchedulePlan is a host-only script over the scheduler. It carries no signal,
 // weights or device state and never launches native code. FailAtBatch and
-// CancelAtBatch are 1-based dispatch ordinals; zero disables them.
+// CancelAtBatch are 1-based dispatch ordinals; zero disables them. Steps run in
+// order and may be submit, flush, resume or shutdown; resume clears a sticky
+// invocation failure so a later step can drain again.
 type SchedulePlan struct {
 	Schema        string
 	Geometry      ScheduleGeometry
@@ -222,7 +224,7 @@ func scheduleDecodePlan(b []byte) (SchedulePlan, error) {
 	}
 	for i, step := range plan.Steps {
 		switch step.Op {
-		case "submit", "flush", "shutdown":
+		case "submit", "flush", "resume", "shutdown":
 		default:
 			return SchedulePlan{}, fmt.Errorf("schedule step %d: unsupported operation %q", i, step.Op)
 		}
@@ -312,6 +314,8 @@ func scheduleExecute(plan SchedulePlan) (ScheduleResult, error) {
 			stepErr = sched.Submit(ctx, chunks...)
 		case "flush":
 			stepErr = sched.Flush(ctx)
+		case "resume":
+			stepErr = sched.Resume()
 		case "shutdown":
 			stepErr = sched.Shutdown(ctx)
 		default:
