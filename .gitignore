@@ -1,4 +1,5 @@
-/artifacts/
+/artifacts/*
+!/artifacts/go.mod
 /bin/
 /external/
 *.test
