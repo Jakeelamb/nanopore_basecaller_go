@@ -56,7 +56,7 @@ about zero padding does not describe the consuming implementation.
 | Stitching | Source algorithm fixtures including partial strides | Integration with variable chunk paths |
 | Split and trim | Source-linked MUX trim, pore-split decisions, child metadata, adapter/primer detection, interval trim and filtering; two genuine default FASTQ controls | Positive biological split/MUX controls, other kits and modes |
 | Scheduling | Selected reads, CPU batch one, cancellation, ownership, immutable captures and replay; owned CUDA streams at primitive boundary | Batching, GPU model scheduling, complete input accounting |
-| BAM and FASTQ output | Raw FASTQ identity for HAC and SUP on one frozen UUID, including headers | BAM records, compression and larger read sets |
+| BAM and FASTQ output | Raw FASTQ identity for HAC and SUP on one frozen UUID, including headers; Go-owned unaligned BAM writer with quickcheck, decoded-header, canonical and literal-record parity against one retained stock simplex parent | Native unaligned BAM bytes, larger read sets, duplex/split/moves paths, other modes |
 | Complete caller | Two models on one predeclared development read, including default processing from retained core stages | Complete declared input sets, live default producer acceptance beyond the shared-stage source trace |
 
 The linked unit documents describe the exact fixture and runtime limits. A
