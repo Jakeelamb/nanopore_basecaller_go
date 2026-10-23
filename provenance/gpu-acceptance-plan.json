@@ -1,0 +1,129 @@
+{
+  "schema": 1,
+  "state": "prospective-unarmed",
+  "source_commit": "8b8fc5d36a9c0baab262a743cb175b5878e38ca6",
+  "references": {
+    "stock_plan": {
+      "path": "/home/jake/Projects/nanopore_basecaller/results/stock/controlled-20261022/plan.json",
+      "sha256": "b1a90f50b18dbf51b3f2d7ffa328749d79b62a5acc4db18a7b275585175a5cb1",
+      "size": 4045008
+    },
+    "accuracy_inputs": {
+      "path": "/home/jake/Projects/nanopore_basecaller/results/accuracy/controlled-20261022/inputs.json",
+      "sha256": "15b477dbdf098187b33fcbe383f8e5b5cefa7646a805d256b476783aabcb9f3a",
+      "size": 80822
+    },
+    "source_qualification": {
+      "path": "/home/jake/Projects/nanopore_basecaller/provenance/verification/source-qualification-full-20261023.json",
+      "sha256": "844f3b46a4eede9eebbda871c2a4ffa51aa8ef11e7830ca6f41c5b01d5a743ae",
+      "size": 40131
+    },
+    "source_build": {
+      "path": "/home/jake/Projects/nanopore_basecaller/provenance/source-build-20261023.json",
+      "sha256": "cc69dea84a6ab16ed68bc9f32586735e4c67f96c0b29370a7484d8b26cd47dac",
+      "size": 50085
+    },
+    "accuracy_comparison": {
+      "path": "/home/jake/Projects/nanopore_basecaller/results/source-qualification/20261023-performance/accuracy-comparison-full.json",
+      "sha256": "c007f516d9c1055b52d07fa24f06b35f634cc356b6cdfdf1d86ba623de9382bc",
+      "size": 298433
+    }
+  },
+  "cohorts": [
+    {
+      "sample": "HG002",
+      "role": "development",
+      "flowcell": "PAW70337",
+      "parents": 2608,
+      "membership": {
+        "path": "/home/jake/Projects/nanopore_basecaller/data/splits/development.txt",
+        "sha256": "b809632eb09feb6074789754a4d9dddc3121937f926e2790f8129fd2482a7fdf",
+        "size": 96496
+      }
+    },
+    {
+      "sample": "HG002",
+      "role": "validation",
+      "flowcell": "PAW71238",
+      "parents": 2027,
+      "membership": {
+        "path": "/home/jake/Projects/nanopore_basecaller/data/splits/validation.txt",
+        "sha256": "9fd091ec82a876738bdbe3d3f0f55c755979d999912c81a1d547e16be2b93beb",
+        "size": 74999
+      }
+    }
+  ],
+  "endpoints": [
+    {
+      "id": "engineering",
+      "rule": "Go owns caller computation; named native kernels only; required tests execute without skips"
+    },
+    {
+      "id": "source13_bytes",
+      "rule": "exact source-declared live and initialized bytes, guards and sentinels; source exclusions frozen before capture"
+    },
+    {
+      "id": "official12_bytes",
+      "rule": "separate official CUDA12 oracle; never substitute source CUDA13 equality"
+    },
+    {
+      "id": "canonical_records",
+      "rule": "all mandatory fields and typed tags; only record/tag order and validated provenance excluded"
+    },
+    {
+      "id": "headers",
+      "rule": "separate exact header comparison and independently validated provenance differences"
+    },
+    {
+      "id": "raw_fastq_bam",
+      "rule": "separate literal byte equality; canonical equality cannot replace it"
+    },
+    {
+      "id": "accuracy_artifacts",
+      "rule": "literal artifact equality; historical six alternate-alignment row-order failures remain FAIL"
+    },
+    {
+      "id": "biological",
+      "rule": "HG002 GIAB v4.2.1 reference-identical error (X+I+D)/(M+X+I+D); MAPQ 30..254; 100bp primary and 500bp sensitivity"
+    },
+    {
+      "id": "alt",
+      "rule": "separate truth-ALT retention counts and paired parent uncertainty; any lost control-supported ALT observation fails; reference-only accuracy is no surrogate"
+    },
+    {
+      "id": "yield",
+      "rule": "fixed parent UUID and signal-sample denominators; no additional absent parents or reduced evaluable parents/eligible-query exposure; report gained/lost sets"
+    },
+    {
+      "id": "native_process_timing",
+      "rule": "fresh equal-work paired complete-process clocks; failed/partial attempts excluded from successful times and retained in failure rate"
+    },
+    {
+      "id": "workflow_timing",
+      "rule": "separate outer basecall+fixed-map+sort clock; unavailable until qualified; never sum audit stage clocks"
+    }
+  ],
+  "policies": {
+    "selection": "HG002 development only; freeze candidate before single validation decision; HG005 forbidden",
+    "order": "membership file byte order and original parent sample counts fixed; children remain with parent",
+    "holdout": "validation PAW71238 used once after registration; no HG005 selection or tuning",
+    "denominators": "fixed original parents including missing and C=0; no invented perfect accuracy; report exposure and common support",
+    "uncertainty": "paired parent bootstrap 20000 seed 20261023; zero denominators reported; paired timing blocks within session; no donor-generalization claim",
+    "timing": "unarmed pending frozen arm/block/session schedule, device, precision, batch, cache, affinity, profile, cooldown, mapper and output policy; no invented speed target",
+    "receipts": "exact source/input/model/library/consumer pins, argv, UTC start/end, exit, raw logs and payload hashes; preserve failed attempts",
+    "reuse": "reuse only if every declared input pin matches; repair observers from retained bytes; no recapture for reports",
+    "storage": "audit exact live bytes and source-declared initialized ranges; no mismatch-derived masks or posthoc tolerance",
+    "qualification": "genuine retained controls plus corrupted-input rejection and independent review before expensive cohorts; source-only cannot close runtime gates",
+    "historical": "source13 and official12 distinct; eight numerical score equalities do not erase six literal artifact FAILs; stock clocks never fresh matched timing"
+  },
+  "deferred": [
+    "required_tests",
+    "retained_control_ingestion",
+    "corruption_rejection",
+    "independent_review",
+    "native_parity",
+    "complete_input",
+    "biological_alt",
+    "matched_timing"
+  ]
+}

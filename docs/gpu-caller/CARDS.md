@@ -1520,6 +1520,7 @@ State is **planned**. Owner role is `pstack_worker; pstack_deep for arithmetic o
 - `internal/runledger/ledger.go`
 - `internal/runledger/ledger_test.go`
 - `verification/gpucaller/inventory.go`
+- `verification/gpucaller/inventory_test.go`
 
 ### Implement this boundary
 

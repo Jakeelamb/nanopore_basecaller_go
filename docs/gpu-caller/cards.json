@@ -1704,7 +1704,8 @@
       "owns": [
         "internal/runledger/ledger.go",
         "internal/runledger/ledger_test.go",
-        "verification/gpucaller/inventory.go"
+        "verification/gpucaller/inventory.go",
+        "verification/gpucaller/inventory_test.go"
       ],
       "interface": "Typed run ledger records absent/rejected/loaded/failed/zero-survivor/child-bearing parent outcomes, raw/admitted samples, chunks, lineage, filter reasons, writes and finalization.",
       "source": [
