@@ -1,0 +1,12 @@
+[
+  {
+    "Path": "artifacts/caller/attempt-20261023T023928Z-Wr38Jl/capture/bb76c31a-36f0-48a0-abd2-107a10e1ade0",
+    "ManifestSHA256": "2d37e08b342b94915a987e0905f667e2cfe6ce6f9eaf74e99e66395328681b99",
+    "OutputSHA256": "d51d94f0433b9547329e2081dad23ed364eb0f345cee2689068f891d4baaa3a7"
+  },
+  {
+    "Path": "artifacts/caller/attempt-20261023T033758Z-xTMh1T/capture/bb76c31a-36f0-48a0-abd2-107a10e1ade0",
+    "ManifestSHA256": "cfb0c39f250ce37450a35457cbdc6b64d7346f0c5c6031c6d9757197ad19f29a",
+    "OutputSHA256": "d25c9f65f30beb1555d414c1f560b691917dab01dc1cc8f5fb6cbde7651ac2f2"
+  }
+]

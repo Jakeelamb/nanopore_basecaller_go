@@ -39,71 +39,71 @@ Exact fresh commands follow. Each label also has `.started`, `.finished`, `.exit
 `focused-caller`
 
 ```sh
-go test -count=1 -v -run \^\(TestMux\|TestReplay\|TestCapture\|TestFASTQ\) ./internal/caller 
+go test -count=1 -v -run \^\(TestMux\|TestReplay\|TestCapture\|TestFASTQ\) ./internal/caller
 ```
 
 `overlay-capture`
 
 ```sh
-go test -overlay /tmp/nanopore-go-mux-integration-review/overlay.json -count=1 -v -run \^TestReviewMux ./internal/caller 
+go test -overlay /tmp/nanopore-go-mux-integration-review/overlay.json -count=1 -v -run \^TestReviewMux ./internal/caller
 ```
 
 `no-cgo-caller`
 
 ```sh
-env CGO_ENABLED=0 go test -count=1 -v -run \^TestMux ./internal/caller 
+env CGO_ENABLED=0 go test -count=1 -v -run \^TestMux ./internal/caller
 ```
 
 `fresh-hac-replay`
 
 ```sh
-env CALLER_CAPTURE_MANIFEST=/home/jake/Projects/nanopore_basecaller_go/artifacts/caller/attempt-20261023T023928Z-Wr38Jl/capture/bb76c31a-36f0-48a0-abd2-107a10e1ade0/manifest.json CALLER_STOCK_FASTQ=/home/jake/Projects/nanopore_basecaller_go/artifacts/native-cpu-control/stock-hac-dev1-001/stdout go test -count=1 -race -v -run \^\(TestMux.\*\|TestCapturedNativeEndpoint\)\$ ./internal/caller 
+env CALLER_CAPTURE_MANIFEST=/home/jake/Projects/nanopore_basecaller_go/artifacts/caller/attempt-20261023T023928Z-Wr38Jl/capture/bb76c31a-36f0-48a0-abd2-107a10e1ade0/manifest.json CALLER_STOCK_FASTQ=/home/jake/Projects/nanopore_basecaller_go/artifacts/native-cpu-control/stock-hac-dev1-001/stdout go test -count=1 -race -v -run \^\(TestMux.\*\|TestCapturedNativeEndpoint\)\$ ./internal/caller
 ```
 
 `fresh-sup-replay`
 
 ```sh
-env CALLER_CAPTURE_MANIFEST=/home/jake/Projects/nanopore_basecaller_go/artifacts/caller/attempt-20261023T033758Z-xTMh1T/capture/bb76c31a-36f0-48a0-abd2-107a10e1ade0/manifest.json CALLER_STOCK_FASTQ=/home/jake/Projects/nanopore_basecaller_go/artifacts/native-cpu-control/stock-sup-dev1-001/stdout go test -count=1 -race -v -run \^\(TestMux.\*\|TestCapturedNativeEndpoint\)\$ ./internal/caller 
+env CALLER_CAPTURE_MANIFEST=/home/jake/Projects/nanopore_basecaller_go/artifacts/caller/attempt-20261023T033758Z-xTMh1T/capture/bb76c31a-36f0-48a0-abd2-107a10e1ade0/manifest.json CALLER_STOCK_FASTQ=/home/jake/Projects/nanopore_basecaller_go/artifacts/native-cpu-control/stock-sup-dev1-001/stdout go test -count=1 -race -v -run \^\(TestMux.\*\|TestCapturedNativeEndpoint\)\$ ./internal/caller
 ```
 
 `actual-retained-artifact-audit`
 
 ```sh
-go run /tmp/nanopore-go-mux-integration-review/audit-receipts.go 
+go run /tmp/nanopore-go-mux-integration-review/audit-receipts.go
 ```
 
 `retained-receipt-hashes`
 
 ```sh
-bash -c for\ check\ in\ mux-ci-synthetic\ mux-integration-focused\ mux-nocgo\ mux-hac-retained\ mux-sup-retained\;\ do\ printf\ \"%s\\n\"\ \"\$check\"\;\ sha256sum\ -c\ \"artifacts/caller/\$check/output-sha256.txt\"\ \|\|\ exit\;\ test\ \"\$\(cat\ \"artifacts/caller/\$check/exit.txt\"\)\"\ =\ 0\ \|\|\ exit\;\ cat\ \"artifacts/caller/\$check/receipt.json\"\;\ done\;\ for\ dir\ in\ artifacts/readtrim/attempt-20261023T041413Z-663450456\ artifacts/readtrim/attempt-20261023T041413Z-663450456/binary32-\*\;\ do\ cmp\ \"\$dir/go-output.bin\"\ \"\$dir/native.stdout\"\ \|\|\ exit\;\ cat\ \"\$dir/comparison.json\"\;\ done 
+bash -c for\ check\ in\ mux-ci-synthetic\ mux-integration-focused\ mux-nocgo\ mux-hac-retained\ mux-sup-retained\;\ do\ printf\ \"%s\\n\"\ \"\$check\"\;\ sha256sum\ -c\ \"artifacts/caller/\$check/output-sha256.txt\"\ \|\|\ exit\;\ test\ \"\$\(cat\ \"artifacts/caller/\$check/exit.txt\"\)\"\ =\ 0\ \|\|\ exit\;\ cat\ \"artifacts/caller/\$check/receipt.json\"\;\ done\;\ for\ dir\ in\ artifacts/readtrim/attempt-20261023T041413Z-663450456\ artifacts/readtrim/attempt-20261023T041413Z-663450456/binary32-\*\;\ do\ cmp\ \"\$dir/go-output.bin\"\ \"\$dir/native.stdout\"\ \|\|\ exit\;\ cat\ \"\$dir/comparison.json\"\;\ done
 ```
 
 `source-and-wiring-inspection`
 
 ```sh
-bash -c nl\ -ba\ external/dorado-source/dorado/read_pipeline/nodes/BasecallerNode.cpp\ \|\ sed\ -n\ \"245\,278p\"\;\ nl\ -ba\ external/dorado-source/dorado/data_loader/DataLoader.cpp\ \|\ sed\ -n\ \"208\,244p\"\;\ nl\ -ba\ external/dorado-source/dorado/read_pipeline/base/read_utils.cpp\ \|\ sed\ -n\ \"110\,166p\"\;\ nl\ -ba\ internal/caller/mux.go\;\ nl\ -ba\ internal/caller/caller.go\ \|\ sed\ -n\ \"240\,264p\"\;\ nl\ -ba\ internal/caller/capture.go\ \|\ sed\ -n\ \"395\,425p\"\;\ nl\ -ba\ internal/caller/fastq.go\ \|\ sed\ -n\ \"77\,105p\" 
+bash -c nl\ -ba\ external/dorado-source/dorado/read_pipeline/nodes/BasecallerNode.cpp\ \|\ sed\ -n\ \"245\,278p\"\;\ nl\ -ba\ external/dorado-source/dorado/data_loader/DataLoader.cpp\ \|\ sed\ -n\ \"208\,244p\"\;\ nl\ -ba\ external/dorado-source/dorado/read_pipeline/base/read_utils.cpp\ \|\ sed\ -n\ \"110\,166p\"\;\ nl\ -ba\ internal/caller/mux.go\;\ nl\ -ba\ internal/caller/caller.go\ \|\ sed\ -n\ \"240\,264p\"\;\ nl\ -ba\ internal/caller/capture.go\ \|\ sed\ -n\ \"395\,425p\"\;\ nl\ -ba\ internal/caller/fastq.go\ \|\ sed\ -n\ \"77\,105p\"
 ```
 
 `diff-and-source-check`
 
 ```sh
-bash -c git\ diff\ --check\ --\ .github/workflows/cpu-parity.yml\ README.md\ docs/caller.md\ internal/caller/caller.go\ internal/caller/capture.go\;\ git\ -C\ external/dorado-source\ status\ --porcelain\ --untracked-files=all\;\ sha256sum\ external/dorado-source/dorado/read_pipeline/nodes/BasecallerNode.cpp\ external/dorado-source/dorado/data_loader/DataLoader.cpp\ external/dorado-source/dorado/read_pipeline/base/read_utils.cpp\ external/dorado-source/dorado/read_pipeline/base/messages.cpp\ internal/pod5/pod5_format/c_api.h\ internal/pod5/loader.c\ internal/pod5/native_cgo.go 
+bash -c git\ diff\ --check\ --\ .github/workflows/cpu-parity.yml\ README.md\ docs/caller.md\ internal/caller/caller.go\ internal/caller/capture.go\;\ git\ -C\ external/dorado-source\ status\ --porcelain\ --untracked-files=all\;\ sha256sum\ external/dorado-source/dorado/read_pipeline/nodes/BasecallerNode.cpp\ external/dorado-source/dorado/data_loader/DataLoader.cpp\ external/dorado-source/dorado/read_pipeline/base/read_utils.cpp\ external/dorado-source/dorado/read_pipeline/base/messages.cpp\ internal/pod5/pod5_format/c_api.h\ internal/pod5/loader.c\ internal/pod5/native_cgo.go
 ```
 
 `initial-pins`
 
 ```sh
-bash -c git\ rev-parse\ HEAD\;\ git\ status\ --short\;\ sha256sum\ .github/workflows/cpu-parity.yml\ README.md\ docs/caller.md\ internal/caller/caller.go\ internal/caller/capture.go\ internal/caller/mux.go\ internal/caller/mux_test.go\;\ git\ -C\ external/dorado-source\ rev-parse\ HEAD\;\ go\ version\;\ go\ env\ CGO_ENABLED\ GOOS\ GOARCH 
+bash -c git\ rev-parse\ HEAD\;\ git\ status\ --short\;\ sha256sum\ .github/workflows/cpu-parity.yml\ README.md\ docs/caller.md\ internal/caller/caller.go\ internal/caller/capture.go\ internal/caller/mux.go\ internal/caller/mux_test.go\;\ git\ -C\ external/dorado-source\ rev-parse\ HEAD\;\ go\ version\;\ go\ env\ CGO_ENABLED\ GOOS\ GOARCH
 ```
 
 `final-pins`
 
 ```sh
-bash -c git\ rev-parse\ HEAD\;\ git\ status\ --short\;\ sha256sum\ .github/workflows/cpu-parity.yml\ README.md\ docs/caller.md\ internal/caller/caller.go\ internal/caller/capture.go\ internal/caller/mux.go\ internal/caller/mux_test.go\;\ git\ -C\ external/dorado-source\ rev-parse\ HEAD\;\ go\ version\;\ go\ env\ CGO_ENABLED\ GOOS\ GOARCH 
+bash -c git\ rev-parse\ HEAD\;\ git\ status\ --short\;\ sha256sum\ .github/workflows/cpu-parity.yml\ README.md\ docs/caller.md\ internal/caller/caller.go\ internal/caller/capture.go\ internal/caller/mux.go\ internal/caller/mux_test.go\;\ git\ -C\ external/dorado-source\ rev-parse\ HEAD\;\ go\ version\;\ go\ env\ CGO_ENABLED\ GOOS\ GOARCH
 ```
 
 `freeze-reviewed-artifact`
 
 ```sh
-/tmp/nanopore-go-mux-integration-review/freeze-reviewed-artifact.sh 
+/tmp/nanopore-go-mux-integration-review/freeze-reviewed-artifact.sh
 ```
