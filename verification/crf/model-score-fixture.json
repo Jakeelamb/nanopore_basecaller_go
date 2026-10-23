@@ -1,0 +1,13 @@
+{
+  "name": "captured_stock_hac_n1_l96",
+  "blocks": 16,
+  "states": 256,
+  "blank": 2,
+  "pins": {
+    "artifacts/model/attempt-20261023T023028.377698342Z/stock/stock_hac_n1_l96/scores.bin": "36229b983d66c9db8db986ea968f4fc679f81e6da8cf9bff5f75178128c35657",
+    "artifacts/model/attempt-20261023T023028.377698342Z/manifest.json": "c9369b580ee0ec8f14676861cebabf54d8dfa930d3cfb571957153569494e0e0",
+    "artifacts/model/attempt-20261023T023028.377698342Z/parity.json": "47b4e1a3d7ddd6dd1ad7865a44f209b46e070a9312a7344bf6ec0d0d6be06fb8"
+  },
+  "scores": "artifacts/model/attempt-20261023T023028.377698342Z/stock/stock_hac_n1_l96/scores.bin",
+  "qualification": "Source-linked HAC stock-weight short synthetic-signal capture, not a raw-read fixture or biological evidence. NTC [1,16,1024] and TNC [16,1,1024] have identical bytes for N=1."
+}

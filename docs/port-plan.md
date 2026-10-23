@@ -59,12 +59,28 @@ CPU CI cannot qualify a full caller, GPU behavior, biological accuracy, or speed
 
 ## GPU boundary
 
+### Native model stage checkpoint
+
+- Blocking first steps: verify the reused development distribution and prove an
+  in-process native allocation, matrix operation, copied result, and rejected
+  invalid handle before running a model graph.
+- Independent workstreams: one owner builds the tensor ABI and typed Go owner.
+  Another traces the exact model graphs and weight mappings. Go model execution
+  starts against their agreed interface.
+- Shared mutable state: development libraries and stock weights are read-only.
+  New builds and receipts use this repository's ignored storage. The concurrent
+  original source build and its GPU schedule are outside this port's ownership.
+- Smallest safe decomposition: native tensor operations, a synthetic factorized
+  LSTM comparison, then the pinned HAC graph. SUP has its own graph and oracle.
+  A CUDA 13 CPU backend does not qualify stock CUDA 12.8 GPU parity.
+
 Two designs were considered: a whole-caller C ABI and a narrow tensor C ABI.
 A whole-caller ABI would preserve the original implementation behind a Go
 entry point. The selected design gives Go ownership of caller decisions and
-keeps native GPU tensor operations behind a typed backend boundary. That backend
-still needs implementation and qualification. Its allocation, stream, dtype,
-layout, synchronization and lifetime contracts must be explicit.
+keeps native tensor operations behind a typed backend boundary. The CPU float32
+backend now has a qualified allocation, layout, synchronization, and lifetime
+contract. GPU streams, half precision execution, and Koi kernels remain
+unimplemented and need separate qualification.
 
 The local Dorado distribution contains runtime libraries but no Torch headers.
 Koi inference and decoding kernels are native dependencies. Rewriting those

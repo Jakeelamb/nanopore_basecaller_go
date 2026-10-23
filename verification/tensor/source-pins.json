@@ -1,0 +1,8 @@
+{
+  "commit": "8b8fc5d36a9c0baab262a743cb175b5878e38ca6",
+  "files": {
+    "dorado/torch_utils/torch_utils.cpp": "01a711350bea009e9c0b5d0a3578327c10ac65fa773c1cec1e1cafafd8b19482",
+    "dorado/basecall/ModelRunner.cpp": "6b22bd06e29f3db1fa7e46c347ae6c8235c1e0ae928bb51532c2ced89b7b08bc",
+    "dorado/torch_utils/tensor_utils.cpp": "7e535e83d13225e1622cda6d16f842641ea466633009ad03e695d7af7362b018"
+  }
+}

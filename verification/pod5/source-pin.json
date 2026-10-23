@@ -1,0 +1,73 @@
+{
+  "schema": 1,
+  "native": {
+    "version": "0.3.39",
+    "archive": "lib_pod5-0.3.39-linux-x64.tar.gz",
+    "archive_sha256": "7fcf1d9f1da6f1bd13167782e900462fbadb0db57c666911bdba9bbdfd4e7e06",
+    "library_sha256": "d8c1d9380c66439520a4fc814acf82300c144c8e1332035b8351b643d351879c",
+    "c_api_header_sha256": "141d93bb5f60c5558e6cc087bdbb3f8fb89fe06aeb6f6405db96dee50a6f54d8",
+    "export_header_sha256": "e01b168b62541bc391f6a6194f3798d0b3255778155eae595ade7c656b638993"
+  },
+  "producer": "pod5==0.3.49",
+  "lib_pod5_version": "0.3.49",
+  "fixtures": [
+    {
+      "name": "single_split_read",
+      "source_path": "/home/jake/Projects/nanopore_basecaller/software/dorado-src/tests/data/single_split_read/single_split_read.pod5",
+      "source_bytes": 329216,
+      "source_sha256": "0a47bccd2db845306412e429f8fdabf0e1a9e1f7945b18c92e97c36ace2c3132",
+      "file_read_count": 1,
+      "file_id": "42e040f5-be75-4c04-8f63-9820a3fd5a38",
+      "file_original_version": [
+        0,
+        3,
+        23
+      ],
+      "producer_logical_file_version": "0.3.48",
+      "selection": null,
+      "reads": [
+        {
+          "id": "c31a90ab-b786-4dcd-b996-2d05d97e7e53",
+          "signal_sha256": "eff0dc8d5784dd8cab85ee59f36e8336aa514fddb670812ae91b733fb40b0cc3",
+          "num_samples": 365157,
+          "float_bits": {
+            "CalibrationScale": 1044352829,
+            "CalibrationOffset": 3278503936,
+            "OpenPoreLevel": 2143289344,
+            "MedianBefore": 1128677197
+          }
+        }
+      ]
+    },
+    {
+      "name": "hg002_smoke",
+      "source_path": "/home/jake/Projects/nanopore_basecaller/data/raw/HG002/PAW70337/PAW70337_66b2eea5_de8117b1_33.pod5",
+      "source_bytes": 555013832,
+      "source_sha256": "6146625e08d8628cef8474ac6782a1f1c4843c2f499784b803ab64b58e5ecc8e",
+      "file_read_count": 2608,
+      "file_id": "1ecc29f6-80a6-4fca-b7fb-f2319a264afa",
+      "file_original_version": [
+        0,
+        2,
+        7
+      ],
+      "producer_logical_file_version": "0.3.48",
+      "selection": [
+        "bb76c31a-36f0-48a0-abd2-107a10e1ade0"
+      ],
+      "reads": [
+        {
+          "id": "bb76c31a-36f0-48a0-abd2-107a10e1ade0",
+          "signal_sha256": "931078657d3ef96ef9faeacd3fb0dad3197abeff4bf577a9cf8710b2b99bce4b",
+          "num_samples": 19856,
+          "float_bits": {
+            "CalibrationScale": 1044352829,
+            "CalibrationOffset": 3280404480,
+            "OpenPoreLevel": 2143289344,
+            "MedianBefore": 1128479926
+          }
+        }
+      ]
+    }
+  ]
+}

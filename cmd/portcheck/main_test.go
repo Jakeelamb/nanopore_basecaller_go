@@ -15,7 +15,7 @@ func TestCacheRequiresMatchingUntamperedSuccessfulEvidence(t *testing.T) {
 	}
 	r := receipt{Schema: 1, Artifacts: map[string]string{}, Source: sourcePin{Commit: sourceCommit, Files: map[string]string{"source": "pin"}},
 		Inputs: map[string]string{"code": "pin"}, Environment: map[string]string{"compiler": "pin"},
-		Command: []string{"go", "test", "-count=1", "-v", "./..."}, Started: "start", Finished: "end"}
+		Command: append([]string(nil), cpuTestCommand...), Started: "start", Finished: "end"}
 	identity := struct {
 		Source      sourcePin
 		Inputs      map[string]string

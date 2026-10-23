@@ -3,10 +3,11 @@
 A separate Go port of caller computations from Dorado 2.1.2, pinned to
 `8b8fc5d36a9c0baab262a743cb175b5878e38ca6`.
 
-The port is in progress. It does not yet accept POD5 and produce basecalls.
-Inference, native guide/posterior generation, input loading, splitting,
-scheduling, and final caller output remain open. The original experiment
-repository is the stock control.
+The Go CPU caller reads POD5 and produces HAC FASTQ. On one predeclared HG002
+development read, its UUID, all 1,653 bases, and every quality byte match
+unchanged Dorado. Raw FASTQ headers differ. This bounded result does not qualify
+other reads, SUP, GPU execution, biological accuracy, or performance.
+The original experiment repository remains the stock control.
 
 Implemented in Go:
 
@@ -14,12 +15,35 @@ Implemented in Go:
 - Standardised DNA pA scaling, binary16 conversion, metadata, and initial trim.
 - CPU float32 CRF beam search from supplied logits, guides and posteriors.
 - Move-based chunk stitching into sequence, quality, and read moves.
+- POD5 selection and metadata through the native POD5 decompressor.
+- The pinned HAC convolution and factorized LSTM graph using native CPU tensor
+  primitives, plus Go-owned forward/backward CRF scans and posterior generation.
+- A CPU caller CLI with immutable stage captures and replay without inference.
 
 Native differential tests compile pinned original C++ algorithms or audited
 source slices. [The architecture](docs/architecture.md), [port coverage](docs/port-plan.md),
 and [decoder qualification](docs/decode.md) describe the boundaries and open work.
-These CPU checks do not establish a complete caller, GPU parity, biological
-accuracy, or performance improvement.
+The [caller instructions and retained endpoint](docs/caller.md) describe the
+working mode. Adapter trimming, splitting, SUP, GPU execution, batching, and BAM
+output remain open. The CLI requires `--no-trim --disable-read-splitting`.
+
+## Call and replay
+
+Build with `go build -o bin/basecaller ./cmd/basecaller`. The caller takes
+`--model`, `--pod5`, `--tensor-library`, `--pod5-library`, and selected
+`--read-id` values or explicit `--all`. Use `--device cpu`, `--chunksize 12288`,
+`--overlap 600`, and the two required flags above. See the
+[complete invocation](docs/caller.md#run-one-selected-read).
+
+`--capture NEW_DIRECTORY` retains raw signal, normalization, scores, guides,
+posteriors, decoding, and final output with hashes. Reuse those stages:
+
+```sh
+bin/basecaller replay --manifest CAPTURE/READ_UUID/manifest.json > replay.fastq
+```
+
+Replay checks payload integrity and repeats normalization, decoding, and
+stitching. It loads no model or POD5 library and runs no inference.
 
 ## Verify without sequencing computation
 
@@ -42,6 +66,8 @@ status, raw logs, native fixtures and hashes under ignored `artifacts/parity/`.
 It reuses successful evidence only when the identity and retained outputs match.
 `--refresh` forces a new attempt. Skipped or missing native tests fail acceptance.
 Failed attempts remain separate. Code changes during a run invalidate it.
+This command qualifies the listed CPU-core packages. Tensor and model integration
+have separate native acceptance commands and cannot inherit the CPU-core verdict.
 
 `go test ./...` runs the ordinary CPU tests. Native tests explicitly skip unless
 `DORADO_SOURCE` points at the pinned checkout, so that command alone is not a
@@ -62,9 +88,13 @@ from that record comparison. See [the comparator contract](cmd/readcompare/READM
 
 The [backend tool](docs/backend-readiness.md) acquires exact development packages
 into ignored storage, verifies checksums, and preserves resumable downloads.
-Its prerequisite check cannot qualify a working backend. The next implementation
-boundary is the native tensor/kernel ABI, followed by Go model execution and
-captured native intermediates. Reuse development outputs when their pins match.
+Its prerequisite check cannot qualify a working backend. Separate evidence covers
+the [CPU tensor ABI](docs/tensor-backend.md), [HAC graph](docs/model-graph.md),
+[POD5 reader](docs/pod5-reader.md), and [CRF scan](docs/crf-scan.md).
+The qualified development backend uses CPU operations from the pinned CUDA 13
+Torch distribution. Its match to one stock CUDA 12 CPU endpoint does not
+establish general runtime compatibility. Reuse captured outputs when their pins
+match. SUP and GPU execution require separate implementations and acceptance.
 
 Changes use feature branches and pull requests targeting `main`. See
 [AGENTS.md](AGENTS.md) for the experiment and evidence rules.

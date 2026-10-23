@@ -2,7 +2,7 @@ name: CPU algorithm parity
 
 on:
   push:
-    branches: [main, port/**]
+    branches: [main]
   pull_request:
 
 permissions:
@@ -23,6 +23,8 @@ jobs:
       - name: Obtain pinned source and NVTX headers
         run: ./verification/setup-source.sh
       - name: Check Go code
-        run: go vet ./...
+        run: |
+          go vet ./...
+          go test ./...
       - name: Verify listed CPU contracts against pinned native algorithms
         run: ./verification/verify.sh --source "$PWD/external/dorado-source" --refresh

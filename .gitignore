@@ -3,3 +3,4 @@
 /external/
 *.test
 *.prof
+/.tmp_pod5_v3_v4_migration_*/

@@ -22,6 +22,12 @@ import (
 
 const sourceCommit = "8b8fc5d36a9c0baab262a743cb175b5878e38ca6"
 
+// CPU core qualification stays independent of optional native tensor/model tiers.
+var cpuTestCommand = []string{"go", "test", "-count=1", "-v",
+	"./cmd/portcheck", "./cmd/readcompare", "./internal/chunk", "./internal/signal",
+	"./internal/decode", "./internal/stitch", "./internal/recordcompare",
+	"./verification/backend/...", "./verification/scaling", "./verification/stitch", "./verification/decode"}
+
 var sourceFiles = []string{
 	"LICENCE.txt",
 	"dorado/read_pipeline/base/chunk.cpp",
@@ -155,7 +161,7 @@ func run(args []string) error {
 	}
 	defer errout.Close()
 	r := receipt{Schema: 1, Key: key, Source: pin, Inputs: inputs, Environment: environment,
-		Command: []string{"go", "test", "-count=1", "-v", "./..."}, Started: time.Now().UTC().Format(time.RFC3339Nano)}
+		Command: append([]string(nil), cpuTestCommand...), Started: time.Now().UTC().Format(time.RFC3339Nano)}
 	cmd := exec.Command(r.Command[0], r.Command[1:]...)
 	attemptAbsolute, err := filepath.Abs(attempt)
 	if err != nil {
@@ -390,7 +396,7 @@ func cachedAttempt(root, key string) (string, bool) {
 			Environment map[string]string
 		}{r.Source, r.Inputs, r.Environment}
 		encoded, err := json.Marshal(identity)
-		if err != nil || digest(encoded) != key || !sameJSON(r.Command, []string{"go", "test", "-count=1", "-v", "./..."}) {
+		if err != nil || digest(encoded) != key || !sameJSON(r.Command, cpuTestCommand) {
 			continue
 		}
 		outHash, outErr := hashFile(filepath.Join(dir, "stdout"))
