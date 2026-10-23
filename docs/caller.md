@@ -211,10 +211,15 @@ the requested values. Explicit zero overlap remains a Go experiment extension;
 stock CLI normalization raises it to one inner stride. No native endpoint
 parity is claimed for zero overlap. The two observed controls use overlap 600.
 
-The selected input ends with `signal_positive`. Native mux-change tail trimming
-can also run with `--no-trim`; that postprocessing is not yet implemented here.
-The observed endpoints do not qualify reads ending in `mux_change` or
-`unblock_mux_change`.
+Mux-change tail trimming runs after stitching even with `--no-trim`, matching
+the source node. The two POD5 end-reason enum values 1 and 2 trigger it; the
+data-service unblock value 3 does not. The [source-linked trim unit](readtrim.md)
+and caller wiring tests cover positive synthetic tails and no-op conditions.
+`NumSamples` retains the original POD5 sample count, `Trimmed` counts the leading
+scaler prefix, and `TailTrimmedSamples` counts removed normalized tail samples.
+Replay applies the same transform before checking the captured output. Older
+non-mux captures remain unchanged. Both genuine inputs end with `signal_positive`,
+so no positive biological mux-change endpoint is claimed.
 
 ## Maintained verification
 

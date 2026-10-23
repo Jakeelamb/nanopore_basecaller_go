@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "hypothesis": "Go default simplex DNA postprocessing over retained HAC and SUP CPU calls reproduces the complete unchanged stock default FASTQ, without repeating Go model inference.",
+  "primary_endpoint": "Exact complete FASTQ bytes, including UUIDs, record count, descriptions, sequence, quality, ordering and newlines. Filtered or split outputs must account for every input parent.",
+  "role": "development",
+  "sample": "HG002",
+  "read_id": "bb76c31a-36f0-48a0-abd2-107a10e1ade0",
+  "selection_rule": "Same first frozen smoke UUID used throughout the port. No reselection from output results. HG005 is unused.",
+  "signal_i16le_sha256": "931078657d3ef96ef9faeacd3fb0dad3197abeff4bf577a9cf8710b2b99bce4b",
+  "models": [
+    {"name": "dna_r10.4.1_e8.2_400bps_hac@v6.0.0", "config_sha256": "e550ccbedb68ed74d6ee88e2f510adf33c52a1c868bd5e3a2bfbb7dfe6154c3f"},
+    {"name": "dna_r10.4.1_e8.2_400bps_sup@v5.2.0", "config_sha256": "ad82d7c369deddc0d1e69367302b8e002c306a9770ae4304a3cbb70715fcce49"}
+  ],
+  "native_binary_sha256": "08fef6060d9672f1e7b1772470b93ff0750d28d15f2e64cef1d02533a03ebb49",
+  "device": "cpu",
+  "batch_size": 1,
+  "chunk_size": 12288,
+  "overlap": 600,
+  "kit": "SQK-LSK114",
+  "adapter_trimming": true,
+  "primer_trimming": true,
+  "read_splitting": true,
+  "minimum_length": 5,
+  "minimum_mean_qscore": 0,
+  "native_producer_processes_per_model": 1,
+  "native_process_timeout_seconds": 180,
+  "reuse": "Each new native producer establishes the previously unobserved default-mode endpoint once. Preserve its raw receipts and reuse through all consumer corrections. Go inference is never repeated; compose from the existing captures.",
+  "claims_excluded": ["GPU parity", "biological accuracy", "performance", "all reads", "other kits", "BAM byte identity", "positive biological split or mux fixture"]
+}

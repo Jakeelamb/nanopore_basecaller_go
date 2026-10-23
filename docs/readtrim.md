@@ -2,7 +2,9 @@
 
 `internal/readtrim.MuxChangeTrim(MuxRead) (MuxResult, error)` is a standalone Go
 port of Dorado's mux-change tail transform at
-`8b8fc5d36a9c0baab262a743cb175b5878e38ca6`. Caller integration is pending. Native
+`8b8fc5d36a9c0baab262a743cb175b5878e38ca6`. Caller and capture replay now apply it
+after stitching. See the [caller contract](caller.md) and
+[integration review](independent-review-mux-integration.md). Native
 `BasecallerNode` applies this transform even with `--no-trim`; it is separate
 from adapter and primer trimming.
 

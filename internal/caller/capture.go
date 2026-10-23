@@ -402,6 +402,10 @@ func Replay(ctx context.Context, path string) (CalledRead, error) {
 		return CalledRead{}, err
 	}
 	out := CalledRead{ID: r.ID.String(), Sequence: result.Sequence, Qstring: result.Qstring, Moves: result.Moves, NumSamples: r.NumSamples, Trimmed: input.Trimmed, FASTQ: metadata}
+	out, err = trimMux(r, expectedNorm.Samples, cc.Stride, out)
+	if err != nil {
+		return CalledRead{}, err
+	}
 	var expected CalledRead
 	if err := readJSON(dir, m.Output, &expected); err != nil {
 		return CalledRead{}, err

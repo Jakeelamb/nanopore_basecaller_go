@@ -20,6 +20,8 @@ Implemented in Go:
 - The pinned HAC convolution/FLSTM and SUP convolution/transformer graphs using
   native CPU tensor primitives, plus Go-owned CRF scans and posteriors.
 - A CPU caller CLI with immutable stage captures and replay without inference.
+- Source-linked mux-change tail trimming, including its always-on behavior with
+  `--no-trim`. Positive fixtures are synthetic; the genuine controls are non-mux.
 
 Native differential tests compile pinned original C++ algorithms or audited
 source slices. [The architecture](docs/architecture.md), [port coverage](docs/port-plan.md),

@@ -28,3 +28,7 @@ jobs:
           go test ./...
       - name: Verify listed CPU contracts against pinned native algorithms
         run: ./verification/verify.sh --source "$PWD/external/dorado-source" --refresh
+      - name: Verify synthetic mux-change trimming against pinned native source
+        env:
+          DORADO_SOURCE: ${{ github.workspace }}/external/dorado-source
+        run: go test -count=1 -v -run '^TestPinnedNativeMux$' -skip '^TestPinnedNativeMux/retained-captures$' ./internal/readtrim

@@ -27,13 +27,14 @@ type Config struct {
 	ChunkSize, Overlap                  uint64
 }
 type CalledRead struct {
-	ID         string         `json:"id"`
-	Sequence   string         `json:"sequence"`
-	Qstring    string         `json:"qstring"`
-	Moves      []uint8        `json:"moves"`
-	NumSamples uint64         `json:"num_samples"`
-	Trimmed    int            `json:"trimmed"`
-	FASTQ      *FASTQMetadata `json:"fastq,omitempty"`
+	ID                 string         `json:"id"`
+	Sequence           string         `json:"sequence"`
+	Qstring            string         `json:"qstring"`
+	Moves              []uint8        `json:"moves"`
+	NumSamples         uint64         `json:"num_samples"`
+	Trimmed            int            `json:"trimmed"`
+	TailTrimmedSamples uint64         `json:"tail_trimmed_samples,omitempty"`
+	FASTQ              *FASTQMetadata `json:"fastq,omitempty"`
 }
 type Caller struct {
 	mu      sync.Mutex
@@ -247,6 +248,10 @@ func (c *Caller) Call(ctx context.Context, r pod5.Read) (CalledRead, error) {
 		return CalledRead{}, err
 	}
 	out := CalledRead{ID: r.ID.String(), Sequence: assembled.Sequence, Qstring: assembled.Qstring, Moves: assembled.Moves, NumSamples: r.NumSamples, Trimmed: normalized.Trimmed, FASTQ: metadata}
+	out, err = trimMux(r, normalized.Samples, c.chunks.Stride, out)
+	if err != nil {
+		return CalledRead{}, err
+	}
 	if capture != nil {
 		if err := capture.finish(out); err != nil {
 			return CalledRead{}, err
