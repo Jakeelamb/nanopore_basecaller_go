@@ -1,0 +1,12 @@
+{
+  "commit": "8b8fc5d36a9c0baab262a743cb175b5878e38ca6",
+  "files": {
+    "dorado/nn/TxModules.cpp": "9e73e81b38c6b6e36a17566a8dfc16e2da2e54fab44dfdbcb85485d77998b701",
+    "dorado/nn/RMSNorm.cpp": "5c98255bf9942f41f80811455c04a314e244cc925aca5b0bf5886f1e89fcec66",
+    "dorado/nn/LinearUpsample.cpp": "a863639ded16c392076b8feb0cf730ce021f2326fb35f3941a6542c8faea7e3c",
+    "dorado/torch_utils/torch_utils.cpp": "01a711350bea009e9c0b5d0a3578327c10ac65fa773c1cec1e1cafafd8b19482",
+    "dorado/basecall/ModelRunner.cpp": "6b22bd06e29f3db1fa7e46c347ae6c8235c1e0ae928bb51532c2ced89b7b08bc",
+    "dorado/torch_utils/tensor_utils.cpp": "7e535e83d13225e1622cda6d16f842641ea466633009ad03e695d7af7362b018",
+    "dorado/torch_utils/cuda_utils.cpp": "327df4b1f23552c51a57a515aa04aad8fe1fcc242fa94619026bc48763f675c1"
+  }
+}

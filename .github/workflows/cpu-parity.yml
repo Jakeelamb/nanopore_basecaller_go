@@ -1,0 +1,38 @@
+name: CPU algorithm parity
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  cpu-parity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.24.x'
+          cache: false
+      - name: Install native CPU oracle prerequisites
+        run: sudo apt-get update && sudo apt-get install -y g++ samtools pkg-config libhts-dev
+      - name: Obtain pinned source and NVTX headers
+        run: ./verification/setup-source.sh
+      - name: Check Go code
+        run: |
+          go vet ./...
+          go test ./...
+      - name: Verify listed CPU contracts against pinned native algorithms
+        run: ./verification/verify.sh --source "$PWD/external/dorado-source" --refresh
+      - name: Verify synthetic mux-change trimming against pinned native source
+        env:
+          DORADO_SOURCE: ${{ github.workspace }}/external/dorado-source
+        run: go test -count=1 -v -run '^TestPinnedNativeMux$' -skip '^TestPinnedNativeMux/retained-captures$' ./internal/readtrim
+      - name: Verify synthetic interval trimming and filtering against pinned native source
+        env:
+          DORADO_SOURCE: ${{ github.workspace }}/external/dorado-source
+        run: go test -count=1 -v -run '^TestPinnedNativeInterval$' -skip '^TestPinnedNativeInterval/retained$' ./internal/readtrim

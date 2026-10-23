@@ -1,0 +1,22 @@
+{
+  "commit": "8b8fc5d36a9c0baab262a743cb175b5878e38ca6",
+  "files": {
+    "LICENCE.txt": "802c641faac119489d698815722934d12de40f1b88f995d84c5a30162f99a2c8",
+    "dorado/basecall/decode/beam_search.cpp": "80868413877e26a264924263aa3def5ea4fa68877e72aadbf8d5420dad1af07e",
+    "dorado/read_pipeline/base/chunk.cpp": "8e27572c531446e10a7eaca99786fd4b03bbd6b1accd6be90564b14b7c458ccb",
+    "dorado/read_pipeline/base/include/read_pipeline/base/chunk.h": "3bd17ab99db8f93d84190025177c4c83983879e0c25e5e9713b2df473e822635",
+    "dorado/read_pipeline/base/include/read_pipeline/base/messages/ReadCommon.h": "a8ff4bced80c61f07070d6f5ed17ad3c2367c4f7d2a4564f54b5a7e47aec01cb",
+    "dorado/read_pipeline/base/include/read_pipeline/base/stitch.h": "d4e8f7ee2af6fa4bf5b7b16e558c0d6a59f7a87077c4dc81dbb172c1336321f6",
+    "dorado/read_pipeline/base/stitch.cpp": "342db2c008aa37643add1f38730c573f47f72aef73932cb28218e4ac6065c931",
+    "dorado/read_pipeline/nodes/BasecallerNode.cpp": "56352c883bc94831de607f4367fbd4fd59676ba6a494bca7438684a585362abd",
+    "dorado/read_pipeline/nodes/ScalerNode.cpp": "5d2ac820e21e74d0c5813c5349928685bda4f107f6d18243287f055d5612453c",
+    "dorado/torch_utils/tensor_utils.cpp": "7e535e83d13225e1622cda6d16f842641ea466633009ad03e695d7af7362b018",
+    "dorado/utils/include/utils/math_utils.h": "da7d19142cc0d858a1d954257a0f5f3d204b14ee3e5d1611da6038fc9d931101",
+    "dorado/utils/include/utils/string_utils.h": "a46e8f2cb56248590bcf50b7dcbb0d5c1810700c25040979ce1985d51f8c22bb",
+    "tests/ChunkTest.cpp": "b3ac9d79b62e8e70ecb1e232344bc421eac7f73c34a2c93d16cae66da96e8141",
+    "tests/StitchTest.cpp": "e74510e022c3da007bb126541804bc00a05d0f945526bd03a84f968b028568e9"
+  },
+  "submodules": {
+    "dorado/3rdparty/NVTX": "e170594ac7cf1dac584da473d4ca9301087090c1"
+  }
+}

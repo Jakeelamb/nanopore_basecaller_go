@@ -1,0 +1,14 @@
+{
+  "schema": "nanopore-gpu-target/v1",
+  "source_commit": "8b8fc5d36a9c0baab262a743cb175b5878e38ca6",
+  "runtime_family": "source-cuda13",
+  "device_uuid": "807d7ae76a99c79512c223fc801d38e7",
+  "cuda_visible_devices": {"present": false, "value": ""},
+  "models": [
+    {"name": "dna_r10.4.1_e8.2_400bps_hac@v6.0.0", "config_sha256": "e550ccbedb68ed74d6ee88e2f510adf33c52a1c868bd5e3a2bfbb7dfe6154c3f", "weight_count": 50},
+    {"name": "dna_r10.4.1_e8.2_400bps_sup@v5.2.0", "config_sha256": "ad82d7c369deddc0d1e69367302b8e002c306a9770ae4304a3cbb70715fcce49", "weight_count": 139}
+  ],
+  "dev_options": {"koi_use_i8": true, "koi_use_f8": true, "use_uswiglu": false, "remove_bits": 4},
+  "batch_policy": "explicit-positive-multiple",
+  "kit": "SQK-LSK114"
+}
