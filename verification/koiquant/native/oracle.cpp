@@ -1,7 +1,10 @@
 #include <ATen/ATen.h>
 #include <ATen/Context.h>
 #include <ATen/Parallel.h>
+#include <ATen/Version.h>
 #include <c10/core/InferenceMode.h>
+#include <cuda_runtime_api.h>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -9,6 +12,39 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+
+void diagnostics(const std::string& root, const std::string& label,
+                 const std::string& tier, int ordinal) {
+    std::ofstream out(root + "/" + label + "-runtime.txt");
+    out << "device=" << tier << " ordinal=" << ordinal << " toolkit=" << CUDART_VERSION << '\n';
+    if (tier == "cuda") {
+        int selected = -1, driver = 0, runtime = 0;
+        auto check = [](cudaError_t e) { if (e != cudaSuccess) throw std::runtime_error(cudaGetErrorString(e)); };
+        check(cudaSetDevice(ordinal));
+        check(cudaFree(nullptr));
+        check(cudaGetDevice(&selected));
+        check(cudaDriverGetVersion(&driver));
+        check(cudaRuntimeGetVersion(&runtime));
+        cudaDeviceProp properties{};
+        check(cudaGetDeviceProperties(&properties, selected));
+        out << "selected=" << selected << " driver=" << driver << " runtime=" << runtime
+            << " name=" << properties.name << " uuid=";
+        const char* hex = "0123456789abcdef";
+        for (unsigned char byte : properties.uuid.bytes) out << hex[byte >> 4] << hex[byte & 15];
+        out << '\n';
+    }
+    for (const char* key : {"CUDA_VISIBLE_DEVICES", "CUDA_DEVICE_ORDER", "CUBLAS_WORKSPACE_CONFIG",
+                            "LD_LIBRARY_PATH", "LD_PRELOAD", "DORADO_MATMUL_FP16_MODE"}) {
+        const char* value = std::getenv(key);
+        out << key << '\t' << (value ? "present" : "unset") << '\t' << (value ? value : "") << '\n';
+    }
+    out << at::show_config();
+    if (!out) throw std::runtime_error("runtime diagnostics failed");
+    std::ifstream maps("/proc/self/maps");
+    std::ofstream loaded(root + "/" + label + "-maps.txt");
+    loaded << maps.rdbuf();
+    if (!maps || !loaded) throw std::runtime_error("loaded maps capture failed");
+}
 
 namespace utils {
 // SCALED_TENSOR_BLOCK
@@ -114,6 +150,9 @@ int main(int argc, char** argv) {
         c10::InferenceMode guard;
         if (!std::filesystem::create_directory(root + "/observations"))
             throw std::runtime_error("observations already exists");
+        diagnostics(root + "/observations", "before", tier, ordinal);
+        std::ofstream outcomes(root + "/observations/outcomes.tsv");
+        if (!outcomes) throw std::runtime_error("outcomes open failed");
         std::ifstream fixtures(root + "/fixture-list.txt");
         if (!fixtures) throw std::runtime_error("fixture list missing");
         std::string name;
@@ -123,16 +162,19 @@ int main(int argc, char** argv) {
                 throw std::runtime_error("invalid fixture name");
             try {
                 capture(root, name, device);
+                outcomes << name << "\tpassed\n";
                 std::cout << "fixture\t" << name << "\tpassed\n";
             } catch (const std::exception& e) {
                 std::cerr << "fixture\t" << name << "\terror\t" << e.what() << '\n';
+                std::ofstream error(root + "/observations/" + name + "/error.txt");
+                error << e.what() << '\n';
+                outcomes << name << "\terror\n";
                 failed = true;
             }
+            outcomes.flush();
+            if (!outcomes) throw std::runtime_error("outcome write failed");
         }
-        std::ifstream maps("/proc/self/maps");
-        std::ofstream loaded(root + "/observations/loaded-maps.txt");
-        loaded << maps.rdbuf();
-        if (!loaded) throw std::runtime_error("loaded maps capture failed");
+        diagnostics(root + "/observations", "after", tier, ordinal);
         return failed ? 1 : 0;
     } catch (const std::exception& e) {
         std::cerr << e.what() << '\n';

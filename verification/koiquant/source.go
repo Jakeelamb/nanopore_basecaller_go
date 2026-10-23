@@ -1,5 +1,4 @@
-// Package koiquant prepares the source-only SUP QKV int8 oracle boundary.
-// It does not compile, execute, or admit native code.
+// Package koiquant retains and validates native SUP QKV int8 arithmetic observations.
 package koiquant
 
 import (
@@ -41,6 +40,12 @@ var sourceFiles = []string{
 	"verification/koiquant/stages.go", "verification/koiquant/fixtures.go",
 	"verification/koiquant/oracle_test.go", "verification/koiquant/native/oracle.cpp",
 	"verification/koiquant/cmd/main.go",
+	"verification/koiquant/capture.go", "verification/koiquant/import.go",
+	"verification/koiquant/receipt.go", "verification/koiquant/compare.go",
+	"verification/koiquant/capture_test.go", "verification/koiquant/replay.go",
+	"verification/tensor/runner/admission.go", "verification/tensor/runner/command.go",
+	"verification/tensor/runner/archive.go", "verification/tensor/runner/gotests.go",
+	"internal/signal/half.go", "go.mod",
 }
 
 func digest(b []byte) string {

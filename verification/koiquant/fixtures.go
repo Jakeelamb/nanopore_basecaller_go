@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/Jakeelamb/nanopore_basecaller_go/verification/koiweights"
 )
@@ -14,14 +16,25 @@ type Fixture struct {
 	Input        koiweights.Data
 }
 
-var fixtureNames = []string{
-	"genuine", "axes", "round-clip", "scale-neighbors", "finite-extremes",
-	"all-half-patterns", "signed-zero", "tiny-range", "infinities", "nans",
+var fixtureNames = allFixtureNames()
+
+func allFixtureNames() []string {
+	names := []string{
+		"genuine", "axes", "round-clip", "scale-neighbors", "finite-extremes",
+		"all-half-patterns", "signed-zero", "tiny-range", "infinities", "nans",
+	}
+	for i := 0; i < 21; i++ {
+		names = append(names, fmt.Sprintf("finite-ranges-%02d", i))
+	}
+	return names
 }
 
 func fixtureDomain(name string) string {
 	if name == "genuine" {
 		return "genuine-unclassified"
+	}
+	if strings.HasPrefix(name, "finite-ranges-") {
+		return "exhaustive-positive-finite-range-observation"
 	}
 	switch name {
 	case "axes", "round-clip", "scale-neighbors", "finite-extremes":
@@ -34,6 +47,26 @@ func fixtureDomain(name string) string {
 // fixtureHalf creates raw bit patterns, without implementing quantization math.
 func fixtureHalf(name string) ([]uint16, error) {
 	out := make([]uint16, Elements)
+	if strings.HasPrefix(name, "finite-ranges-") {
+		batch, err := strconv.Atoi(strings.TrimPrefix(name, "finite-ranges-"))
+		if err != nil || batch < 0 || batch >= 21 || name != fmt.Sprintf("finite-ranges-%02d", batch) {
+			return nil, fmt.Errorf("unknown fixture %q", name)
+		}
+		for r := 0; r < 1536; r++ {
+			bits := uint16(batch*1536 + r + 1)
+			if bits > 0x7bff {
+				bits = 0x7bff
+			}
+			for c := 0; c < 512; c++ {
+				value := bits
+				if c%2 != 0 {
+					value |= 0x8000
+				}
+				out[r*512+c] = value
+			}
+		}
+		return out, nil
+	}
 	for r := 0; r < Elements/512; r++ {
 		for c := 0; c < 512; c++ {
 			var bits uint16

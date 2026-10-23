@@ -3,7 +3,6 @@ package koiquant
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -211,18 +210,8 @@ func CheckPrepared(root, path string) (Preparation, error) {
 	if err != nil {
 		return m, err
 	}
-	f, err := os.Open(path)
-	if err != nil {
+	if err = readClosed(path, &m); err != nil {
 		return m, err
-	}
-	defer f.Close()
-	dec := json.NewDecoder(f)
-	dec.DisallowUnknownFields()
-	if err = dec.Decode(&m); err != nil {
-		return m, err
-	}
-	if err = dec.Decode(new(any)); err != io.EOF {
-		return m, fmt.Errorf("trailing manifest data")
 	}
 	if m.Schema != Schema || m.Status != "prepared_native_held" || m.Error != "" || m.NativeExecution || m.NativeAdmission != "held" || (m.Device != "cpu" && m.Device != "cuda") || m.OriginSHA256 != OriginSHA256 {
 		return m, fmt.Errorf("invalid source-only preparation identity")
