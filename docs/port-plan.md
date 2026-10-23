@@ -45,13 +45,14 @@ about zero padding does not describe the consuming implementation.
 | Scaling | Standardized DNA formula and half bits; one whole caller endpoint | Full native ScalerNode/SIMD and other scaling modes |
 | Chunk planning and padding | All three source algorithms, repeat padding, fixed caller chunks | Integrated variable and transformer scheduling |
 | Model config and weights | Exact HAC/SUP configs and 50/139 consumed weight hashes/shapes | Other models and upstream revisions |
+| CUDA tensor primitives | ABI4 ownership and raw half transfer; 37 exact source-GEMM/copy cases with guards; all 32 float32 precision mutants differ | Model operations, Koi descriptors/kernels, other devices and wider arithmetic/layout domains |
 | HAC inference | 55 source-oracle fixtures and one genuine-weight score capture | Other inputs and device paths |
 | SUP inference | 12 source-oracle fixtures, 287 stages, 15,228,786 exact float32 values and genuine 18-layer weights | Other inputs and device paths |
-| SUP GPU weight preparation on host | QKV interleave, FP16 tiling and rounding match three full source fixtures and all 65,536 half patterns | Int8/FP8 preparation, other caches, device upload and graph integration |
+| SUP GPU weight preparation on host | QKV interleave, FP16 tiling and rounding match three full source fixtures and all 65,536 half patterns; int8 source/input preparation reviewed | Int8 arithmetic captures and Go implementation, FP8 preparation, other caches, device upload and graph integration |
 | CRF decoding | CPU N=1 scans, posteriors, beam diagnostics and quality bits | Batched scans and GPU kernels |
 | Stitching | Source algorithm fixtures including partial strides | Integration with variable chunk paths |
 | Split and trim | Source-linked MUX trim, pore-split decisions, child metadata, adapter/primer detection, interval trim and filtering; two genuine default FASTQ controls | Positive biological split/MUX controls, other kits and modes |
-| Scheduling | Selected reads, CPU batch one, cancellation, ownership, immutable captures and replay | Batching, GPU streams, complete input accounting |
+| Scheduling | Selected reads, CPU batch one, cancellation, ownership, immutable captures and replay; owned CUDA streams at primitive boundary | Batching, GPU model scheduling, complete input accounting |
 | BAM and FASTQ output | Raw FASTQ identity for HAC and SUP on one frozen UUID, including headers | BAM records, compression and larger read sets |
 | Complete caller | Two models on one predeclared development read, including default processing from retained core stages | Complete declared input sets, live default producer acceptance beyond the shared-stage source trace |
 
@@ -80,9 +81,11 @@ Two designs were considered: a whole-caller C ABI and a narrow tensor C ABI.
 A whole-caller ABI would preserve the original implementation behind a Go
 entry point. The selected design gives Go ownership of caller decisions and
 keeps native tensor operations behind a typed backend boundary. The CPU float32
-backend now has a qualified allocation, layout, synchronization, and lifetime
-contract. GPU streams, half precision execution, and Koi kernels remain
-unimplemented and need separate qualification.
+backend has a qualified allocation, layout, synchronization, and lifetime
+contract. ABI4 additionally qualifies owned CUDA streams, half buffers and views,
+raw transfers, and the source half-GEMM operation on 37 declared cases. The
+[independent review](independent-review-cuda-abi4.md) records its device, runtime,
+negative controls, and limits. GPU model graphs and Koi kernels remain unfinished.
 
 The local Dorado distribution contains runtime libraries but no Torch headers.
 Koi inference and decoding kernels are native dependencies. Rewriting those

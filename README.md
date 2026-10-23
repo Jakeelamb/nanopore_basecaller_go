@@ -102,15 +102,19 @@ from that record comparison. See [the comparator contract](cmd/readcompare/READM
 The [backend tool](docs/backend-readiness.md) acquires exact development packages
 into ignored storage, verifies checksums, and preserves resumable downloads.
 Its prerequisite check cannot qualify a working backend. Separate evidence covers
-the [CPU tensor ABI](docs/tensor-backend.md), [HAC graph](docs/model-graph.md),
+the [tensor ABI](docs/tensor-backend.md), [HAC graph](docs/model-graph.md),
 [POD5 reader](docs/pod5-reader.md), and [CRF scan](docs/crf-scan.md).
 The qualified development backend uses CPU operations from the pinned CUDA 13
 Torch distribution. Its match to one stock CUDA 12 CPU endpoint does not
 establish general runtime compatibility. Reuse captured outputs when their pins
-match. GPU execution requires a separate implementation and acceptance.
+match. ABI4 now also provides owned CUDA streams, raw half buffers and views,
+and source-matched half GEMM. An independent review verified 37 saved cases on
+the pinned RTX 5070 runtime. The caller's GPU model graphs remain unfinished.
 The [SUP QKV half-weight preparation](docs/koi-qkv-weights.md) now matches
 native CPU source blocks exactly. It prepares host buffers for future GPU use
 and does not run in the current caller.
+The [SUP int8 oracle preparation tool](docs/koi-qkv-int8.md) reuses those saved
+half weights. Its source-only review does not qualify native int8 arithmetic.
 
 Changes use feature branches and pull requests targeting `main`. See
 [AGENTS.md](AGENTS.md) for the experiment and evidence rules.
