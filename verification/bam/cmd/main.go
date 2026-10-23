@@ -1,6 +1,6 @@
-// Command bamverify derives a writer manifest from a retained SAM and verifies
-// a Go-written unaligned BAM against it. It is host-only: no GPU, model or
-// native producer is used.
+// Command bamverify derives a writer manifest from a retained native BAM and
+// verifies a Go-written unaligned BAM against it. It is host-only: no GPU, model
+// or native producer is used.
 package main
 
 import (
@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	bamverify "github.com/Jakeelamb/nanopore_basecaller_go/verification/bam"
 )
@@ -35,34 +34,27 @@ func main() {
 
 func usage() {
 	fmt.Fprintln(os.Stderr, `usage:
-  bamverify manifest -sam SAM -out NEW_DIR [-drop-pg PREFIXES]
-  bamverify verify -plan PLAN -attempt ATTEMPT_DIR -out NEW_DIR`)
+  bamverify manifest -bam ORACLE.bam -out NEW_DIR
+  bamverify verify -plan PLAN.json -attempt ATTEMPT_DIR -out NEW_DIR`)
 	os.Exit(2)
 }
 
 func manifestCmd(args []string) error {
 	fs := flag.NewFlagSet("manifest", flag.ContinueOnError)
-	sam := fs.String("sam", "", "retained SAM oracle")
+	bamPath := fs.String("bam", "", "retained native unaligned BAM")
 	out := fs.String("out", "", "fresh output directory")
-	drop := fs.String("drop-pg", "samtools", "comma-separated @PG ID prefixes to exclude")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if *sam == "" || *out == "" {
-		return fmt.Errorf("-sam and -out are required")
+	if *bamPath == "" || *out == "" {
+		return fmt.Errorf("-bam and -out are required")
 	}
-	data, err := os.ReadFile(*sam)
+	data, err := os.ReadFile(*bamPath)
 	if err != nil {
 		return err
 	}
-	var prefixes []string
-	for _, p := range strings.Split(*drop, ",") {
-		if p = strings.TrimSpace(p); p != "" {
-			prefixes = append(prefixes, p)
-		}
-	}
-	parsed, err := bamverify.ParseSAM(strings.NewReader(string(data)), bamverify.ParseOptions{
-		SourceSAM: *sam, SourceHash: bamverify.HashBytes(data), DropProgramPrefixes: prefixes})
+	parsed, err := bamverify.ParseBAM(data, bamverify.ParseOptions{
+		SourceBAM: *bamPath, SourceHash: bamverify.HashBytes(data)})
 	if err != nil {
 		return err
 	}
@@ -77,21 +69,21 @@ func manifestCmd(args []string) error {
 	if err := os.WriteFile(path, body, 0o644); err != nil {
 		return err
 	}
-	header, err := parsed.Manifest.Header.Text()
-	if err != nil {
-		return err
-	}
 	summary := map[string]any{
-		"schema":            parsed.Manifest.Schema,
-		"manifest":          path,
-		"manifest_sha256":   bamverify.HashBytes(body),
-		"source_sam":        parsed.Manifest.SourceSAM,
-		"source_sam_sha256": parsed.Manifest.SourceSAMHash,
-		"records":           len(parsed.Manifest.Records),
-		"aux_order":         parsed.Manifest.Records[0].AuxNames(),
-		"header_lines":      strings.Count(header, "\n"),
-		"dropped_programs":  parsed.DroppedPrograms,
-		"raw_bam_identity":  "unclaimed",
+		"schema":                 parsed.Manifest.Schema,
+		"manifest":               path,
+		"manifest_sha256":        bamverify.HashBytes(body),
+		"source_bam":             parsed.Manifest.SourceBAM,
+		"source_bam_sha256":      parsed.Manifest.SourceBAMHash,
+		"header_text_sha256":     parsed.HeaderSHA256,
+		"payload_sha256":         parsed.PayloadSHA256,
+		"payload_bytes":          parsed.PayloadBytes,
+		"bgzf_members":           len(parsed.Members),
+		"records":                len(parsed.Manifest.Records),
+		"aux_order":              parsed.Manifest.Records[0].AuxNames(),
+		"payload_identity":       "required",
+		"compressed_identity":    "unclaimed",
+		"bgzf_topology_identity": "unclaimed",
 	}
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
@@ -114,13 +106,16 @@ func verifyCmd(args []string) error {
 		return err
 	}
 	summary := map[string]any{
-		"receipt":            filepath.Join(*out, "receipt.json"),
-		"bam":                filepath.Join(*out, "unaligned.bam"),
-		"bam_sha256":         receipt.BAMSAH256,
-		"canonical_equal":    receipt.Canonical.CanonicalEqual,
-		"raw_byte_identical": receipt.RawBAM.ByteIdentical,
-		"raw_bam_identity":   "unclaimed",
-		"controls":           len(receipt.Controls),
+		"receipt":              filepath.Join(*out, "receipt.json"),
+		"bam":                  filepath.Join(*out, "unaligned.bam"),
+		"go_bam_sha256":        receipt.GoBAMHash,
+		"go_payload_sha256":    receipt.GoPayloadHash,
+		"payload_identical":    receipt.Payload.Identical,
+		"compressed_identical": receipt.Compressed.Identical,
+		"bgzf_members_match":   receipt.BGZF.MembersMatch,
+		"canonical_equal":      receipt.Canonical.CanonicalEqual,
+		"controls":             len(receipt.Controls),
+		"faults":               len(receipt.Faults),
 	}
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")

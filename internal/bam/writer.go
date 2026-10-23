@@ -60,7 +60,10 @@ type ReadGroup struct {
 }
 
 func (h Header) validate() error {
-	if h.Version == "" || h.SortOrder == "" || h.Program.ID == "" || h.Program.Name == "" || h.Program.Version == "" {
+	if h.Version != "1.6" || h.SortOrder != "unknown" {
+		return fmt.Errorf("unaligned header must be VN:1.6 SO:unknown, got VN:%s SO:%s", h.Version, h.SortOrder)
+	}
+	if h.Program.ID == "" || h.Program.Name == "" || h.Program.Version == "" {
 		return errors.New("incomplete BAM header")
 	}
 	if strings.ContainsAny(h.Version+h.SortOrder+h.Program.ID+h.Program.Name+h.Program.Version+h.Program.CommandLine+h.Program.Description, "\n\r\x00") {
@@ -358,8 +361,8 @@ func (r Record) validate() error {
 			return errors.New("BAM quality exceeds 93")
 		}
 	}
-	if r.Flag&unmappedFlag == 0 {
-		return errors.New("unaligned writer requires the unmapped flag")
+	if r.Flag != unmappedFlag {
+		return fmt.Errorf("unaligned writer requires flag 4, got %d", r.Flag)
 	}
 	return nil
 }
@@ -383,6 +386,17 @@ func Uint32(name string, v uint32) Aux    { return Aux{Name: name, Type: 'I', Va
 func String(name string, v string) Aux    { return Aux{Name: name, Type: 'Z', Value: v} }
 func Char(name string, v byte) Aux        { return Aux{Name: name, Type: 'A', Value: v} }
 func ByteArray(name string, v []byte) Aux { return Aux{Name: name, Type: 'B', Value: v} }
+
+// ArrayInt32 is a B:i payload. Source poly-tail and barcode tags use it.
+type ArrayInt32 []int32
+
+// ArrayFloat32 is a B:f payload.
+type ArrayFloat32 []float32
+
+func Int32Array(name string, v []int32) Aux { return Aux{Name: name, Type: 'B', Value: ArrayInt32(v)} }
+func Float32Array(name string, v []float32) Aux {
+	return Aux{Name: name, Type: 'B', Value: ArrayFloat32(v)}
+}
 
 func (a Aux) encode(b *bytes.Buffer) error {
 	if len(a.Name) != 2 {
@@ -429,15 +443,41 @@ func (a Aux) encode(b *bytes.Buffer) error {
 		}
 		b.WriteByte(v)
 	case 'B':
-		v, ok := a.Value.([]byte)
-		if !ok || len(v) > math.MaxInt32 {
-			return fmt.Errorf("BAM tag %s is not a bounded byte array", a.Name)
-		}
-		b.WriteByte('c')
 		var word [4]byte
-		binary.LittleEndian.PutUint32(word[:], uint32(len(v)))
-		b.Write(word[:])
-		b.Write(v)
+		switch v := a.Value.(type) {
+		case []byte:
+			if len(v) > math.MaxInt32 {
+				return fmt.Errorf("BAM tag %s array is too large", a.Name)
+			}
+			b.WriteByte('c')
+			binary.LittleEndian.PutUint32(word[:], uint32(len(v)))
+			b.Write(word[:])
+			b.Write(v)
+		case ArrayInt32:
+			if len(v) > math.MaxInt32 {
+				return fmt.Errorf("BAM tag %s array is too large", a.Name)
+			}
+			b.WriteByte('i')
+			binary.LittleEndian.PutUint32(word[:], uint32(len(v)))
+			b.Write(word[:])
+			for _, x := range v {
+				binary.LittleEndian.PutUint32(word[:], uint32(x))
+				b.Write(word[:])
+			}
+		case ArrayFloat32:
+			if len(v) > math.MaxInt32 {
+				return fmt.Errorf("BAM tag %s array is too large", a.Name)
+			}
+			b.WriteByte('f')
+			binary.LittleEndian.PutUint32(word[:], uint32(len(v)))
+			b.Write(word[:])
+			for _, x := range v {
+				binary.LittleEndian.PutUint32(word[:], math.Float32bits(x))
+				b.Write(word[:])
+			}
+		default:
+			return fmt.Errorf("BAM tag %s has unsupported array type %T", a.Name, a.Value)
+		}
 	default:
 		return fmt.Errorf("BAM tag %s has unsupported type %q", a.Name, a.Type)
 	}
@@ -473,12 +513,29 @@ type Metadata struct {
 	// moves were not requested, matching emit_moves=false.
 	Moves       []uint8
 	ModelStride uint8
+	// SampleRate checks the duration invariant when non-zero.
+	SampleRate uint64
+	// IsDuplex marks a duplex read. The duplex tag set is not ported, so Tags
+	// rejects it instead of silently emitting the simplex set.
+	IsDuplex bool
 }
 
 // Tags returns the pinned simplex tag order from
 // read_pipeline/base/messages.cpp:108-212. RNA poly-tail tags (pt/pa) are not
 // part of the pinned plain-DNA path and are rejected by omission.
 func Tags(m Metadata) ([]Aux, error) {
+	if m.IsDuplex {
+		return nil, errors.New("duplex BAM tags are not ported")
+	}
+	if m.Trimmed < 0 || m.NumSamples < 0 || uint64(m.Trimmed) > uint64(m.NumSamples) {
+		return nil, fmt.Errorf("trimmed samples %d are outside %d total samples", m.Trimmed, m.NumSamples)
+	}
+	if m.SampleRate > 0 {
+		want := float32(m.NumSamples) / float32(m.SampleRate)
+		if m.Duration != want {
+			return nil, fmt.Errorf("duration %v differs from %d/%d=%v", m.Duration, m.NumSamples, m.SampleRate, want)
+		}
+	}
 	dx := int32(0)
 	if m.DuplexParent {
 		dx = -1

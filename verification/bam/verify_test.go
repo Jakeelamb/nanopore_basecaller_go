@@ -2,66 +2,247 @@ package bamverify
 
 import (
 	"bytes"
-	"compress/gzip"
+	"compress/flate"
+	"encoding/binary"
 	"encoding/json"
-	"io"
+	"hash/crc32"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/Jakeelamb/nanopore_basecaller_go/internal/bam"
 )
 
-const testSAM = `@HD	VN:1.6	SO:unknown
-@PG	ID:basecaller	PN:dorado	VN:2.1.2+8b8fc5d	CL:dorado "basecaller" "model" "reads.pod5"	DS:gpu:GPU
-@PG	ID:samtools	PN:samtools	PP:basecaller	VN:1.24	CL:samtools view -h out
-@RG	ID:run_model	PU:PAW70337	PM:PC48LILITH	DT:2024-06-19T12:36:05.543000+00:00	PL:ONT	DS:runid=run basecall_model=model experiment_id=exp acquisition_start_time=2024-06-19T12:42:14.753000+00:00 model_stride=6	LB:sample	tm:adapter,primer
-bb76c31a-36f0-48a0-abd2-107a10e1ade0	4	*	0	0	*	*	0	0	ACGTN	IIIII	qs:f:20.4353	du:f:5.8532	ns:i:29266	ts:i:682	mx:i:1	ch:i:2372	st:Z:2024-06-19T21:36:39.995000+00:00	rn:i:4484	fn:Z:PAW.pod5	sm:f:94	sd:f:24	sv:Z:pa	dx:i:0	RG:Z:run_model	po:Z:not_set	er:Z:signal_positive	me:i:3653
-`
+const testRG = "run_model"
 
-func testParse(t *testing.T) ParseResult {
+func syntheticManifest() Manifest {
+	rg := &bam.ReadGroup{
+		ID: testRG, FlowCellID: "PAW70337", DeviceID: "PC48LILITH",
+		ExperimentStartTime: "2024-06-19T12:36:05.543000+00:00",
+		RunID:               "run", BasecallModel: "model", ExperimentID: "exp",
+		AcquisitionStartTime: "2024-06-19T12:42:14.753000+00:00",
+		SampleID:             "sample", ModelStride: 6, TrimFlags: "adapter,primer",
+	}
+	header := bam.Header{
+		Version: "1.6", SortOrder: "unknown",
+		Program: bam.Program{ID: "basecaller", Name: "dorado", Version: "2.1.2+8b8fc5d",
+			CommandLine: `dorado "basecaller" "model" "reads.pod5"`, Description: "gpu:GPU"},
+		ReadGroup: rg,
+	}
+	base := func(name, seq string, q byte) []Aux {
+		return []Aux{
+			{Name: "qs", Type: 'f', Value: float32(20.435345)},
+			{Name: "du", Type: 'f', Value: float32(5.8532)},
+			{Name: "ns", Type: 'i', Value: int32(29266)},
+			{Name: "ts", Type: 'i', Value: int32(682)},
+			{Name: "mx", Type: 'i', Value: int32(1)},
+			{Name: "ch", Type: 'i', Value: int32(2372)},
+			{Name: "st", Type: 'Z', Value: "2024-06-19T21:36:39.995000+00:00"},
+			{Name: "rn", Type: 'i', Value: int32(4484)},
+			{Name: "fn", Type: 'Z', Value: "PAW.pod5"},
+			{Name: "sm", Type: 'f', Value: float32(93.99999)},
+			{Name: "sd", Type: 'f', Value: float32(24)},
+			{Name: "sv", Type: 'Z', Value: "pa"},
+			{Name: "dx", Type: 'i', Value: int32(0)},
+			{Name: "RG", Type: 'Z', Value: testRG},
+			{Name: "po", Type: 'Z', Value: "not_set"},
+			{Name: "er", Type: 'Z', Value: "signal_positive"},
+			{Name: "me", Type: 'I', Value: uint32(3653)},
+		}
+	}
+	first := base("read-one", "ACGTN", 40)
+	first = append(first,
+		Aux{Name: "pa", Type: 'B', Value: IntArray{1, -2, 3}},
+		Aux{Name: "bi", Type: 'B', Value: FloatArray{1.5, -2.25}},
+		Aux{Name: "mv", Type: 'B', Value: Array{6, 0, 1, 1, 0}},
+	)
+	records := []Record{
+		{Name: "read-one", Flag: 4, Sequence: "ACGTN", Quality: Phred{40, 40, 40, 40, 40}, Aux: first},
+		{Name: "read-two", Flag: 4, Sequence: "TTTT", Quality: Phred{1, 2, 3, 4}, Aux: base("read-two", "TTTT", 0)},
+		{Name: "read-three", Flag: 4, Sequence: "GATTACA", Quality: Phred{30, 31, 32, 33, 34, 35, 36}, Aux: base("read-three", "GATTACA", 0)},
+	}
+	return Manifest{Schema: ManifestSchema, SourceBAM: "synthetic.bam",
+		SourceBAMHash: strings.Repeat("0", 64), Header: header, Records: records}
+}
+
+// writeSyntheticOracle writes the seed with the Go writer, then re-binds the
+// manifest to the file's hash. The source pin is metadata only, so the bytes do
+// not change.
+func writeSyntheticOracle(t *testing.T, dir string) (path, hash string, manifestBytes []byte) {
 	t.Helper()
-	parsed, err := ParseSAM(strings.NewReader(testSAM), ParseOptions{SourceSAM: "oracle.sam",
-		SourceHash: HashBytes([]byte(testSAM)), DropProgramPrefixes: []string{"samtools"}})
+	seed := syntheticManifest()
+	path = filepath.Join(dir, "oracle.bam")
+	data, err := writeBAMFile(seed, path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return parsed
-}
-
-func TestParseSAMDerivesPinnedShape(t *testing.T) {
-	parsed := testParse(t)
-	if len(parsed.DroppedPrograms) != 1 || !strings.HasPrefix(parsed.DroppedPrograms[0], "@PG\tID:samtools") {
-		t.Fatalf("dropped %v", parsed.DroppedPrograms)
-	}
-	m := parsed.Manifest
-	if m.Header.Version != "1.6" || m.Header.SortOrder != "unknown" || m.Header.Program.ID != "basecaller" ||
-		m.Header.Program.Description != "gpu:GPU" || m.Header.ReadGroup == nil || m.Header.ReadGroup.ModelStride != 6 {
-		t.Fatalf("header %+v", m.Header)
-	}
-	if len(m.Records) != 1 || m.Records[0].Flag != 4 || m.Records[0].Sequence != "ACGTN" {
-		t.Fatalf("record %+v", m.Records)
-	}
-	want := []string{"qs", "du", "ns", "ts", "mx", "ch", "st", "rn", "fn", "sm", "sd", "sv", "dx", "RG", "po", "er", "me"}
-	if got := m.Records[0].AuxNames(); !equalStrings(got, want) {
-		t.Fatalf("tag order %v", got)
-	}
-	if m.Records[0].Aux[0].Value != float32(20.4353) {
-		t.Fatalf("qs %v", m.Records[0].Aux[0].Value)
-	}
-	if q := m.Records[0].Quality; len(q) != 5 || q[0] != 40 {
-		t.Fatalf("quality %v", q)
-	}
-}
-
-func TestManifestRoundTripAndBAM(t *testing.T) {
-	parsed := testParse(t)
-	body, err := parsed.Manifest.Encode()
+	hash = HashBytes(data)
+	bound := seed
+	bound.SourceBAM = path
+	bound.SourceBAMHash = hash
+	manifestBytes, err = bound.Encode()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(body, []byte(`"quality": [`)) {
-		t.Fatal("quality is not a number array")
+	return path, hash, manifestBytes
+}
+
+func TestParseBAMRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path, hash, _ := writeSyntheticOracle(t, dir)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := ParseBAM(data, ParseOptions{SourceBAM: path, SourceHash: hash})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.HeaderSHA256 != HashBytes([]byte(parsed.HeaderText)) {
+		t.Fatal("header hash is not the header text hash")
+	}
+	if parsed.PayloadSHA256 != HashBytes(mustDecode(t, data)) {
+		t.Fatal("payload hash is not the inflated payload hash")
+	}
+	if len(parsed.Members) != 2 {
+		t.Fatalf("members %d", len(parsed.Members))
+	}
+	if len(parsed.Manifest.Records) != 3 {
+		t.Fatalf("records %d", len(parsed.Manifest.Records))
+	}
+	seed := syntheticManifest()
+	if !reflect.DeepEqual(parsed.Manifest.Records, seed.Records) {
+		t.Fatalf("records did not round-trip\n got %#v\nwant %#v", parsed.Manifest.Records, seed.Records)
+	}
+	if !reflect.DeepEqual(parsed.Manifest.Header, seed.Header) {
+		t.Fatalf("header did not round-trip: %#v", parsed.Manifest.Header)
+	}
+	// Exact float bits, not decimal text.
+	if got := math.Float32bits(parsed.Manifest.Records[0].Aux[0].Value.(float32)); got != math.Float32bits(float32(20.435345)) {
+		t.Fatalf("qs bits 0x%08x", got)
+	}
+	if got := parsed.Manifest.Records[0].Aux[17].Value.(IntArray); !reflect.DeepEqual(got, IntArray{1, -2, 3}) {
+		t.Fatalf("pa %v", got)
+	}
+	if got := parsed.Manifest.Records[0].Aux[18].Value.(FloatArray); !reflect.DeepEqual(got, FloatArray{1.5, -2.25}) {
+		t.Fatalf("bi %v", got)
+	}
+}
+
+func mustDecode(t *testing.T, data []byte) []byte {
+	t.Helper()
+	payload, _, err := decodeBGZF(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return payload
+}
+
+func TestParseBAMRejectsLooseInput(t *testing.T) {
+	dir := t.TempDir()
+	path, hash, _ := writeSyntheticOracle(t, dir)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := ParseOptions{SourceBAM: path, SourceHash: hash}
+	if _, err := ParseBAM(data, ParseOptions{SourceBAM: path, SourceHash: "short"}); err == nil {
+		t.Fatal("unpinned options accepted")
+	}
+	if _, err := ParseBAM(data[:len(data)-28], opts); err == nil {
+		t.Fatal("missing EOF marker accepted")
+	}
+	if _, err := ParseBAM(data[:len(data)/2], opts); err == nil {
+		t.Fatal("truncated BAM accepted")
+	}
+	badMagic := append([]byte(nil), data...)
+	badMagic[0] = 0
+	if _, err := ParseBAM(badMagic, opts); err == nil {
+		t.Fatal("bad magic accepted")
+	}
+	// Patch a record flag in the inflated payload, then re-frame with the writer.
+	payload := mustDecode(t, data)
+	flagAt := headerEnd(t, payload) + 4 + 14
+	payload[flagAt] = 4 | 16
+	patched := reframe(t, payload)
+	if _, err := ParseBAM(patched, opts); err == nil {
+		t.Fatal("mapped flag accepted")
+	}
+}
+
+func headerEnd(t *testing.T, payload []byte) int {
+	t.Helper()
+	lText := int(int32(binaryLE(payload[4:8])))
+	nRef := int(int32(binaryLE(payload[8+lText:])))
+	off := 8 + lText + 4
+	for i := 0; i < nRef; i++ {
+		lName := int(int32(binaryLE(payload[off:])))
+		off += 4 + lName + 4
+	}
+	return off
+}
+
+func binaryLE(b []byte) uint32 {
+	return uint32(b[0]) | uint32(b[1])<<8 | uint32(b[2])<<16 | uint32(b[3])<<24
+}
+
+func bamBlock(data []byte) ([]byte, error) {
+	var compressed bytes.Buffer
+	fw, err := flate.NewWriter(&compressed, flate.DefaultCompression)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := fw.Write(data); err != nil {
+		return nil, err
+	}
+	if err := fw.Close(); err != nil {
+		return nil, err
+	}
+	payload := compressed.Bytes()
+	total := 18 + len(payload) + 8
+	out := make([]byte, 0, total)
+	out = append(out, 0x1f, 0x8b, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0x06, 0x00, 0x42, 0x43, 0x02, 0x00)
+	out = append(out, byte(total-1), byte((total-1)>>8))
+	out = append(out, payload...)
+	var footer [8]byte
+	binary.LittleEndian.PutUint32(footer[:4], crc32.ChecksumIEEE(data))
+	binary.LittleEndian.PutUint32(footer[4:], uint32(len(data)))
+	out = append(out, footer[:]...)
+	return out, nil
+}
+
+// reframe wraps an uncompressed payload in a single BGZF member plus EOF.
+func reframe(t *testing.T, payload []byte) []byte {
+	t.Helper()
+	// Reuse the writer by writing a header-only BAM is not possible here; use
+	// the package's member builder through a tiny manifest-free path.
+	var out bytes.Buffer
+	for len(payload) > 0 {
+		n := min(len(payload), 0xff00)
+		block, err := bamBlock(payload[:n])
+		if err != nil {
+			t.Fatal(err)
+		}
+		out.Write(block)
+		payload = payload[n:]
+	}
+	out.Write(bgzfEOFMarker)
+	return out.Bytes()
+}
+
+func TestManifestJSONRoundTrip(t *testing.T) {
+	seed := syntheticManifest()
+	body, err := seed.Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(body, []byte(`"quality": [`)) || !bytes.Contains(body, []byte(`"subtype": "c"`)) ||
+		!bytes.Contains(body, []byte(`"subtype": "i"`)) || !bytes.Contains(body, []byte(`"subtype": "f"`)) {
+		t.Fatalf("manifest JSON lost a typed value:\n%s", body)
 	}
 	decoded, err := DecodeManifest(body)
 	if err != nil {
@@ -71,65 +252,15 @@ func TestManifestRoundTripAndBAM(t *testing.T) {
 	if err != nil || !bytes.Equal(body, again) {
 		t.Fatalf("manifest is not stable: %v", err)
 	}
-	var out bytes.Buffer
-	if err := decoded.WriteBAM(&out); err != nil {
-		t.Fatal(err)
-	}
-	zr, err := gzip.NewReader(bytes.NewReader(out.Bytes()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	data, err := io.ReadAll(zr)
-	if err != nil || !bytes.HasPrefix(data, []byte("BAM\x01")) {
-		t.Fatalf("bam payload %v", err)
-	}
-	if !bytes.HasSuffix(out.Bytes(), []byte{0x1f, 0x8b, 0x08, 0x04}) {
-		// The EOF marker is a complete empty member; check its full suffix.
-		t.Log("checking full EOF marker below")
-	}
-	if !bytes.HasSuffix(out.Bytes(), []byte{0x1f, 0x8b, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0x06, 0x00, 0x42, 0x43, 0x02, 0x00, 0x1b, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}) {
-		t.Fatal("BGZF EOF marker missing")
-	}
-}
-
-func TestParseSAMRejectsLooseInput(t *testing.T) {
-	base := testSAM
-	cases := map[string]string{
-		"unknown-header":    strings.Replace(base, "@HD\tVN:1.6\tSO:unknown", "@HD\tVN:1.6\tSO:unknown\tGO:none", 1),
-		"unknown-tag":       strings.Replace(base, "er:Z:signal_positive", "er:Z:signal_positive\tzz:H:00", 1),
-		"duplicate-tag":     strings.Replace(base, "er:Z:signal_positive", "er:Z:signal_positive\ter:Z:again", 1),
-		"mapped":            strings.Replace(base, "\t4\t*\t0\t0\t*", "\t0\tchr1\t1\t0\t*", 1),
-		"no-quality":        strings.Replace(base, "\tACGTN\tIIIII\t", "\tACGTN\t*\t", 1),
-		"two-callers":       strings.Replace(base, "@PG\tID:samtools", "@PG\tID:other\tPN:dorado\tVN:1\tCL:x\n@PG\tID:samtools", 1),
-		"pp-link":           strings.Replace(base, "DS:gpu:GPU", "DS:gpu:GPU\tPP:other", 1),
-		"bad-rg":            strings.Replace(base, "PL:ONT", "PL:ILLUMINA", 1),
-		"bad-ds":            strings.Replace(base, " experiment_id=exp", " unknown_key=1", 1),
-		"header-after":      base + "@HD\tVN:1.6\tSO:unknown\n",
-		"bad-array-subtype": strings.Replace(base, "er:Z:signal_positive", "er:B:f,1,2", 1),
-		"bad-float":         strings.Replace(base, "qs:f:20.4353", "qs:f:nan", 1),
-	}
-	for name, sam := range cases {
-		if _, err := ParseSAM(strings.NewReader(sam), ParseOptions{SourceSAM: "oracle.sam",
-			SourceHash: HashBytes([]byte(sam)), DropProgramPrefixes: []string{"samtools"}}); err == nil {
-			t.Fatalf("%s accepted", name)
-		}
-	}
-	if _, err := ParseSAM(strings.NewReader(testSAM), ParseOptions{SourceSAM: "oracle.sam",
-		SourceHash: "short", DropProgramPrefixes: []string{"samtools"}}); err == nil {
-		t.Fatal("unpinned options accepted")
-	}
-}
-
-func TestDecodeManifestRejectsLooseJSON(t *testing.T) {
-	body, err := testParse(t).Manifest.Encode()
-	if err != nil {
-		t.Fatal(err)
+	if !reflect.DeepEqual(decoded.Records, seed.Records) {
+		t.Fatal("records changed through JSON")
 	}
 	for name, data := range map[string][]byte{
 		"unknown":  append([]byte(`{"extra":1,`), body[1:]...),
 		"trailing": append(append([]byte(nil), body...), '{', '}'),
 		"schema":   bytes.Replace(body, []byte(`"bam-manifest/1"`), []byte(`"bam-manifest/2"`), 1),
-		"hash":     bytes.Replace(body, []byte(`"source_sam_sha256": "`), []byte(`"source_sam_sha256": "zz`), 1),
+		"hash":     bytes.Replace(body, []byte(`"source_bam_sha256": "`), []byte(`"source_bam_sha256": "zz`), 1),
+		"subtype":  bytes.Replace(body, []byte(`"subtype": "c"`), []byte(`"subtype": "C"`), 1),
 	} {
 		if _, err := DecodeManifest(data); err == nil {
 			t.Fatalf("%s accepted", name)
@@ -137,34 +268,53 @@ func TestDecodeManifestRejectsLooseJSON(t *testing.T) {
 	}
 }
 
-func TestNormalizeRequiresDeclaredLines(t *testing.T) {
-	out, err := Normalize([]byte(testSAM), []string{"@PG\tID:samtools\tPN:samtools\tPP:basecaller\tVN:1.24\tCL:samtools view -h out"})
-	if err != nil {
+func TestManifestValidation(t *testing.T) {
+	seed := syntheticManifest()
+	if err := seed.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	if bytes.Contains(out, []byte("ID:samtools")) || !bytes.Contains(out, []byte("ID:basecaller")) {
-		t.Fatalf("normalized %q", out)
-	}
-	if _, err := Normalize([]byte(testSAM), []string{"@PG\tID:missing"}); err == nil {
-		t.Fatal("missing declared line accepted")
+	for name, mutate := range map[string]func(*Manifest){
+		"schema":       func(m *Manifest) { m.Schema = "x" },
+		"pin":          func(m *Manifest) { m.SourceBAM = "" },
+		"hash":         func(m *Manifest) { m.SourceBAMHash = "abc" },
+		"flag":         func(m *Manifest) { m.Records[0].Flag = 0 },
+		"quality":      func(m *Manifest) { m.Records[0].Quality = m.Records[0].Quality[:2] },
+		"sequence":     func(m *Manifest) { m.Records[0].Sequence = "" },
+		"duplicate":    func(m *Manifest) { m.Records[0].Aux[1] = m.Records[0].Aux[0] },
+		"bad-tag":      func(m *Manifest) { m.Records[0].Aux[0].Name = "q" },
+		"float-type":   func(m *Manifest) { m.Records[0].Aux[0].Value = int32(1) },
+		"array-type":   func(m *Manifest) { m.Records[0].Aux[17].Value = []int32{1} },
+		"dangling-rg":  func(m *Manifest) { m.Records[0].Aux[13].Value = "other" },
+		"missing-rg":   func(m *Manifest) { m.Records[0].Aux = append(m.Records[0].Aux[:13], m.Records[0].Aux[14:]...) },
+		"header-sort":  func(m *Manifest) { m.Header.SortOrder = "coordinate" },
+		"header-ver":   func(m *Manifest) { m.Header.Version = "1.5" },
+		"header-empty": func(m *Manifest) { m.Header.Program.ID = "" },
+	} {
+		m := cloneManifest(seed)
+		mutate(&m)
+		if err := m.Validate(); err == nil {
+			t.Fatalf("%s accepted", name)
+		}
 	}
 }
 
 func TestPlanValidation(t *testing.T) {
-	good := Plan{Schema: PlanSchema, OracleSAM: "x.sam", OracleSAMHash: strings.Repeat("a", 64),
-		ExpectedRecords: 1, ExpectedAuxOrder: []string{"qs"}}
+	good := Plan{Schema: PlanSchema, OracleBAM: "x.bam", OracleBAMHash: strings.Repeat("a", 64),
+		ExpectedRecords: 1, ExpectedAuxOrder: []string{"qs"}, RequirePayloadIdentity: true}
 	if err := good.Validate(); err != nil {
 		t.Fatal(err)
 	}
 	for name, mutate := range map[string]func(*Plan){
 		"schema":    func(p *Plan) { p.Schema = "x" },
-		"oracle":    func(p *Plan) { p.OracleSAM = "" },
-		"hash":      func(p *Plan) { p.OracleSAMHash = "abc" },
+		"oracle":    func(p *Plan) { p.OracleBAM = "" },
+		"hash":      func(p *Plan) { p.OracleBAMHash = "abc" },
 		"records":   func(p *Plan) { p.ExpectedRecords = 0 },
 		"order":     func(p *Plan) { p.ExpectedAuxOrder = nil },
 		"tag":       func(p *Plan) { p.ExpectedAuxOrder = []string{"q"} },
 		"duplicate": func(p *Plan) { p.ExpectedAuxOrder = []string{"qs", "qs"} },
-		"raw-claim": func(p *Plan) { p.RequireRawIdentity = true },
+		"no-payload": func(p *Plan) {
+			p.RequirePayloadIdentity = false
+		},
 	} {
 		p := good
 		mutate(&p)
@@ -176,16 +326,20 @@ func TestPlanValidation(t *testing.T) {
 
 func TestVerifySyntheticOracle(t *testing.T) {
 	if _, err := exec.LookPath("samtools"); err != nil {
-		t.Skip("samtools is not installed")
+		t.Fatal("samtools is required for the BAM verifier")
 	}
 	dir := t.TempDir()
-	oracle := filepath.Join(dir, "oracle.sam")
-	if err := os.WriteFile(oracle, []byte(testSAM), 0o644); err != nil {
+	oracle, hash, manifestBytes := writeSyntheticOracle(t, dir)
+	attempt := filepath.Join(dir, "attempt")
+	if err := os.Mkdir(attempt, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	plan := Plan{Schema: PlanSchema, OracleSAM: oracle, OracleSAMHash: HashBytes([]byte(testSAM)),
-		DropProgramPrefixes: []string{"samtools"}, ExpectedRecords: 1,
-		ExpectedAuxOrder: []string{"qs", "du", "ns", "ts", "mx", "ch", "st", "rn", "fn", "sm", "sd", "sv", "dx", "RG", "po", "er", "me"}}
+	if err := os.WriteFile(filepath.Join(attempt, "manifest.json"), manifestBytes, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	plan := Plan{Schema: PlanSchema, OracleBAM: oracle, OracleBAMHash: hash,
+		ExpectedRecords: 3, ExpectedAuxOrder: syntheticManifest().Records[0].AuxNames(),
+		RequirePayloadIdentity: true}
 	planBody, err := json.Marshal(plan)
 	if err != nil {
 		t.Fatal(err)
@@ -194,33 +348,30 @@ func TestVerifySyntheticOracle(t *testing.T) {
 	if err := os.WriteFile(planPath, planBody, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	parsed, err := ParseSAM(strings.NewReader(testSAM), ParseOptions{SourceSAM: oracle,
-		SourceHash: plan.OracleSAMHash, DropProgramPrefixes: plan.DropProgramPrefixes})
-	if err != nil {
-		t.Fatal(err)
-	}
-	attempt := filepath.Join(dir, "attempt")
-	if err := os.Mkdir(attempt, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	body, err := parsed.Manifest.Encode()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(attempt, "manifest.json"), body, 0o644); err != nil {
-		t.Fatal(err)
-	}
 	out := filepath.Join(dir, "out")
 	receipt, err := Verify(planPath, attempt, out)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !receipt.Canonical.CanonicalEqual || receipt.RawBAM.Claimed || len(receipt.Controls) != 8 {
-		t.Fatalf("receipt %+v", receipt)
+	if !receipt.Payload.Claimed || !receipt.Payload.Identical {
+		t.Fatalf("payload verdict %+v", receipt.Payload)
+	}
+	if !receipt.Canonical.CanonicalEqual || len(receipt.Controls) != 12 || len(receipt.Faults) != 5 {
+		t.Fatalf("receipt controls %d faults %d canonical %+v", len(receipt.Controls), len(receipt.Faults), receipt.Canonical)
+	}
+	for _, c := range receipt.Checks {
+		if !c.Passed {
+			t.Fatalf("check %s failed: %+v", c.Name, c)
+		}
 	}
 	for _, c := range receipt.Controls {
 		if !c.Passed {
 			t.Fatalf("control %s failed: %+v", c.Name, c)
+		}
+	}
+	for _, f := range receipt.Faults {
+		if !f.Passed {
+			t.Fatalf("fault %s failed: %+v", f.Name, f)
 		}
 	}
 	if _, err := os.Stat(filepath.Join(out, "receipt.json")); err != nil {
@@ -229,8 +380,8 @@ func TestVerifySyntheticOracle(t *testing.T) {
 	if _, err := Verify(planPath, attempt, out); err == nil {
 		t.Fatal("reused output directory accepted")
 	}
-	mutated := bytes.Replace(body, []byte(`"value": 2372`), []byte(`"value": 2373`), 1)
-	if bytes.Equal(mutated, body) {
+	mutated := bytes.Replace(manifestBytes, []byte(`"value": 29266`), []byte(`"value": 29267`), 1)
+	if bytes.Equal(mutated, manifestBytes) {
 		t.Fatal("test mutation did not apply")
 	}
 	if err := os.WriteFile(filepath.Join(attempt, "manifest.json"), mutated, 0o644); err != nil {

@@ -50,7 +50,8 @@ func TestHeaderTextPinnedOrder(t *testing.T) {
 		t.Fatalf("reference line %q", text)
 	}
 	for name, mutate := range map[string]func(*Header){
-		"version": func(h *Header) { h.Version = "" },
+		"version": func(h *Header) { h.Version = "1.5" },
+		"sort":    func(h *Header) { h.SortOrder = "coordinate" },
 		"program": func(h *Header) { h.Program.Name = "" },
 		"newline": func(h *Header) { h.Program.CommandLine = "a\nb" },
 		"group":   func(h *Header) { h.ReadGroup.ID = "" },
@@ -82,7 +83,8 @@ func TestReadGroupID(t *testing.T) {
 
 func metadata() Metadata {
 	return Metadata{MeanQ: 20.4353, Duration: 5.8532, NumSamples: 29266, Trimmed: 682, Mux: 1, Channel: 2372,
-		StartTime: "2024-06-19T21:36:39.995000+00:00", Strand: '+', UMI: "ACGT", ReadNumber: 4484,
+		SampleRate: 5000,
+		StartTime:  "2024-06-19T21:36:39.995000+00:00", Strand: '+', UMI: "ACGT", ReadNumber: 4484,
 		Filename: "PAW.pod5", Shift: 94, Scale: 24, ScalingMethod: "pa", ReadGroup: "run_model",
 		PoreType: "not_set", EndReason: "signal_positive", MinknowEvents: 3653}
 }
@@ -156,6 +158,29 @@ func TestTagsEmitMovesInPinnedPosition(t *testing.T) {
 	}
 }
 
+func TestTagsRejectsUnportedOrInconsistentRequests(t *testing.T) {
+	for name, mutate := range map[string]func(*Metadata){
+		"duplex":    func(m *Metadata) { m.IsDuplex = true },
+		"trim":      func(m *Metadata) { m.Trimmed = m.NumSamples + 1 },
+		"negative":  func(m *Metadata) { m.Trimmed = -1 },
+		"duration":  func(m *Metadata) { m.Duration = 1 },
+		"bad-moves": func(m *Metadata) { m.Moves, m.ModelStride = []byte{1}, 0 },
+	} {
+		m := metadata()
+		mutate(&m)
+		if _, err := Tags(m); err == nil {
+			t.Fatalf("%s accepted", name)
+		}
+	}
+	m := metadata()
+	m.Moves, m.ModelStride = []byte{0, 1}, 6
+	m.SampleRate = 0
+	m.Duration = 1
+	if _, err := Tags(m); err != nil {
+		t.Fatalf("duration check ran without a sample rate: %v", err)
+	}
+}
+
 func TestMovesTag(t *testing.T) {
 	tag, err := MovesTag(6, []byte{0, 1, 1})
 	if err != nil {
@@ -183,6 +208,8 @@ func TestAuxEncoding(t *testing.T) {
 		{String("st", "ab"), []byte{'s', 't', 'Z', 'a', 'b', 0}},
 		{Char("TS", '+'), []byte{'T', 'S', 'A', '+'}},
 		{ByteArray("mv", []byte{6, 1}), []byte{'m', 'v', 'B', 'c', 2, 0, 0, 0, 6, 1}},
+		{Int32Array("pa", []int32{1, -2}), []byte{'p', 'a', 'B', 'i', 2, 0, 0, 0, 1, 0, 0, 0, 0xfe, 0xff, 0xff, 0xff}},
+		{Float32Array("bi", []float32{1.5}), []byte{'b', 'i', 'B', 'f', 1, 0, 0, 0, 0, 0, 0xc0, 0x3f}},
 	}
 	for _, c := range cases {
 		var b bytes.Buffer
@@ -200,6 +227,7 @@ func TestAuxEncoding(t *testing.T) {
 		{Name: "st", Type: 'Z', Value: "a\x00b"},
 		{Name: "TS", Type: 'A', Value: byte(7)},
 		{Name: "mv", Type: 'B', Value: "not bytes"},
+		{Name: "pa", Type: 'B', Value: []int32{1}},
 		{Name: "zz", Type: 'Q', Value: 1},
 	}
 	for i, aux := range bad {
@@ -264,12 +292,14 @@ func TestRecordEncoding(t *testing.T) {
 
 func TestRecordRejectsBadInput(t *testing.T) {
 	cases := map[string]func(*Record){
-		"name":    func(r *Record) { r.Name = "" },
-		"quality": func(r *Record) { r.Quality = r.Quality[:2] },
-		"base":    func(r *Record) { r.Sequence = "ACXTN" },
-		"flag":    func(r *Record) { r.Flag = 0 },
-		"seq":     func(r *Record) { r.Sequence, r.Quality = "", nil },
-		"aux":     func(r *Record) { r.Aux = []Aux{{Name: "bad", Type: 'i', Value: int32(1)}} },
+		"name":     func(r *Record) { r.Name = "" },
+		"quality":  func(r *Record) { r.Quality = r.Quality[:2] },
+		"base":     func(r *Record) { r.Sequence = "ACXTN" },
+		"flag":     func(r *Record) { r.Flag = 0 },
+		"flag-16":  func(r *Record) { r.Flag = 4 | 16 },
+		"flag-256": func(r *Record) { r.Flag = 4 | 256 },
+		"seq":      func(r *Record) { r.Sequence, r.Quality = "", nil },
+		"aux":      func(r *Record) { r.Aux = []Aux{{Name: "bad", Type: 'i', Value: int32(1)}} },
 	}
 	for name, mutate := range cases {
 		r := testRecord()
