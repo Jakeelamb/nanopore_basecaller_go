@@ -32,3 +32,7 @@ jobs:
         env:
           DORADO_SOURCE: ${{ github.workspace }}/external/dorado-source
         run: go test -count=1 -v -run '^TestPinnedNativeMux$' -skip '^TestPinnedNativeMux/retained-captures$' ./internal/readtrim
+      - name: Verify synthetic interval trimming and filtering against pinned native source
+        env:
+          DORADO_SOURCE: ${{ github.workspace }}/external/dorado-source
+        run: go test -count=1 -v -run '^TestPinnedNativeInterval$' -skip '^TestPinnedNativeInterval/retained$' ./internal/readtrim
