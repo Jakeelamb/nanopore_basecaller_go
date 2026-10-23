@@ -1,3 +1,7 @@
+Archived initial review. Its subread timestamp finding is resolved by the
+[independent clock-fix review](independent-review-subread-clock.md). The original
+verdict and raw evidence remain under `artifacts/_independent-child-interval-initial/`.
+
 # Verdict
 
 **FAIL for the documented subread domain. PASS for standalone interval trim and filter.**
