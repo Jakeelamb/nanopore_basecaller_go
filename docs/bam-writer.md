@@ -5,7 +5,8 @@ differential and one native conditional-tag differential. The Go writer
 reproduces the exact **uncompressed payload** of one retained stock simplex BAM:
 same 733,623 bytes, same SHA256, including QNAMEs and exact float32 bits. A
 second oracle compiles the pinned C++ tag emitters against htslib and shows
-byte-identical aux for the `TS`, `RX`, `pi`, `sp` and `mv` paths. Compressed
+byte-identical aux for every conditional path, including `TS`, `RX`, `pi`,
+`sp`, `mv`, `BC`/`bv`/`bi`, `pt`/`pa` and the duplex tag set. Compressed
 bytes and BGZF member topology are explicitly not claimed. This is not GPU
 evidence, not end-to-end basecalling and not biological evidence.
 
@@ -107,8 +108,8 @@ canonical-positive), `header-mutation`, `dangling-rg`, `duplex-reject`,
 
 Five writer faults execute against synthetic writers: short write, `ENOSPC`,
 `EPIPE`, double close and write after close. A control or fault that does not
-behave as declared fails the receipt. The tags oracle adds one mutation control
-and nine cases, with no skip. No required test skips.
+behave as declared fails the receipt. The tags oracle adds two mutation
+controls and thirteen cases, with no skip. No required test skips.
 
 ## Host evidence
 
@@ -168,29 +169,41 @@ returns early whenever `mod_base_info` is null, which is every case here), and
 `trace_log` (a logging helper with no effect on tag bytes). The oracle is a tag
 differential, not a full Dorado build.
 
-Nine cases run:
+Thirteen cases run, twelve ported and **byte-identical**:
 
-- Six ported simplex cases are **byte-identical**: minimal, primer+UMI
-  (`TS`/`RX`), split (`pi`/`sp`), moves (`mv`), full (`TS RX pi sp mv po er`),
-  and duplex-parent (`dx=-1`). `qs` is recomputed in Go with
-  `decode.MeanQScore` and the accepted start-position rule, so it is a real
-  differential rather than an echoed input.
-- `duplex-read` is **rejected** by `bam.Tags`, as declared.
-- `barcode` and `rna-polytail` are **recorded gaps**: the pinned source emits
-  `BC`/`bv`/`bi` and `pt`/`pa`, and Go omits them. Those cases compare tag
-  names, never bytes, and never claim parity.
+- Simplex: minimal, primer+UMI (`TS`/`RX`), split (`pi`/`sp`), moves (`mv`),
+  full (`TS RX pi sp mv po er`), duplex-parent (`dx=-1`).
+- Duplex: `duplex-read` (`qs dx mx ch st RG pi po`) and `duplex-minimal`
+  (`qs dx mx ch st`). The duplex set omits duration, sample, move, scaling,
+  read-number and minknow tags, matching `generate_duplex_read_tags`.
+- Barcode: `barcode` emits `BC`, `bv` and the seven-float `bi` array; the
+  writer derives the seven floats from typed score fields using the source's
+  `front_length`/`rear_length` arithmetic. `barcode-unclassified` proves the
+  `unclassified` sentinel emits no barcode tags.
+- RNA: `rna-polytail` emits `pt`/`pa`, and `rna-polytail-window` has a trailing
+  poly-A run so `find_rna_polya` returns 10 and `qs` must use `qstring[:10]`.
+  Its `pt` value is `-1` (`POLY_TAIL_NOT_FOUND`), which the source still emits
+  because only `-2` (`POLY_TAIL_NOT_ENABLED`) suppresses the tags.
 
-A `split-point-1` control changes one field and requires the Go aux to move, so
-a pass cannot come from comparing a blob with itself. The comparison uses real
-writer output: the Go side writes a BAM and reads back the aux region, rather
-than re-implementing the encoder in the harness.
+`qs` is recomputed in Go with `decode.MeanQScore` and the source's window rule,
+including the RNA poly-A prefix, so it is a real differential rather than an
+echoed input.
+
+`barcode-unclassified-score` is the one **rejection**: a caller that pairs the
+`unclassified` sentinel with a barcode score is refused, because the pinned
+source would silently drop the score. The writer does not drop data silently.
+
+Two controls require the Go aux to move, so a pass cannot come from comparing a
+blob with itself: `split-point-1` increments `sp`, and `rna-window` rescores the
+whole `qstring` instead of the poly-A prefix. Both change the aux bytes. The
+comparison uses real writer output: the Go side writes a BAM and reads back the
+aux region, rather than re-implementing the encoder in the harness. The only
+harness-side reimplementation is `findRNAPolyA`, used to compute the `qs` input
+window; the native side computes its own, so the comparison still covers it.
 
 ## Open
 
-The barcode (`BC`/`bv`/`bi`) and RNA poly-tail (`pt`/`pa`) tag sets are native-
-differential as a *gap* but not ported. Duplex read tags are native-differential
-and deliberately rejected. Multi-`@RG`/multi-run headers, `modbase_models`
-(`MM`/`ML`/`MN`), `model_stride=-1`, larger read sets, other modes,
-compressed/topology policy and independent review remain open. The writer is not
-yet wired to caller output; `ReadToBamTypeNode` metadata beyond the current
-postcall seam is still missing.
+Multi-`@RG`/multi-run headers, `modbase_models` (`MM`/`ML`/`MN`),
+`model_stride=-1`, larger read sets, other modes, compressed/topology policy and
+independent review remain open. The writer is not yet wired to caller output;
+`ReadToBamTypeNode` metadata beyond the current postcall seam is still missing.

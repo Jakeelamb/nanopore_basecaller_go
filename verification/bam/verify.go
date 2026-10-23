@@ -712,9 +712,11 @@ func runControls(outDir, oraclePath string, oracle ParseResult) ([]Control, []Fa
 	}
 	add("dangling-rg", "manifest validation rejects", dangling.Validate() != nil, "RG tag changed to an undeclared ID")
 
-	// Unported requests must be refused, not silently mis-encoded.
-	_, duplexErr := bam.Tags(bam.Metadata{IsDuplex: true})
-	add("duplex-reject", "duplex tags refused", duplexErr != nil, "bam.Tags(IsDuplex)")
+	// Unsupported requests must be refused, not silently mis-encoded.
+	_, barcodeErr := bam.Tags(bam.Metadata{
+		NumSamples: 10, Barcode: bam.Unclassified, BarcodeScore: &bam.BarcodeScore{},
+	})
+	add("barcode-array-reject", "unclassified barcode score refused", barcodeErr != nil, "bam.Tags(unclassified, bi)")
 	flagErr := bam.NewWriter(io.Discard).WriteRecord(bam.Record{Name: "read", Flag: 4 | 16, Sequence: "A", Quality: []byte{0}})
 	add("flag-reject", "flag 20 refused", flagErr != nil, "unaligned writer requires flag 4")
 

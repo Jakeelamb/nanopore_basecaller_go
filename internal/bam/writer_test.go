@@ -160,7 +160,6 @@ func TestTagsEmitMovesInPinnedPosition(t *testing.T) {
 
 func TestTagsRejectsUnportedOrInconsistentRequests(t *testing.T) {
 	for name, mutate := range map[string]func(*Metadata){
-		"duplex":    func(m *Metadata) { m.IsDuplex = true },
 		"trim":      func(m *Metadata) { m.Trimmed = m.NumSamples + 1 },
 		"negative":  func(m *Metadata) { m.Trimmed = -1 },
 		"duration":  func(m *Metadata) { m.Duration = 1 },
@@ -178,6 +177,88 @@ func TestTagsRejectsUnportedOrInconsistentRequests(t *testing.T) {
 	m.Duration = 1
 	if _, err := Tags(m); err != nil {
 		t.Fatalf("duration check ran without a sample rate: %v", err)
+	}
+}
+
+func TestTagsDuplexOrderAndTypes(t *testing.T) {
+	m := metadata()
+	m.IsDuplex = true
+	m.ParentID = "parent"
+	tags, err := Tags(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, tag := range tags {
+		names = append(names, tag.Name)
+	}
+	want := []string{"qs", "dx", "mx", "ch", "st", "RG", "pi", "po"}
+	if !reflect.DeepEqual(names, want) {
+		t.Fatalf("duplex tag order %v", names)
+	}
+	if tags[1].Type != 'i' || tags[1].Value != int32(1) {
+		t.Fatalf("duplex dx %+v", tags[1])
+	}
+	m.ParentID, m.ReadGroup, m.PoreType = "", "", ""
+	tags, err = Tags(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names = names[:0]
+	for _, tag := range tags {
+		names = append(names, tag.Name)
+	}
+	if !reflect.DeepEqual(names, []string{"qs", "dx", "mx", "ch", "st"}) {
+		t.Fatalf("minimal duplex order %v", names)
+	}
+}
+
+func TestTagsBarcodeAndPolyTailOrder(t *testing.T) {
+	m := metadata()
+	m.Barcode = "barcode01"
+	m.BarcodeVariant = "barcode01"
+	m.BarcodeScore = &BarcodeScore{Score: 12.5, TopStart: 10, TopEnd: 42, TopScore: 9.25,
+		BottomStart: 480, BottomEnd: 512, BottomScore: 8.75}
+	m.PolyTail = &PolyTail{Length: 18, Anchor: 300, Boundaries: [2][2]int32{{290, 340}, {-1, -1}}}
+	tags, err := Tags(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	types := make(map[string]byte, len(tags))
+	for _, tag := range tags {
+		names = append(names, tag.Name)
+		types[tag.Name] = tag.Type
+	}
+	want := []string{"BC", "bv", "bi", "qs", "du", "ns", "ts", "mx", "ch", "st", "TS", "RX",
+		"rn", "fn", "sm", "sd", "sv", "dx", "RG", "po", "er", "pt", "pa", "me"}
+	// pt/pa sit after mv and before po; with no moves they follow the read-group
+	// and split block directly.
+	want = []string{"BC", "bv", "bi", "qs", "du", "ns", "ts", "mx", "ch", "st", "TS", "RX",
+		"rn", "fn", "sm", "sd", "sv", "dx", "RG", "pt", "pa", "po", "er", "me"}
+	if !reflect.DeepEqual(names, want) {
+		t.Fatalf("barcode/poly-tail order %v", names)
+	}
+	if types["bi"] != 'B' || types["pa"] != 'B' || types["pt"] != 'i' {
+		t.Fatalf("types %v", types)
+	}
+}
+
+func TestTagsRejectsBarcodeAndPolyTailMisuse(t *testing.T) {
+	for name, mutate := range map[string]func(*Metadata){
+		"variant-without-barcode": func(m *Metadata) { m.BarcodeVariant = "v" },
+		"score-without-barcode":   func(m *Metadata) { m.BarcodeScore = &BarcodeScore{} },
+		"variant-without-score":   func(m *Metadata) { m.Barcode, m.BarcodeVariant = "barcode01", "barcode01" },
+		"score-unclassified":      func(m *Metadata) { m.Barcode, m.BarcodeScore = Unclassified, &BarcodeScore{} },
+		"score-nan":               func(m *Metadata) { m.Barcode, m.BarcodeScore = "barcode01", &BarcodeScore{Score: float32(math.NaN())} },
+		"polytail-sentinel":       func(m *Metadata) { m.PolyTail = &PolyTail{Length: -2} },
+		"duplex-polytail":         func(m *Metadata) { m.IsDuplex, m.PolyTail = true, &PolyTail{Length: 1} },
+	} {
+		m := metadata()
+		mutate(&m)
+		if _, err := Tags(m); err == nil {
+			t.Fatalf("%s accepted", name)
+		}
 	}
 }
 

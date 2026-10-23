@@ -45,8 +45,20 @@ func TestTagsOracle(t *testing.T) {
 			rejected++
 		}
 	}
-	if ported != 6 || gaps != 2 || rejected != 1 {
+	if ported != 12 || gaps != 0 || rejected != 1 {
 		t.Fatalf("case mix ported=%d gaps=%d rejected=%d", ported, gaps, rejected)
+	}
+	// Every conditional path the writer claims must be covered by a ported case.
+	for _, want := range []string{"duplex-read", "barcode", "rna-polytail", "rna-polytail-window"} {
+		found := false
+		for _, c := range receipt.Cases {
+			if c.Name == want && c.Ported && c.ByteIdentical {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("%s is not a ported byte-identical case", want)
+		}
 	}
 	if receipt.SplicedSHA == "" || receipt.BinarySHA == "" || receipt.FixtureSHA == "" {
 		t.Fatal("receipt is missing a pin")

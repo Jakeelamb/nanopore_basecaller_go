@@ -209,11 +209,16 @@ func TagsOracleCases() []TagsOracleCase {
 		{Name: "simplex-duplex-parent", Ported: true, In: with(func(i *TagsOracleInput) {
 			i.DuplexParent = true
 		})},
-		{Name: "duplex-read", Reject: "duplex", In: with(func(i *TagsOracleInput) {
+		{Name: "duplex-read", Ported: true, In: with(func(i *TagsOracleInput) {
 			i.IsDuplex = true
 			i.ParentID = "6b1f9d0e-2c3a-4f5b-8d7e-000000000000"
 		})},
-		{Name: "barcode", Gap: []string{"BC", "bv", "bi"}, In: with(func(i *TagsOracleInput) {
+		{Name: "duplex-minimal", Ported: true, In: with(func(i *TagsOracleInput) {
+			i.IsDuplex = true
+			i.RunID, i.ModelName = "", ""
+			i.PoreType = ""
+		})},
+		{Name: "barcode", Ported: true, In: with(func(i *TagsOracleInput) {
 			i.Barcode = "barcode01"
 			i.Barcoding = &TagsOracleBarcode{
 				Variant: "barcode01", BarcodeScore: 12.5,
@@ -221,7 +226,27 @@ func TagsOracleCases() []TagsOracleCase {
 				BottomStart: 480, BottomEnd: 512, BottomScore: 8.75,
 			}
 		})},
-		{Name: "rna-polytail", Gap: []string{"pt", "pa"}, In: with(func(i *TagsOracleInput) {
+		{Name: "barcode-unclassified", Ported: true, In: with(func(i *TagsOracleInput) {
+			i.Barcode = "unclassified"
+		})},
+		{Name: "barcode-unclassified-score", Reject: "no barcode tags", In: with(func(i *TagsOracleInput) {
+			i.Barcode = "unclassified"
+			i.Barcoding = &TagsOracleBarcode{
+				Variant: "barcode01", BarcodeScore: 12.5,
+				TopStart: 10, TopEnd: 42, TopScore: 9.25,
+				BottomStart: 480, BottomEnd: 512, BottomScore: 8.75,
+			}
+		})},
+		{Name: "rna-polytail-window", Ported: true, In: with(func(i *TagsOracleInput) {
+			// A trailing poly-A run makes find_rna_polya return 10, so the mean
+			// Q-score must use qstring[:10] rather than the whole string. The
+			// quality values differ sharply so a wrong window cannot match.
+			i.IsRNAModel = true
+			i.Seq = "CGTCAGTACG" + strings.Repeat("A", 20)
+			i.Qstring = strings.Repeat("5", 10) + strings.Repeat("!", 20)
+			i.RNA = &TagsOracleRNA{Length: -1, Anchor: 300, B0Start: 290, B0End: 340, B1Start: -1, B1End: -1}
+		})},
+		{Name: "rna-polytail", Ported: true, In: with(func(i *TagsOracleInput) {
 			i.IsRNAModel = true
 			i.Seq = strings.Repeat("A", 20) + "CGTCAGTACG"
 			i.Qstring = strings.Repeat("I", len(i.Seq))
@@ -615,13 +640,15 @@ func VerifyTagsOracle(srcRoot, workDir, cxx string) (TagsOracleReceipt, error) {
 		}
 		receipt.Cases = append(receipt.Cases, res)
 	}
-	control, err := tagsMutationControl(cases, native, header)
+	controls, err := tagsControls(cases, native, header)
 	if err != nil {
 		return TagsOracleReceipt{}, err
 	}
-	receipt.Controls = []TagsOracleControl{control}
-	if !control.Passed {
-		allPassed = false
+	receipt.Controls = controls
+	for _, c := range controls {
+		if !c.Passed {
+			allPassed = false
+		}
 	}
 	receipt.Passed = allPassed
 	receipt.Finished = time.Now().UTC().Format(time.RFC3339)
@@ -638,19 +665,20 @@ func VerifyTagsOracle(srcRoot, workDir, cxx string) (TagsOracleReceipt, error) {
 	return receipt, nil
 }
 
-// tagsMutationControl proves a one-field change moves the Go aux bytes, so a
-// pass cannot come from comparing a blob with itself.
-func tagsMutationControl(cases []TagsOracleCase, native [][]byte, header bam.Header) (TagsOracleControl, error) {
-	ctrl := TagsOracleControl{Name: "split-point-1", Expected: "go aux differs from native"}
+// tagsControl proves a one-field change moves the Go aux bytes, so a pass
+// cannot come from comparing a blob with itself.
+func tagsControl(name, caseName string, cases []TagsOracleCase, native [][]byte, header bam.Header,
+	mutate func(TagsOracleInput, *bam.Metadata)) (TagsOracleControl, error) {
+	ctrl := TagsOracleControl{Name: name, Expected: "go aux differs from native"}
 	idx := -1
 	for i, c := range cases {
-		if c.Name == "simplex-full" {
+		if c.Name == caseName {
 			idx = i
 			break
 		}
 	}
 	if idx < 0 {
-		return ctrl, errors.New("mutation control needs the simplex-full case")
+		return ctrl, fmt.Errorf("control %s needs the %s case", name, caseName)
 	}
 	base := cases[idx].In
 	meta, err := tagsMetadata(base)
@@ -666,25 +694,41 @@ func tagsMutationControl(cases []TagsOracleCase, native [][]byte, header bam.Hea
 		return ctrl, err
 	}
 	if !bytes.Equal(unchanged, native[idx]) {
-		return ctrl, errors.New("mutation control baseline is not identical")
+		return ctrl, fmt.Errorf("control %s baseline is not identical", name)
 	}
-	mutated := base
-	mutated.SplitPoint++
-	meta, err = tagsMetadata(mutated)
+	changedMeta := meta
+	mutate(base, &changedMeta)
+	tags, err = bam.Tags(changedMeta)
 	if err != nil {
 		return ctrl, err
 	}
-	tags, err = bam.Tags(meta)
-	if err != nil {
-		return ctrl, err
-	}
-	changed, err := goAuxBytes(header, mutated, tags)
+	changed, err := goAuxBytes(header, base, tags)
 	if err != nil {
 		return ctrl, err
 	}
 	ctrl.Observed = firstAuxDifference(native[idx], changed)
 	ctrl.Passed = !bytes.Equal(changed, native[idx])
 	return ctrl, nil
+}
+
+func tagsControls(cases []TagsOracleCase, native [][]byte, header bam.Header) ([]TagsOracleControl, error) {
+	split, err := tagsControl("split-point-1", "simplex-full", cases, native, header,
+		func(_ TagsOracleInput, m *bam.Metadata) { m.SplitPoint++ })
+	if err != nil {
+		return nil, err
+	}
+	rna, err := tagsControl("rna-window", "rna-polytail-window", cases, native, header,
+		func(in TagsOracleInput, m *bam.Metadata) {
+			// Score the whole qstring instead of the poly-A prefix. If the
+			// window were not exercised, the aux bytes would not move.
+			if full, err := decode.MeanQScore(in.Qstring); err == nil {
+				m.MeanQ = full
+			}
+		})
+	if err != nil {
+		return nil, err
+	}
+	return []TagsOracleControl{split, rna}, nil
 }
 
 func compareTagsCase(c TagsOracleCase, native []byte, header bam.Header) (TagsOracleCaseResult, error) {
@@ -757,10 +801,14 @@ func compareTagsCase(c TagsOracleCase, native []byte, header bam.Header) (TagsOr
 // recomputed in Go from the accepted quality rule so qs is a real differential.
 func tagsMetadata(in TagsOracleInput) (bam.Metadata, error) {
 	q := in.Qstring
-	// RNA mean-q uses the poly-A window. The RNA case is a name-only gap case,
-	// so qs parity is not claimed and the plain window is used to build a valid
-	// metadata value.
-	if !in.IsRNAModel && len(q) > int(in.MeanQStart) {
+	// calculate_mean_qscore: an RNA model scores the prefix before the poly-A
+	// run, a DNA model drops mean_qscore_start_pos. The native side computes
+	// this itself, so qs stays a real differential.
+	if in.IsRNAModel {
+		if start := findRNAPolyA(in.Seq); start > 0 && start < len(q) {
+			q = q[:start]
+		}
+	} else if len(q) > int(in.MeanQStart) {
 		q = q[in.MeanQStart:]
 	}
 	meanQ, err := decode.MeanQScore(q)
@@ -805,7 +853,71 @@ func tagsMetadata(in TagsOracleInput) (bam.Metadata, error) {
 		ModelStride:   uint8(in.ModelStride),
 		SampleRate:    in.SampleRate,
 		IsDuplex:      in.IsDuplex,
+		Barcode:       in.Barcode,
+		BarcodeVariant: func() string {
+			if in.Barcoding != nil {
+				return in.Barcoding.Variant
+			}
+			return ""
+		}(),
+		BarcodeScore: in.barcodeScore(),
+		PolyTail:     in.polyTail(),
 	}, nil
+}
+
+func (in TagsOracleInput) barcodeScore() *bam.BarcodeScore {
+	if in.Barcoding == nil {
+		return nil
+	}
+	return &bam.BarcodeScore{
+		Score:       in.Barcoding.BarcodeScore,
+		TopStart:    in.Barcoding.TopStart,
+		TopEnd:      in.Barcoding.TopEnd,
+		TopScore:    in.Barcoding.TopScore,
+		BottomStart: in.Barcoding.BottomStart,
+		BottomEnd:   in.Barcoding.BottomEnd,
+		BottomScore: in.Barcoding.BottomScore,
+	}
+}
+
+func (in TagsOracleInput) polyTail() *bam.PolyTail {
+	if in.RNA == nil {
+		return nil
+	}
+	return &bam.PolyTail{
+		Length: in.RNA.Length,
+		Anchor: in.RNA.Anchor,
+		Boundaries: [2][2]int32{
+			{in.RNA.B0Start, in.RNA.B0End},
+			{in.RNA.B1Start, in.RNA.B1End},
+		},
+	}
+}
+
+// findRNAPolyA is a harness helper for the qs input window, not part of the
+// writer. It mirrors sequence_utils.cpp:142-166.
+func findRNAPolyA(seq string) int {
+	const search, minimum = 200, 5
+	size := len(seq)
+	end := 0
+	if size > search {
+		end = size - search
+	}
+	polyaSize, polyaEnd := 0, size
+	for i := size; i > end; i-- {
+		switch {
+		case seq[i-1] == 'A':
+			polyaSize++
+			if polyaSize >= minimum {
+				polyaEnd = i - 1
+			}
+		case polyaEnd != size:
+			return polyaEnd
+		default:
+			polyaSize = 0
+		}
+	}
+	return polyaEnd
 }
 
 func oracleHeader() bam.Header {

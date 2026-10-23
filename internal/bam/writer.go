@@ -515,17 +515,58 @@ type Metadata struct {
 	ModelStride uint8
 	// SampleRate checks the duration invariant when non-zero.
 	SampleRate uint64
-	// IsDuplex marks a duplex read. The duplex tag set is not ported, so Tags
-	// rejects it instead of silently emitting the simplex set.
+	// IsDuplex selects the pinned duplex tag set, which is shorter than the
+	// simplex set and carries no duration, sample, move or minknow tags.
 	IsDuplex bool
+	// Barcode emits BC before qs. The source "unclassified" sentinel never
+	// emits a barcode tag. BarcodeVariant emits bv and BarcodeScore emits bi,
+	// both only inside a classified barcode block.
+	Barcode        string
+	BarcodeVariant string
+	BarcodeScore   *BarcodeScore
+	// PolyTail emits the RNA poly-tail tags pt and pa after mv. A nil value
+	// means poly-tail detection did not run.
+	PolyTail *PolyTail
 }
 
-// Tags returns the pinned simplex tag order from
-// read_pipeline/base/messages.cpp:108-212. RNA poly-tail tags (pt/pa) are not
-// part of the pinned plain-DNA path and are rejected by omission.
+// BarcodeScore is the typed barcode classification. The source derives the
+// seven bi floats from these fields rather than accepting a pre-built array.
+type BarcodeScore struct {
+	Score                  float32
+	TopStart, TopEnd       int32
+	TopScore               float32
+	BottomStart, BottomEnd int32
+	BottomScore            float32
+}
+
+// info returns the source's seven-float bi payload:
+// score, front_start, front_length, front_score, rear_end, rear_length,
+// rear_score (messages.cpp:462-476).
+func (b BarcodeScore) info() []float32 {
+	return []float32{
+		b.Score,
+		float32(b.TopStart),
+		float32(b.TopEnd - b.TopStart),
+		b.TopScore,
+		float32(b.BottomEnd),
+		float32(b.BottomEnd - b.BottomStart),
+		b.BottomScore,
+	}
+}
+
+// PolyTail is the RNA poly-A estimate the source writes as pt and pa.
+type PolyTail struct {
+	Length     int32
+	Anchor     int32
+	Boundaries [2][2]int32
+}
+
+// Tags returns the pinned tag order from read_pipeline/base/messages.cpp. The
+// simplex set is messages.cpp:108-212 and the duplex set is :215-244. Barcode
+// tags are prepended by extract_sam_lines:457-480.
 func Tags(m Metadata) ([]Aux, error) {
 	if m.IsDuplex {
-		return nil, errors.New("duplex BAM tags are not ported")
+		return duplexTags(m)
 	}
 	if m.Trimmed < 0 || m.NumSamples < 0 || uint64(m.Trimmed) > uint64(m.NumSamples) {
 		return nil, fmt.Errorf("trimmed samples %d are outside %d total samples", m.Trimmed, m.NumSamples)
@@ -536,11 +577,15 @@ func Tags(m Metadata) ([]Aux, error) {
 			return nil, fmt.Errorf("duration %v differs from %d/%d=%v", m.Duration, m.NumSamples, m.SampleRate, want)
 		}
 	}
+	barcode, err := barcodeTags(m)
+	if err != nil {
+		return nil, err
+	}
 	dx := int32(0)
 	if m.DuplexParent {
 		dx = -1
 	}
-	tags := []Aux{
+	tags := append(barcode,
 		Float("qs", m.MeanQ),
 		Float("du", m.Duration),
 		Int32("ns", m.NumSamples),
@@ -548,7 +593,7 @@ func Tags(m Metadata) ([]Aux, error) {
 		Int32("mx", m.Mux),
 		Int32("ch", m.Channel),
 		String("st", m.StartTime),
-	}
+	)
 	if m.Strand != 0 {
 		tags = append(tags, Char("TS", m.Strand))
 	}
@@ -576,6 +621,17 @@ func Tags(m Metadata) ([]Aux, error) {
 		}
 		tags = append(tags, mv)
 	}
+	if m.PolyTail != nil {
+		if m.PolyTail.Length == polyTailNotEnabled {
+			return nil, errors.New("RNA poly-tail length is the not-enabled sentinel; pass a nil PolyTail")
+		}
+		tags = append(tags, Int32("pt", m.PolyTail.Length))
+		tags = append(tags, Int32Array("pa", []int32{
+			m.PolyTail.Anchor,
+			m.PolyTail.Boundaries[0][0], m.PolyTail.Boundaries[0][1],
+			m.PolyTail.Boundaries[1][0], m.PolyTail.Boundaries[1][1],
+		}))
+	}
 	if m.PoreType != "" {
 		tags = append(tags, String("po", m.PoreType))
 	}
@@ -583,6 +639,69 @@ func Tags(m Metadata) ([]Aux, error) {
 		tags = append(tags, String("er", m.EndReason))
 	}
 	return append(tags, Uint32("me", m.MinknowEvents)), nil
+}
+
+// polyTailNotEnabled mirrors ReadCommon::POLY_TAIL_NOT_ENABLED.
+const polyTailNotEnabled = -2
+
+// barcodeTags returns the BC/bv/bi prefix. The source emits nothing when the
+// barcode is empty or the "unclassified" sentinel, and a caller that supplies
+// variant or array data without a classified barcode is refused rather than
+// having its data dropped.
+func barcodeTags(m Metadata) ([]Aux, error) {
+	classified := m.Barcode != "" && m.Barcode != Unclassified
+	if !classified {
+		if m.BarcodeVariant != "" || m.BarcodeScore != nil {
+			return nil, fmt.Errorf("barcode %q with a variant or score is refused: the pinned source emits no barcode tags for it", m.Barcode)
+		}
+		return nil, nil
+	}
+	if m.BarcodeVariant != "" && m.BarcodeScore == nil {
+		return nil, errors.New("barcode variant supplied without a barcode score")
+	}
+	tags := []Aux{String("BC", m.Barcode)}
+	if m.BarcodeVariant != "" {
+		tags = append(tags, String("bv", m.BarcodeVariant))
+	}
+	if m.BarcodeScore != nil {
+		info := m.BarcodeScore.info()
+		for i, v := range info {
+			if math.IsNaN(float64(v)) || math.IsInf(float64(v), 0) {
+				return nil, fmt.Errorf("barcode info value %d is not finite", i)
+			}
+		}
+		tags = append(tags, Float32Array("bi", info))
+	}
+	return tags, nil
+}
+
+// duplexTags returns the pinned duplex set. It deliberately omits the simplex
+// duration, sample, move, scaling, read-number and minknow tags.
+func duplexTags(m Metadata) ([]Aux, error) {
+	if m.PolyTail != nil {
+		return nil, errors.New("duplex reads do not carry RNA poly-tail tags")
+	}
+	barcode, err := barcodeTags(m)
+	if err != nil {
+		return nil, err
+	}
+	tags := append(barcode,
+		Float("qs", m.MeanQ),
+		Int32("dx", 1),
+		Int32("mx", m.Mux),
+		Int32("ch", m.Channel),
+		String("st", m.StartTime),
+	)
+	if m.ReadGroup != "" {
+		tags = append(tags, String("RG", m.ReadGroup))
+	}
+	if m.ParentID != "" {
+		tags = append(tags, String("pi", m.ParentID))
+	}
+	if m.PoreType != "" {
+		tags = append(tags, String("po", m.PoreType))
+	}
+	return tags, nil
 }
 
 // MovesTag encodes the mv array: the model stride followed by binary moves.
