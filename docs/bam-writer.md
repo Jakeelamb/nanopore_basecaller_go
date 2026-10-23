@@ -1,11 +1,13 @@
 # Unaligned BAM writer
 
-Status is host-verified source implementation with one native differential. The
-Go writer reproduces the exact **uncompressed payload** of one retained stock
-simplex BAM: same 733,623 bytes, same SHA256, including QNAMEs and exact
-float32 bits. Compressed bytes and BGZF member topology are explicitly not
-claimed. This is not GPU evidence, not end-to-end basecalling and not
-biological evidence.
+Status is host-verified source implementation with one native payload
+differential and one native conditional-tag differential. The Go writer
+reproduces the exact **uncompressed payload** of one retained stock simplex BAM:
+same 733,623 bytes, same SHA256, including QNAMEs and exact float32 bits. A
+second oracle compiles the pinned C++ tag emitters against htslib and shows
+byte-identical aux for the `TS`, `RX`, `pi`, `sp` and `mv` paths. Compressed
+bytes and BGZF member topology are explicitly not claimed. This is not GPU
+evidence, not end-to-end basecalling and not biological evidence.
 
 `internal/bam` owns BAM header text, record serialization, BGZF framing and the
 typed source tag order in pure Go. `verification/bam` parses the retained native
@@ -65,6 +67,7 @@ close never report success.
 ```sh
 go run ./verification/bam/cmd manifest -bam ORACLE.bam -out NEW_ATTEMPT
 go run ./verification/bam/cmd verify -plan PLAN.json -attempt NEW_ATTEMPT -out NEW_RESULT
+go run ./verification/bam/cmd tags-oracle -dorado-source ROOT -out NEW_RESULT
 ```
 
 The manifest is bound to the native BAM SHA256 and is rejected if it differs
@@ -104,7 +107,8 @@ canonical-positive), `header-mutation`, `dangling-rg`, `duplex-reject`,
 
 Five writer faults execute against synthetic writers: short write, `ENOSPC`,
 `EPIPE`, double close and write after close. A control or fault that does not
-behave as declared fails the receipt. No required test skips.
+behave as declared fails the receipt. The tags oracle adds one mutation control
+and nine cases, with no skip. No required test skips.
 
 ## Host evidence
 
@@ -133,13 +137,60 @@ and its float tags were rounded (`qs 0x41a37b96` became `0x41a37b7f`, `sm
 0x42bbffff` became `0x42bc0000`). Those passes were self-consistent but
 non-probative for native bytes. That receipt is superseded.
 
+## Conditional-tag oracle
+
+The retained native BAM has no `mv`, `pi`, `sp`, `TS`, `RX`, `BC`, `bv`, `bi`,
+`pt` or `pa` tag, so the payload differential cannot reach those paths. A
+second, narrower oracle does: `verification/bam/native/tags_oracle.cpp` is a
+template whose marked regions are replaced by byte-exact slices of the pinned
+source, compiled against real htslib 1.24 and run on synthetic `ReadCommon`
+values.
+
+Pinned whole-file inputs, verified before any slice is taken:
+
+| file | SHA256 |
+| --- | --- |
+| `dorado/read_pipeline/base/messages.cpp` | `5db12169f5eb376bfa70425a5f17fa31eab6be5d027d681caec81dd105ba35e0` |
+| `dorado/utils/sequence_utils.cpp` | `d421325f78981c6710c67d50f9a6bc417701009f49bfd49373ac0fbab66b40f2` |
+| `dorado/hts_utils/include/hts_utils/hts_types.h` | `653f2f71de8bc57847349154bd45a6f66120cb56fcaf847a8ccc9b694a1ae65b` |
+| `dorado/read_pipeline/base/include/.../ReadCommon.h` | `a8ff4bced80c61f07070d6f5ed17ad3c2367c4f7d2a4564f54b5a7e47aec01cb` |
+
+The spliced functions are `generate_read_group`, `generate_read_tags`,
+`generate_duplex_read_tags`, `calculate_mean_qscore`, `extract_sam_lines`,
+`find_rna_polya`, `mean_qscore_from_qstring`, `to_char`, `Attributes`,
+`PrimerClassification`, `BarcodeScoreResult` and `StrandOrientation`. The
+receipt records each slice offset and hash.
+
+Shims, all documented in the template: the `ReadCommon` class body,
+`get_raw_data_samples` (the pinned accessor reads an `at::Tensor` dimension, so
+the oracle stores the same count), `generate_modbase_tags` (the pinned body
+returns early whenever `mod_base_info` is null, which is every case here), and
+`trace_log` (a logging helper with no effect on tag bytes). The oracle is a tag
+differential, not a full Dorado build.
+
+Nine cases run:
+
+- Six ported simplex cases are **byte-identical**: minimal, primer+UMI
+  (`TS`/`RX`), split (`pi`/`sp`), moves (`mv`), full (`TS RX pi sp mv po er`),
+  and duplex-parent (`dx=-1`). `qs` is recomputed in Go with
+  `decode.MeanQScore` and the accepted start-position rule, so it is a real
+  differential rather than an echoed input.
+- `duplex-read` is **rejected** by `bam.Tags`, as declared.
+- `barcode` and `rna-polytail` are **recorded gaps**: the pinned source emits
+  `BC`/`bv`/`bi` and `pt`/`pa`, and Go omits them. Those cases compare tag
+  names, never bytes, and never claim parity.
+
+A `split-point-1` control changes one field and requires the Go aux to move, so
+a pass cannot come from comparing a blob with itself. The comparison uses real
+writer output: the Go side writes a BAM and reads back the aux region, rather
+than re-implementing the encoder in the harness.
+
 ## Open
 
-The native oracle covers one simplex run with no `mv`, `pi`, `sp`, `TS`, `RX`,
-`BC`, `bv`, `bi`, `pt` or `pa` tags and no duplex read. Those conditional paths
-are unit-tested or rejected, but not native-differential. A `tags_oracle.cpp`
-that compiles the pinned `messages.cpp` against synthetic attributes is still
-absent. Multi-`@RG`/multi-run headers, `modbase_models`, `model_stride=-1`,
-larger read sets, other modes, compressed/topology policy and independent review
-remain open. The writer is not yet wired to caller output; `ReadToBamTypeNode`
-metadata beyond the current postcall seam is still missing.
+The barcode (`BC`/`bv`/`bi`) and RNA poly-tail (`pt`/`pa`) tag sets are native-
+differential as a *gap* but not ported. Duplex read tags are native-differential
+and deliberately rejected. Multi-`@RG`/multi-run headers, `modbase_models`
+(`MM`/`ML`/`MN`), `model_stride=-1`, larger read sets, other modes,
+compressed/topology policy and independent review remain open. The writer is not
+yet wired to caller output; `ReadToBamTypeNode` metadata beyond the current
+postcall seam is still missing.
