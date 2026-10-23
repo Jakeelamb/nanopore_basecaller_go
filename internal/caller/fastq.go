@@ -17,13 +17,38 @@ import (
 // FASTQMetadata describes the admitted unbarcoded, unsplit CPU DNA writer path.
 // Times are Unix milliseconds before Dorado's six-digit UTC formatting.
 type FASTQMetadata struct {
-	Channel             uint16 `json:"channel"`
-	StartTimeMS         int64  `json:"start_time_ms"`
-	ProtocolStartTimeMS int64  `json:"protocol_start_time_ms"`
-	RunID               string `json:"run_id"`
-	ModelName           string `json:"model_name"`
-	FlowCellID          string `json:"flowcell_id"`
-	MeanQStart          int    `json:"mean_q_start"`
+	Channel             uint16    `json:"channel"`
+	StartTimeMS         int64     `json:"start_time_ms"`
+	ProtocolStartTimeMS int64     `json:"protocol_start_time_ms"`
+	RunID               string    `json:"run_id"`
+	ModelName           string    `json:"model_name"`
+	FlowCellID          string    `json:"flowcell_id"`
+	MeanQStart          int       `json:"mean_q_start"`
+	TrimFlags           TrimFlags `json:"trim_flags,omitempty"`
+}
+
+type TrimFlags uint8
+
+const (
+	TrimAdapter TrimFlags = 1 << iota
+	TrimPrimer
+)
+
+func (t TrimFlags) text() (string, error) {
+	if t & ^(TrimAdapter|TrimPrimer) != 0 {
+		return "", errors.New("unsupported FASTQ trim flags")
+	}
+	var values []string
+	if t&TrimAdapter != 0 {
+		values = append(values, "adapter")
+	}
+	if t&TrimPrimer != 0 {
+		values = append(values, "primer")
+	}
+	if len(values) == 0 {
+		return "none", nil
+	}
+	return strings.Join(values, ","), nil
 }
 
 func fastqMetadata(r pod5.Read, spec model.Spec) (*FASTQMetadata, error) {
@@ -64,6 +89,10 @@ func (r CalledRead) WriteFASTQ(w io.Writer) error {
 	if m == nil || m.MeanQStart < 0 {
 		return errors.New("missing or invalid FASTQ metadata")
 	}
+	trim, err := m.TrimFlags.text()
+	if err != nil {
+		return err
+	}
 	for _, value := range []string{m.RunID, m.ModelName, m.FlowCellID} {
 		if strings.IndexFunc(value, func(c rune) bool { return c < 33 || c > 126 }) >= 0 {
 			return errors.New("invalid FASTQ metadata text")
@@ -96,7 +125,7 @@ func (r CalledRead) WriteFASTQ(w io.Writer) error {
 	if m.FlowCellID != "" {
 		header += "\tPU:Z:" + m.FlowCellID
 	}
-	header += "\tDT:Z:" + protocol + "\ttm:Z:none"
+	header += "\tDT:Z:" + protocol + "\ttm:Z:" + trim
 	_, err = fmt.Fprintf(w, "%s\n%s\n+\n%s\n", header, r.Sequence, r.Qstring)
 	return err
 }

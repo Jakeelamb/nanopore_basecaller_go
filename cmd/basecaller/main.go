@@ -14,6 +14,7 @@ import (
 
 	"github.com/Jakeelamb/nanopore_basecaller_go/internal/caller"
 	"github.com/Jakeelamb/nanopore_basecaller_go/internal/pod5"
+	"github.com/Jakeelamb/nanopore_basecaller_go/internal/postcall"
 )
 
 type idsFlag []pod5.ID
@@ -38,7 +39,7 @@ func fastq(w io.Writer, r caller.CalledRead) error {
 func run(ctx context.Context, args []string, stdout, stderr io.Writer) (err error) {
 	fs := flag.NewFlagSet("basecaller", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	var modelDir, pod5Path, tensorLib, pod5Lib, device, capture, replay string
+	var modelDir, pod5Path, tensorLib, pod5Lib, device, capture, replay, processing string
 	var size, overlap uint64
 	var all, noTrim, noSplit bool
 	var ids idsFlag
@@ -50,12 +51,13 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) (err erro
 	fs.StringVar(&capture, "capture", "", "new immutable capture directory")
 	fs.StringVar(&replay, "replay", "", "replay one captured manifest without model or POD5 libraries")
 	fs.StringVar(&replay, "manifest", "", "manifest for the replay subcommand")
+	fs.StringVar(&processing, "postprocess", "", "apply default processing to an original core replay")
 	fs.Uint64Var(&size, "chunksize", 12288, "fixed chunk size in samples")
 	fs.Uint64Var(&overlap, "overlap", 600, "overlap in samples")
 	fs.Var(&ids, "read-id", "selected UUID; repeat for multiple reads")
 	fs.BoolVar(&all, "all", false, "explicitly process every read in the input file")
-	fs.BoolVar(&noTrim, "no-trim", false, "required; adapter trimming is unsupported")
-	fs.BoolVar(&noSplit, "disable-read-splitting", false, "required; read splitting is unsupported")
+	fs.BoolVar(&noTrim, "no-trim", false, "disable adapter and primer trimming")
+	fs.BoolVar(&noSplit, "disable-read-splitting", false, "disable pore-adapter read splitting")
 	replayCommand := len(args) > 0 && args[0] == "replay"
 	if replayCommand {
 		args = args[1:]
@@ -66,30 +68,63 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) (err erro
 	if fs.NArg() != 0 {
 		return errors.New("unexpected positional arguments")
 	}
+	policy := postcall.DefaultPolicy()
+	policy.Trim, policy.Split = !noTrim, !noSplit
+	if processing != "" && processing != "default" {
+		return errors.New("--postprocess supports only default")
+	}
+	policyFlags := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "no-trim" || f.Name == "disable-read-splitting" {
+			policyFlags = true
+		}
+	})
 	out := bufio.NewWriter(stdout)
 	defer func() { err = errors.Join(err, out.Flush()) }()
 	if replay != "" || replayCommand {
 		if replay == "" {
 			return errors.New("replay requires --manifest PATH")
 		}
-		if modelDir != "" || pod5Path != "" || tensorLib != "" || pod5Lib != "" || capture != "" || all || len(ids) > 0 {
-			return errors.New("replay accepts no model, input, library, capture or selection flags")
+		if modelDir != "" || pod5Path != "" || tensorLib != "" || pod5Lib != "" || all || len(ids) > 0 || device != "cpu" {
+			return errors.New("replay accepts no model, input, library or selection flags and requires cpu")
 		}
-		r, err := caller.Replay(ctx, replay)
+		if processing == "" && (capture != "" || policyFlags) {
+			return errors.New("core replay processing flags and a new capture require --postprocess default")
+		}
+		var reads []caller.CalledRead
+		if processing == "default" {
+			result, err := caller.ReplayProcessed(ctx, replay, policy, capture)
+			if err != nil {
+				return err
+			}
+			reads = result.Reads
+		} else {
+			var err error
+			reads, err = caller.ReplayRecords(ctx, replay)
+			if err != nil {
+				return err
+			}
+		}
+		data, err := (caller.Processed{Reads: reads}).FASTQBytes()
 		if err != nil {
 			return err
 		}
-		if err := fastq(out, r); err != nil {
+		if _, err := out.Write(data); err != nil {
 			return err
 		}
-		_, err = fmt.Fprintln(stderr, "replayed reads=1")
+		if capture != "" {
+			if _, err := fmt.Fprintln(stderr, "capture", filepath.Join(capture, "processed-manifest.json")); err != nil {
+				return err
+			}
+		}
+		_, err = fmt.Fprintf(stderr, "replayed input_reads=1 output_reads=%d\n", len(reads))
 		return err
 	}
 	if device != "cpu" {
 		return fmt.Errorf("device %q is unsupported; use cpu", device)
 	}
-	if !noTrim || !noSplit {
-		return errors.New("this caller requires --no-trim --disable-read-splitting")
+	if processing != "" {
+		return errors.New("--postprocess is only for an original core replay")
 	}
 	if modelDir == "" || pod5Path == "" || tensorLib == "" || pod5Lib == "" {
 		return errors.New("--model, --pod5, --tensor-library and --pod5-library are required")
@@ -111,25 +146,30 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) (err erro
 	if !all {
 		selection = []pod5.ID(ids)
 	}
-	count := 0
+	count, outputCount := 0, 0
 	if err := reader.Iterate(ctx, selection, func(r pod5.Read) error {
-		called, err := c.Call(ctx, r)
+		called, err := c.Process(ctx, r, policy)
 		if err != nil {
 			return err
 		}
-		if err := fastq(out, called); err != nil {
+		data, err := called.FASTQBytes()
+		if err != nil {
+			return err
+		}
+		if _, err := out.Write(data); err != nil {
 			return err
 		}
 		count++
+		outputCount += len(called.Reads)
 		if capture != "" {
-			_, err = fmt.Fprintf(stderr, "capture %s\n", filepath.Join(capture, r.ID.String(), "manifest.json"))
+			_, err = fmt.Fprintf(stderr, "capture %s\n", filepath.Join(capture, r.ID.String(), "processed-manifest.json"))
 			return err
 		}
 		return nil
 	}); err != nil {
 		return err
 	}
-	_, err = fmt.Fprintf(stderr, "processed reads=%d\n", count)
+	_, err = fmt.Fprintf(stderr, "processed input_reads=%d output_reads=%d\n", count, outputCount)
 	return err
 }
 func main() {

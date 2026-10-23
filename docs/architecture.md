@@ -3,8 +3,10 @@
 The target gives Go ownership of signal processing, model and decoder decisions,
 scheduling and output. Native kernels remain behind typed tensor operations.
 The implemented CPU HAC and SUP paths join POD5 input, scaling, fixed chunks, Go
-model graph, CRF scans, beam decoding, stitching, and FASTQ output. Default
-trimming and splitting, GPU execution, and complete input accounting remain open.
+model graph, CRF scans, beam decoding, stitching, and FASTQ output. The default
+plain DNA SQK-LSK114 pipeline also composes splitting, child materialization,
+adapter/primer detection, trimming, and filtering. GPU execution and complete
+input accounting remain open.
 
 The reference is Dorado commit
 `8b8fc5d36a9c0baab262a743cb175b5878e38ca6`. The original experiment checkout
@@ -42,6 +44,9 @@ and
 | `internal/tensor` | Typed CPU float32 and int64 handles, primitives and native lifetime |
 | `internal/crf` and `internal/decode` | CPU guide/posterior scheduling and beam decisions |
 | `internal/caller` | Selected reads, cancellation, fixed chunk collection, capture/replay and FASTQ |
+| `internal/postcall` | Versioned trim/split policy and pure post-MUX stage composition |
+| `internal/splitter` and `internal/subread` | Pore-adapter decisions, child identity, signal views and metadata |
+| `internal/align`, `internal/ends` and `internal/readtrim` | Native alignment ties, end detection, synchronized trim and filtering |
 | `internal/pod5` | Copied input metadata, selected UUIDs and native signal decompression |
 | Future GPU backend | Native allocations, streams, events and kernel ABI |
 
@@ -146,7 +151,7 @@ and
 [`Pod5.cmake:4-35`](https://github.com/nanoporetech/dorado/blob/8b8fc5d36a9c0baab262a743cb175b5878e38ca6/cmake/Pod5.cmake#L4-L35).
 
 The full caller still needs the boundaries listed in [the port plan](port-plan.md),
-including GPU kernels, splitting, trimming, BAM and end-to-end
+including GPU kernels, positive biological split qualification, BAM and end-to-end
 input accounting. CPU algorithm parity does not qualify native GPU behavior,
 biological accuracy or performance. Retained HAC stage captures replay without
 inference. Capture new expensive producer fixtures once and reuse them for

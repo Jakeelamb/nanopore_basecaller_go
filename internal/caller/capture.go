@@ -248,78 +248,78 @@ func readFloats(dir string, p payload, count int) ([]float32, error) {
 	return out, nil
 }
 
-// Replay verifies retained payloads and reruns only Go decoding and stitching.
-func Replay(ctx context.Context, path string) (CalledRead, error) {
+// replayStage verifies the core payloads and retains normalized signal for composition.
+func replayStage(ctx context.Context, path string) (coreStage, error) {
 	if ctx == nil {
-		return CalledRead{}, errors.New("nil context")
+		return coreStage{}, errors.New("nil context")
 	}
 	if err := ctx.Err(); err != nil {
-		return CalledRead{}, err
+		return coreStage{}, err
 	}
 	info, err := os.Lstat(path)
 	if err != nil {
-		return CalledRead{}, err
+		return coreStage{}, err
 	}
 	if !info.Mode().IsRegular() || info.Size() > 16<<20 {
-		return CalledRead{}, errors.New("invalid capture manifest file")
+		return coreStage{}, errors.New("invalid capture manifest file")
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return CalledRead{}, err
+		return coreStage{}, err
 	}
 	var m manifest
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&m); err != nil {
-		return CalledRead{}, err
+		return coreStage{}, err
 	}
 	if decoder.Decode(new(any)) != io.EOF {
-		return CalledRead{}, errors.New("trailing manifest JSON")
+		return coreStage{}, errors.New("trailing manifest JSON")
 	}
 	if m.Schema != 1 || len(m.Chunks) == 0 || len(m.Chunks) > 1000000 {
-		return CalledRead{}, errors.New("unsupported or empty capture manifest")
+		return coreStage{}, errors.New("unsupported or empty capture manifest")
 	}
 	dir := filepath.Dir(path)
 	var run runPins
 	var input inputPins
 	if err := readJSON(dir, m.Run, &run); err != nil {
-		return CalledRead{}, err
+		return coreStage{}, err
 	}
 	if err := readJSON(dir, m.Input, &input); err != nil {
-		return CalledRead{}, err
+		return coreStage{}, err
 	}
 	config, err := readPayload(dir, run.ModelConfig)
 	if err != nil {
-		return CalledRead{}, err
+		return coreStage{}, err
 	}
 	spec, err := model.Identify(config)
 	if err != nil {
-		return CalledRead{}, err
+		return coreStage{}, err
 	}
 	if spec != run.Spec {
-		return CalledRead{}, errors.New("captured model specification differs from pinned config bytes")
+		return coreStage{}, errors.New("captured model specification differs from pinned config bytes")
 	}
 	cc, opt, err := configuration(run.Spec, Config{ChunkSize: run.Chunks.ChunkSize, Overlap: run.Chunks.Overlap})
 	if err != nil {
-		return CalledRead{}, err
+		return coreStage{}, err
 	}
 	weightCount := 50
 	if spec.Architecture == model.SUP {
 		weightCount = 139
 	}
 	if run.Schema != 1 || cc != run.Chunks || opt != run.Decode || len(run.Weights) != weightCount || len(run.TensorLibrarySHA256) != 64 {
-		return CalledRead{}, errors.New("unsupported capture model or configuration pins")
+		return coreStage{}, errors.New("unsupported capture model or configuration pins")
 	}
 	raw, err := readPayload(dir, input.Raw)
 	if err != nil {
-		return CalledRead{}, err
+		return coreStage{}, err
 	}
 	norm, err := readPayload(dir, input.Normalized)
 	if err != nil {
-		return CalledRead{}, err
+		return coreStage{}, err
 	}
 	if input.Trimmed != 0 && input.Trimmed != 10 || uint64(len(raw)) != 2*input.Metadata.NumSamples || uint64(len(norm)) != 2*input.NormalizedSamples || input.Metadata.NumSamples != input.NormalizedSamples+uint64(input.Trimmed) {
-		return CalledRead{}, errors.New("invalid captured input counts")
+		return coreStage{}, errors.New("invalid captured input counts")
 	}
 	r := input.Metadata
 	r.Signal = make([]int16, len(raw)/2)
@@ -327,45 +327,45 @@ func Replay(ctx context.Context, path string) (CalledRead, error) {
 		r.Signal[i] = int16(binary.LittleEndian.Uint16(raw[i*2:]))
 	}
 	if len(input.FloatBits) != 4 {
-		return CalledRead{}, errors.New("incomplete input float bits")
+		return coreStage{}, errors.New("incomplete input float bits")
 	}
 	for _, key := range []string{"CalibrationScale", "CalibrationOffset", "OpenPoreLevel", "MedianBefore"} {
 		if _, ok := input.FloatBits[key]; !ok {
-			return CalledRead{}, errors.New("missing input float bits")
+			return coreStage{}, errors.New("missing input float bits")
 		}
 	}
 	r.CalibrationScale = math.Float32frombits(input.FloatBits["CalibrationScale"])
 	r.CalibrationOffset = math.Float32frombits(input.FloatBits["CalibrationOffset"])
 	r.OpenPoreLevel = math.Float32frombits(input.FloatBits["OpenPoreLevel"])
 	if err := validateRead(r); err != nil {
-		return CalledRead{}, err
+		return coreStage{}, err
 	}
 	expectedNorm, err := signal.Normalize(r.Signal, signal.Calibration{Scale: r.CalibrationScale, Offset: r.CalibrationOffset}, signal.Standardisation{Mean: run.Spec.Mean, Stdev: run.Spec.Stdev}, adjustment(r.FlowCellProductCode, r.OpenPoreLevel, r.CalibrationScale))
 	if err != nil {
-		return CalledRead{}, err
+		return coreStage{}, err
 	}
 	if len(expectedNorm.Samples) != len(norm)/2 || expectedNorm.Trimmed != input.Trimmed {
-		return CalledRead{}, errors.New("normalized capture length differs")
+		return coreStage{}, errors.New("normalized capture length differs")
 	}
 	for i, v := range expectedNorm.Samples {
 		if v != binary.LittleEndian.Uint16(norm[i*2:]) {
-			return CalledRead{}, errors.New("normalized capture bits differ")
+			return coreStage{}, errors.New("normalized capture bits differ")
 		}
 	}
 	offsets, err := chunk.Fixed(input.NormalizedSamples, cc)
 	if err != nil {
-		return CalledRead{}, err
+		return coreStage{}, err
 	}
 	if len(offsets) != len(m.Chunks) {
-		return CalledRead{}, errors.New("captured chunk count differs")
+		return coreStage{}, errors.New("captured chunk count differs")
 	}
 	chunks := make([]stitch.Chunk, 0, len(m.Chunks))
 	for i, s := range m.Chunks {
 		if err := ctx.Err(); err != nil {
-			return CalledRead{}, err
+			return coreStage{}, err
 		}
 		if s.States != int(spec.OutputChannels/4) || s.Blocks != int(cc.ChunkSize/cc.Stride) || s.Decoded.Offset != offsets[i] || s.Decoded.RawSize != min(cc.ChunkSize, input.NormalizedSamples-offsets[i]) || s.Decoded.Granularity != cc.ChunkSize {
-			return CalledRead{}, errors.New("captured chunk shape or coordinates differ")
+			return coreStage{}, errors.New("captured chunk shape or coordinates differ")
 		}
 		result := crf.Result{Blocks: s.Blocks, States: s.States}
 		for _, part := range []struct {
@@ -375,50 +375,56 @@ func Replay(ctx context.Context, path string) (CalledRead, error) {
 		}{{s.Scores, s.Blocks * 4 * s.States, &result.Scores}, {s.Forward, (s.Blocks + 1) * s.States, &result.Forward}, {s.Backward, (s.Blocks + 1) * s.States, &result.Backward}, {s.Posts, (s.Blocks + 1) * s.States, &result.Posts}} {
 			values, err := readFloats(dir, part.p, part.count)
 			if err != nil {
-				return CalledRead{}, err
+				return coreStage{}, err
 			}
 			*part.dest = values
 		}
 		for _, v := range result.Forward {
 			if math.IsNaN(float64(v)) || math.IsInf(float64(v), 0) {
-				return CalledRead{}, errors.New("nonfinite captured forward guide")
+				return coreStage{}, errors.New("nonfinite captured forward guide")
 			}
 		}
 		decoded, err := decode.Decode(result.DecodeInput(), opt)
 		if err != nil {
-			return CalledRead{}, err
+			return coreStage{}, err
 		}
 		if decoded.Sequence != s.Decoded.Sequence || decoded.Qstring != s.Decoded.Qstring || !reflect.DeepEqual(decoded.Moves, s.Decoded.Moves) {
-			return CalledRead{}, errors.New("captured chunk decode endpoint differs")
+			return coreStage{}, errors.New("captured chunk decode endpoint differs")
 		}
 		chunks = append(chunks, s.Decoded)
 	}
 	result, err := stitch.Stitch(stitch.Config{RawSamples: input.NormalizedSamples, Stride: cc.Stride}, chunks)
 	if err != nil {
-		return CalledRead{}, err
+		return coreStage{}, err
 	}
 	metadata, err := fastqMetadata(r, run.Spec)
 	if err != nil {
-		return CalledRead{}, err
+		return coreStage{}, err
 	}
 	out := CalledRead{ID: r.ID.String(), Sequence: result.Sequence, Qstring: result.Qstring, Moves: result.Moves, NumSamples: r.NumSamples, Trimmed: input.Trimmed, FASTQ: metadata}
 	out, err = trimMux(r, expectedNorm.Samples, cc.Stride, out)
 	if err != nil {
-		return CalledRead{}, err
+		return coreStage{}, err
 	}
 	var expected CalledRead
 	if err := readJSON(dir, m.Output, &expected); err != nil {
-		return CalledRead{}, err
+		return coreStage{}, err
 	}
 	// Schema 1 captures before FASTQ metadata retain their original output bytes.
 	if expected.FASTQ == nil {
 		expected.FASTQ = metadata
 	}
 	if !reflect.DeepEqual(out, expected) {
-		return CalledRead{}, errors.New("replayed endpoint differs from capture")
+		return coreStage{}, errors.New("replayed endpoint differs from capture")
 	}
 	if err := ctx.Err(); err != nil {
-		return CalledRead{}, err
+		return coreStage{}, err
 	}
-	return out, nil
+	return coreStage{CalledRead: out, Input: r, Normalized: expectedNorm, Stride: cc.Stride}, nil
+}
+
+// Replay verifies the original core endpoint without postprocessing.
+func Replay(ctx context.Context, path string) (CalledRead, error) {
+	s, err := replayStage(ctx, path)
+	return s.CalledRead, err
 }

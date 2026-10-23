@@ -18,6 +18,7 @@ import (
 
 	"github.com/Jakeelamb/nanopore_basecaller_go/internal/decode"
 	"github.com/Jakeelamb/nanopore_basecaller_go/internal/pod5"
+	"github.com/Jakeelamb/nanopore_basecaller_go/internal/subread"
 	calleroracle "github.com/Jakeelamb/nanopore_basecaller_go/verification/caller"
 )
 
@@ -35,8 +36,10 @@ func TestPinnedNativeFASTQMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	type metadataCase struct {
-		called CalledRead
-		input  pod5.Read
+		called        CalledRead
+		input         pod5.Read
+		clock, parent string
+		splitPoint    int
 	}
 	var cases []metadataCase
 	for _, n := range []int{1, 59, 60, 61, 127, 1653} {
@@ -69,7 +72,7 @@ func TestPinnedNativeFASTQMetadata(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				cases = append(cases, metadataCase{CalledRead{ID: r.ID.String(), Sequence: strings.Repeat("A", n), Qstring: string(q), FASTQ: m}, r})
+				cases = append(cases, metadataCase{called: CalledRead{ID: r.ID.String(), Sequence: strings.Repeat("A", n), Qstring: string(q), FASTQ: m}, input: r})
 			}
 		}
 	}
@@ -82,7 +85,35 @@ func TestPinnedNativeFASTQMetadata(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		cases = append(cases, metadataCase{CalledRead{ID: r.ID.String(), Sequence: "A", Qstring: "I", FASTQ: m}, r})
+		cases = append(cases, metadataCase{called: CalledRead{ID: r.ID.String(), Sequence: "A", Qstring: "I", FASTQ: m}, input: r})
+	}
+	baseCases := cases
+	cases = nil
+	for _, c := range baseCases {
+		for _, flags := range []TrimFlags{0, TrimAdapter, TrimPrimer, TrimAdapter | TrimPrimer} {
+			copy := c
+			metadata := *c.called.FASTQ
+			metadata.TrimFlags = flags
+			copy.called.FASTQ = &metadata
+			cases = append(cases, copy)
+		}
+	}
+	for _, sample := range []uint64{2, 3, 5002, 5003} {
+		r := testRead()
+		r.AcquisitionStartTimeMS = 1718800934753
+		r.StartSample = sample
+		m, err := fastqMetadata(r, testSpec())
+		if err != nil {
+			t.Fatal(err)
+		}
+		m.MeanQStart = 0
+		m.StartTimeMS = r.AcquisitionStartTimeMS + int64(math.Round(float64(sample)*1000/float64(r.SampleRate)))
+		m.TrimFlags = TrimAdapter | TrimPrimer
+		clock, err := timestamp(m.StartTimeMS)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cases = append(cases, metadataCase{called: CalledRead{ID: subread.DeriveUUID(r.ID.String(), sample), Sequence: "ACGTACGT", Qstring: "!~I+ABCD", FASTQ: m}, input: r, clock: clock, parent: r.ID.String(), splitPoint: int(sample)})
 	}
 	var input, goOutput bytes.Buffer
 	hex := func(s string) string {
@@ -93,7 +124,7 @@ func TestPinnedNativeFASTQMetadata(t *testing.T) {
 	}
 	for _, c := range cases {
 		r := c.called
-		fmt.Fprintf(&input, "%s %s %s %s %s %s %d %d %d %d %d %d\n", r.ID, hex(r.Sequence), hex(r.Qstring), hex(r.FASTQ.RunID), hex(r.FASTQ.ModelName), hex(r.FASTQ.FlowCellID), r.FASTQ.Channel, c.input.StartSample, c.input.SampleRate, c.input.AcquisitionStartTimeMS, r.FASTQ.ProtocolStartTimeMS, r.FASTQ.MeanQStart)
+		fmt.Fprintf(&input, "%s %s %s %s %s %s %d %d %d %d %d %d %d %s %s %d\n", r.ID, hex(r.Sequence), hex(r.Qstring), hex(r.FASTQ.RunID), hex(r.FASTQ.ModelName), hex(r.FASTQ.FlowCellID), r.FASTQ.Channel, c.input.StartSample, c.input.SampleRate, c.input.AcquisitionStartTimeMS, r.FASTQ.ProtocolStartTimeMS, r.FASTQ.MeanQStart, r.FASTQ.TrimFlags, hex(c.clock), hex(c.parent), c.splitPoint)
 		if err := r.WriteFASTQ(&goOutput); err != nil {
 			t.Fatal(err)
 		}

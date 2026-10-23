@@ -20,7 +20,7 @@ import (
 )
 
 var ErrClosed = errors.New("caller is closed")
-var ErrUnsupported = errors.New("caller supports only pinned DNA 5000Hz CPU HAC or SUP with no adapter trimming or read splitting")
+var ErrUnsupported = errors.New("caller supports only pinned DNA 5000Hz CPU HAC or SUP")
 
 type Config struct {
 	TensorLibrary, ModelDir, CaptureDir string
@@ -169,53 +169,67 @@ func validateRead(r pod5.Read) error {
 	}
 	return nil
 }
+
+type coreStage struct {
+	CalledRead
+	Input      pod5.Read
+	Normalized signal.Normalized
+	Stride     uint64
+}
+
+// Call preserves the post-MUX core endpoint used by producer verification.
 func (c *Caller) Call(ctx context.Context, r pod5.Read) (CalledRead, error) {
+	s, err := c.callStage(ctx, r)
+	return s.CalledRead, err
+}
+
+func (c *Caller) callStage(ctx context.Context, r pod5.Read) (stage coreStage, err error) {
 	if c == nil {
-		return CalledRead{}, ErrClosed
+		return coreStage{}, ErrClosed
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.engine == nil {
-		return CalledRead{}, ErrClosed
+		return coreStage{}, ErrClosed
 	}
 	if ctx == nil {
-		return CalledRead{}, errors.New("nil context")
+		return coreStage{}, errors.New("nil context")
 	}
 	if err := ctx.Err(); err != nil {
-		return CalledRead{}, err
+		return coreStage{}, err
 	}
 	if err := validateRead(r); err != nil {
-		return CalledRead{}, err
+		return coreStage{}, err
 	}
 	spec := c.model.Spec()
 	metadata, err := fastqMetadata(r, spec)
 	if err != nil {
-		return CalledRead{}, err
+		return coreStage{}, err
 	}
 	normalized, err := signal.Normalize(r.Signal, signal.Calibration{Scale: r.CalibrationScale, Offset: r.CalibrationOffset}, signal.Standardisation{Mean: spec.Mean, Stdev: spec.Stdev}, adjustment(r.FlowCellProductCode, r.OpenPoreLevel, r.CalibrationScale))
 	if err != nil {
-		return CalledRead{}, err
+		return coreStage{}, err
 	}
 	offsets, err := chunk.Fixed(uint64(len(normalized.Samples)), c.chunks)
 	if err != nil {
-		return CalledRead{}, err
+		return coreStage{}, err
 	}
 	var capture *captureRead
 	if c.capture != "" {
 		capture, err = beginRead(c.capture, c.runFile, r, normalized)
 		if err != nil {
-			return CalledRead{}, err
+			return coreStage{}, err
 		}
 	}
 	decoded := make([]stitch.Chunk, 0, len(offsets))
 	for i, offset := range offsets {
 		if err := ctx.Err(); err != nil {
-			return CalledRead{}, err
+			return coreStage{}, err
 		}
 		end := min(offset+c.chunks.ChunkSize, uint64(len(normalized.Samples)))
 		padded, err := chunk.RepeatPad(normalized.Samples[offset:end], c.chunks.ChunkSize)
 		if err != nil {
-			return CalledRead{}, err
+			return coreStage{}, err
 		}
 		values := make([]float32, len(padded))
 		for i, v := range padded {
@@ -223,41 +237,41 @@ func (c *Caller) Call(ctx context.Context, r pod5.Read) (CalledRead, error) {
 		}
 		result, err := c.infer(ctx, values)
 		if err != nil {
-			return CalledRead{}, fmt.Errorf("chunk %d: %w", i, err)
+			return coreStage{}, fmt.Errorf("chunk %d: %w", i, err)
 		}
 		if err := ctx.Err(); err != nil {
-			return CalledRead{}, err
+			return coreStage{}, err
 		}
 		d, err := decode.Decode(result.DecodeInput(), c.options)
 		if err != nil {
-			return CalledRead{}, fmt.Errorf("chunk %d decode: %w", i, err)
+			return coreStage{}, fmt.Errorf("chunk %d decode: %w", i, err)
 		}
 		dc := stitch.Chunk{Offset: offset, RawSize: end - offset, Granularity: c.chunks.ChunkSize, Sequence: d.Sequence, Qstring: d.Qstring, Moves: d.Moves}
 		decoded = append(decoded, dc)
 		if capture != nil {
 			if err := capture.addChunk(i, dc, result); err != nil {
-				return CalledRead{}, err
+				return coreStage{}, err
 			}
 		}
 	}
 	if err := ctx.Err(); err != nil {
-		return CalledRead{}, err
+		return coreStage{}, err
 	}
 	assembled, err := stitch.Stitch(stitch.Config{RawSamples: uint64(len(normalized.Samples)), Stride: c.chunks.Stride}, decoded)
 	if err != nil {
-		return CalledRead{}, err
+		return coreStage{}, err
 	}
 	out := CalledRead{ID: r.ID.String(), Sequence: assembled.Sequence, Qstring: assembled.Qstring, Moves: assembled.Moves, NumSamples: r.NumSamples, Trimmed: normalized.Trimmed, FASTQ: metadata}
 	out, err = trimMux(r, normalized.Samples, c.chunks.Stride, out)
 	if err != nil {
-		return CalledRead{}, err
+		return coreStage{}, err
 	}
 	if capture != nil {
 		if err := capture.finish(out); err != nil {
-			return CalledRead{}, err
+			return coreStage{}, err
 		}
 	}
-	return out, nil
+	return coreStage{CalledRead: out, Input: r, Normalized: normalized, Stride: c.chunks.Stride}, nil
 }
 func (c *Caller) infer(ctx context.Context, values []float32) (out crf.Result, err error) {
 	var handles []*tensor.Tensor

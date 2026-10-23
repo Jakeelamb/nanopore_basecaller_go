@@ -5,7 +5,10 @@ A separate Go port of caller computations from Dorado 2.1.2, pinned to
 
 The Go CPU caller reads POD5 and produces HAC or SUP FASTQ. On one predeclared
 HG002 development read, both models match unchanged Dorado byte for byte,
-including headers, sequence, and qualities. HAC emits 1,653 bases and SUP 1,650.
+including headers, sequence, and qualities. With trimming disabled, HAC emits
+1,653 bases and SUP 1,650. Default adapter/primer processing emits 1,615 and
+1,619 bases and matches separate unchanged stock controls using the same saved
+Go inference outputs.
 These bounded results do not qualify other reads, GPU execution, biological
 accuracy, or performance.
 The original experiment repository remains the stock control.
@@ -22,20 +25,25 @@ Implemented in Go:
 - A CPU caller CLI with immutable stage captures and replay without inference.
 - Source-linked mux-change tail trimming, including its always-on behavior with
   `--no-trim`. Positive fixtures are synthetic; the genuine controls are non-mux.
+- Plain DNA SQK-LSK114 pore-adapter splitting, child identity and metadata,
+  adapter/primer detection, synchronized trimming, and minimum-length filtering.
+  Positive split fixtures are synthetic; the genuine controls do not split.
 
 Native differential tests compile pinned original C++ algorithms or audited
 source slices. [The architecture](docs/architecture.md), [port coverage](docs/port-plan.md),
 and [decoder qualification](docs/decode.md) describe the boundaries and open work.
 The [caller instructions and retained endpoint](docs/caller.md) describe the
-working mode. Adapter trimming, splitting, GPU execution, batching, and BAM
-output remain open. The CLI requires `--no-trim --disable-read-splitting`.
+working mode. GPU execution, batching, BAM output, and broader input acceptance
+remain open.
 
 ## Call and replay
 
 Build with `go build -o bin/basecaller ./cmd/basecaller`. The caller takes
 `--model`, `--pod5`, `--tensor-library`, `--pod5-library`, and selected
 `--read-id` values or explicit `--all`. Use `--device cpu`, `--chunksize 12288`,
-`--overlap 600`, and the two required flags above. See the
+`--overlap 600`. Adapter/primer trimming and pore-adapter splitting are enabled
+by default for the supported kit. `--no-trim` and `--disable-read-splitting`
+disable these stages independently. See the
 [complete invocation](docs/caller.md#run-one-selected-read).
 
 `--capture NEW_DIRECTORY` retains raw signal, normalization, scores, guides,
@@ -76,6 +84,8 @@ have separate native acceptance commands and cannot inherit the CPU-core verdict
 `DORADO_SOURCE` points at the pinned checkout, so that command alone is not a
 native parity claim. [CPU CI](.github/workflows/cpu-parity.yml) runs the pinned
 native algorithm checks. It does not run inference or acquire experiment cohorts.
+The nested `artifacts/go.mod` keeps preserved evidence source files out of
+normal Go package discovery. All generated evidence remains ignored by Git.
 
 Compare retained output files without basecalling again:
 

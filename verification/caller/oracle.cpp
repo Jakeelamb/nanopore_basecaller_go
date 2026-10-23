@@ -50,9 +50,10 @@ struct ReadCommon {
 #include "quality.slice.cpp"
 #include "tags.slice.cpp"
 struct TrimFlags {
-    bool has_adapter() const { return false; }
-    bool has_primer() const { return false; }
-    bool has_barcode() const { return false; }
+    unsigned bits{};
+    bool has_adapter() const { return bits & 1; }
+    bool has_primer() const { return bits & 2; }
+    bool has_barcode() const { return bits & 4; }
 };
 #include "trim.slice.cpp"
 struct Barcode { std::string barcode_name, normalized_barcode_name, alias; };
@@ -88,21 +89,24 @@ int main() {
         for (const auto* tag : fastq_aux_tags) {
             if (hts_set_opt(output, FASTQ_OPT_AUX, tag) < 0) throw std::runtime_error("cannot set FASTQ tag");
         }
-        std::string id, seq, quality, run, model, flow;
+        std::string id, seq, quality, run, model, flow, clock_override, parent;
         uint64_t sample, run_sample_rate;
         int64_t run_acquisition_start_time_ms, protocol;
-        unsigned channel, qstart;
+        unsigned channel, qstart, trim_flags;
+        int split_point;
         auto* header = sam_hdr_init();
-        while (std::cin >> id >> seq >> quality >> run >> model >> flow >> channel >> sample >> run_sample_rate >> run_acquisition_start_time_ms >> protocol >> qstart) {
+        while (std::cin >> id >> seq >> quality >> run >> model >> flow >> channel >> sample >> run_sample_rate >> run_acquisition_start_time_ms >> protocol >> qstart >> trim_flags >> clock_override >> parent >> split_point) {
             if (!run_sample_rate) throw std::runtime_error("zero sample rate");
             dorado::ReadCommon read;
             read.seq=unhex(seq); read.qstring=unhex(quality); read.run_id=unhex(run); read.model_name=unhex(model);
             read.attributes.channel_number=channel; read.attributes.sample_rate=run_sample_rate;
             read.mean_qscore_start_pos=qstart;
+            read.parent_read_id=unhex(parent); read.split_point=split_point;
             struct { uint64_t start_sample; } read_data{sample};
             using namespace dorado;
 #include "clock.slice.cpp"
             read.attributes.start_time=start_time;
+            if (clock_override != "-") read.attributes.start_time=unhex(clock_override);
             HtsData data;
             data.bam_ptr.reset(bam_init1());
             std::string phred=read.qstring;
@@ -110,6 +114,7 @@ int main() {
             if (bam_set1(data.bam_ptr.get(),id.size(),id.c_str(),BAM_FUNMAP,-1,-1,0,0,nullptr,-1,-1,0,read.seq.size(),read.seq.c_str(),phred.c_str(),0)<0) throw std::runtime_error("cannot make oracle BAM");
             read.generate_read_tags(data.bam_ptr.get(),false,false);
             data.read_attrs.flowcell_id=unhex(flow); data.read_attrs.protocol_start_time_ms=protocol;
+            data.read_attrs.trim_flags.bits=trim_flags;
             hts_writer::HtsFileWriter writer;
             writer.prepare_item(data);
             std::cerr << "mean_bits=" << std::bit_cast<uint32_t>(read.calculate_mean_qscore()) << '\n';
