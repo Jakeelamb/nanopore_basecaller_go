@@ -1,0 +1,11 @@
+This repository includes Go translations and verification adapters derived from
+Oxford Nanopore Technologies Dorado 2.1.2, source commit
+8b8fc5d36a9c0baab262a743cb175b5878e38ca6.
+
+Upstream: https://github.com/nanoporetech/dorado
+Copyright Oxford Nanopore Technologies PLC and contributors.
+The Oxford Nanopore Technologies PLC Public License Version 1.0 is retained
+verbatim in LICENCE.dorado.txt and applies to covered derived code.
+
+Native libraries, model weights, raw signals, reference and truth data, and
+generated output are not distributed by this repository.

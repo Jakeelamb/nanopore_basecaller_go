@@ -1,0 +1,5 @@
+/artifacts/
+/bin/
+/external/
+*.test
+*.prof
