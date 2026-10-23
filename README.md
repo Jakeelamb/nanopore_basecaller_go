@@ -108,6 +108,9 @@ The qualified development backend uses CPU operations from the pinned CUDA 13
 Torch distribution. Its match to one stock CUDA 12 CPU endpoint does not
 establish general runtime compatibility. Reuse captured outputs when their pins
 match. GPU execution requires a separate implementation and acceptance.
+The [SUP QKV half-weight preparation](docs/koi-qkv-weights.md) now matches
+native CPU source blocks exactly. It prepares host buffers for future GPU use
+and does not run in the current caller.
 
 Changes use feature branches and pull requests targeting `main`. See
 [AGENTS.md](AGENTS.md) for the experiment and evidence rules.
