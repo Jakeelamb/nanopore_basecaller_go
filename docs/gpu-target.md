@@ -6,11 +6,13 @@ and the dispatch rejection controls also passed. Missing runtime qualification
 was rejected before native work. This does not qualify the standalone Koi link,
 GPU runtime maps or device observations.
 
-P01 has an implemented and host-verified source checkpoint. Native observations
-remain unobserved. No native compiler, GPU query, lock operation, download or
-benchmark was executed for this checkpoint. Harness2 remains held after its
-terminal failure pending reader/audit. An idle GPU or free lock is not admission.
-No native phase has been released.
+P01 has an implemented and host-verified source checkpoint plus one admitted
+native capture. The capture compiled and ran the standalone probe on the pinned
+device, observed the Koi capability statuses and device properties, and matched
+every Go dispatch predicate and the 16-request matrix. It did not load weights or
+launch model kernels. Harness2 remains held after its terminal failure pending
+reader/audit. A free lock or idle GPU is not admission; the capture ran under the
+recorded coordinator grant in `provenance/gpu-admission-grant.json`.
 
 ## Frozen scope
 
@@ -147,8 +149,8 @@ weight counts remain expected counts and do not authenticate weight manifests.
 
 Replay uses `-plan provenance/gpu-target.json -replay SAVED/profile.json
 -frozen-sha256 TRUSTED_SHA`. It prints the validated receipt and does not recapture.
-Replay and runtime-admitted modes are mutually exclusive. All commands are
-currently deferred under the source-only grant.
+Replay and runtime-admitted modes are mutually exclusive. Replay and capture were
+executed for P01 under the recorded coordinator grant; they were not deferred.
 
 ## Deferred checks and remaining closure
 
@@ -171,21 +173,45 @@ Required source tests are:
 - `TestRetainedMetadataBindsExactCompileArgv`
 - `TestRetainedMetadataReparsesDepfileTargetAndRequiredHeaders`
 
-All 16 are written and passed on the host. Required subsequent checks include the
-maintained parity command, C++ compile/link, admitted native capture, saved-byte
-import, effective frozen-evidence mutant and independent exact-delta/receipt
-review. No skipped test qualifies a gate.
+All 16 are written and passed on the host. The C++ compile/link, admitted native
+capture and saved-byte import are recorded below. Remaining checks are the
+maintained parity command, an effective frozen-evidence mutant and independent
+exact-delta/receipt review. No skipped test qualifies a gate.
 
-Concrete unverified closure is standalone Koi link/toolkit compatibility and
-actual mapped runtime agreement with accepted ABI4 inputs. The implementation
-attempts that closure and retains its failures; no missing P02 interface is known.
-Full weight manifests, per-kernel execution, allocation/live-byte audits and
-biological acceptance remain downstream evidence. Declare initialized regions
-and exclusions prospectively before those captures. No HG005 selection is used.
+## P01 native evidence
+
+Retained receipt: `artifacts/tensor/gpu-profile-native-20261023T204747Z/profile.json`,
+SHA256 `67582f569c4e9cbcd3f84c2158584a04537302c1215c1adfaf3a375f3c84e829`,
+status `predicate_observation_passed`. It pins 283 inputs and 38 mapped runtime
+objects and contains three command receipts (compiler, compile, probe). Replay
+import with that frozen hash revalidated the receipt and reproduced the same
+observation and 16-request matrix without executing a child or taking the lock.
+
+Observed on the pinned UUID: compute 12.0, 36 SMs, driver 13040, runtime 13040,
+`CUDA_VISIBLE_DEVICES` absent. Koi F16 and E4M3 both returned `KOI_SUCCESS` (0).
+Source predicates observed `hac_fused`, `sup_tiled`, `fp8`, `int8`, `hac_vcs`,
+`sup_vcs`, `default_vcs` all true with `remove_bits=4`, matching the Go
+`Selection` for every matrix entry.
+
+One earlier attempt is preserved as a failed attempt:
+`artifacts/tensor/gpu-profile-native-20261023T204637Z/compile.stderr` shows the
+probe failing to link `koi_tc_is_available(KoiTypeId)`. The probe had included
+`koi.h` with C++ linkage; Dorado includes it inside `extern "C"`
+(`nn/TxModules.cpp:24-27`, `nn/FLSTMStack.cpp:9-13`) and the archive exports C
+symbols only. The probe now uses the same linkage. This is a link-closure fix in
+verification code, not a change to any pinned Dorado expression.
+
+These observations cover device capability, source-predicate agreement and
+runtime mapping only. They do not load weights, execute a model graph or kernel,
+or establish basecalling output. Per-kernel execution, allocation audits and
+biological acceptance remain downstream.
+
+Declare initialized regions and exclusions prospectively before weight and kernel
+captures. No HG005 selection is used.
 
 The integrated units are committed together on the port branch. Exact
 pre-correction small-source snapshots are retained in the authorized outbox under
 `go-profile/pre-correction-import-p2/`. This correction addresses the two accepted
 P2 static-review findings; it claims no acceptance. Host checks and their hashes
-are retained in `artifacts/gpu-plan/host-check-20261023T183053Z/`. Native and
-independent review remain outstanding.
+are retained in `artifacts/gpu-plan/host-check-20261023T183053Z/`. Native predicate
+observation is recorded above; independent review remains outstanding.
