@@ -39,6 +39,21 @@ func TestPinnedManifest(t *testing.T) {
 	}
 }
 
+func TestPinnedSpecsWithoutModelFiles(t *testing.T) {
+	for _, arch := range []Architecture{HAC, SUP} {
+		spec, err := Pinned(arch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if spec.Architecture != arch || spec.Name == "" || len(spec.ConfigSHA256) != 64 || spec.Stride != 6 || spec.MeanQStart != 60 || spec.SampleRate != 5000 {
+			t.Fatalf("%s spec %+v", arch, spec)
+		}
+	}
+	if _, err := Pinned("unknown"); err == nil {
+		t.Fatal("unknown architecture accepted")
+	}
+}
+
 func TestUnknownConfig(t *testing.T) {
 	for _, b := range [][]byte{nil, []byte("[model]\n"), []byte(HACConfigSHA256)} {
 		if _, err := Identify(b); err == nil {
@@ -67,6 +82,9 @@ func TestConfigPins(t *testing.T) {
 		}
 		if spec.Name != name || spec.Stride != 6 || spec.MeanQStart != 60 {
 			t.Fatal(spec)
+		}
+		if pinned, err := Pinned(spec.Architecture); err != nil || pinned != spec {
+			t.Fatalf("pinned spec differs from config: %+v %v", pinned, err)
 		}
 		if _, err = Identify(append(data, '\n')); err == nil {
 			t.Fatal("mutated config accepted")

@@ -44,26 +44,37 @@ type Spec struct {
 	MeanQStart                                             int
 }
 
+// Pinned returns the admitted spec for an architecture without reading model
+// files. Callers that must not load weights use this to keep the exact model
+// identity, for example when replaying a retained capture.
+func Pinned(architecture Architecture) (Spec, error) {
+	switch architecture {
+	case HAC:
+		return Spec{Name: "dna_r10.4.1_e8.2_400bps_hac@v6.0.0", ConfigSHA256: HACConfigSHA256,
+			Architecture: HAC, Features: 1, SampleRate: 5000, Stride: 6, InnerStride: 6, Granularity: 6,
+			ChunkSize: 12288, Overlap: 600, StateLen: 4, OutputChannels: 1024,
+			Mean: 94, Stdev: 24, QScale: 1.02, QBias: -0.3, BlankScore: 2, MeanQStart: 60}, nil
+	case SUP:
+		return Spec{Name: "dna_r10.4.1_e8.2_400bps_sup@v5.2.0", ConfigSHA256: SUPConfigSHA256,
+			Architecture: SUP, Features: 1, SampleRate: 5000, Stride: 6, InnerStride: 12, Granularity: 768,
+			ChunkSize: 12288, Overlap: 600, StateLen: 5, OutputChannels: 4096,
+			Mean: 93.69239463939118, Stdev: 23.506745239082388, QScale: 1.05, QBias: .3, BlankScore: 2, MeanQStart: 60}, nil
+	default:
+		return Spec{}, fmt.Errorf("unknown model architecture %q", architecture)
+	}
+}
+
 func Identify(config []byte) (Spec, error) {
 	h := sha256.Sum256(config)
 	pin := hex.EncodeToString(h[:])
-	s := Spec{ConfigSHA256: pin, Features: 1, SampleRate: 5000, Stride: 6,
-		ChunkSize: 12288, Overlap: 600, BlankScore: 2, MeanQStart: 60}
 	switch pin {
 	case HACConfigSHA256:
-		s.Name = "dna_r10.4.1_e8.2_400bps_hac@v6.0.0"
-		s.Architecture, s.InnerStride, s.Granularity = HAC, 6, 6
-		s.StateLen, s.OutputChannels = 4, 1024
-		s.Mean, s.Stdev, s.QScale, s.QBias = 94, 24, 1.02, -0.3
+		return Pinned(HAC)
 	case SUPConfigSHA256:
-		s.Name = "dna_r10.4.1_e8.2_400bps_sup@v5.2.0"
-		s.Architecture, s.InnerStride, s.Granularity = SUP, 12, 768
-		s.StateLen, s.OutputChannels = 5, 4096
-		s.Mean, s.Stdev, s.QScale, s.QBias = 93.69239463939118, 23.506745239082388, 1.05, .3
+		return Pinned(SUP)
 	default:
 		return Spec{}, fmt.Errorf("unknown model config SHA256 %s", pin)
 	}
-	return s, nil
 }
 
 type WeightReceipt struct {

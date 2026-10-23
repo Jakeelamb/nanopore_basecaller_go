@@ -48,6 +48,7 @@ about zero padding does not describe the consuming implementation.
 | CUDA tensor primitives | ABI4 ownership and raw half transfer; 37 exact source-GEMM/copy cases with guards; all 32 float32 precision mutants differ | Model operations, Koi descriptors/kernels, other devices and wider arithmetic/layout domains |
 | GPU batch geometry | Host-tested fixed and variable membership, chunk tables, LSTM/transformer layouts and granularity transitions for both lanes | Extracted native oracle, device table bytes and captured mixed batches |
 | GPU decoded assembly | Host-tested completion-order collector restoring source order before the accepted stitch unit | Genuine GPU decoded-chunk replay after the decoder units |
+| GPU postcall replay | Host-tested reuse of the accepted postcall seam from decoded GPU reads, versioned sealed captures and producer-free replay receipts | Genuine GPU capture, stock header/record differential in all four modes, DS-tag predicate and independent review |
 | HAC inference | 55 source-oracle fixtures and one genuine-weight score capture | Other inputs and device paths |
 | SUP inference | 12 source-oracle fixtures, 287 stages, 15,228,786 exact float32 values and genuine 18-layer weights | Other inputs and device paths |
 | SUP GPU weight preparation on host | QKV interleave, FP16 tiling and rounding match three full source fixtures and all 65,536 half patterns; int8 source/input preparation reviewed | Int8 arithmetic captures and Go implementation, FP8 preparation, other caches, device upload and graph integration |

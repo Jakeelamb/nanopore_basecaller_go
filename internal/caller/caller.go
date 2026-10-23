@@ -144,6 +144,13 @@ func validateRead(r pod5.Read) error {
 	if r.NumSamples != uint64(len(r.Signal)) || len(r.Signal) == 0 {
 		return errors.New("read signal length differs from num_samples or is empty")
 	}
+	return validateAdmission(r)
+}
+
+// validateAdmission applies the accepted plain-DNA flow-cell and kit contract.
+// It does not require retained raw signal, so replay paths that carry only
+// postcall metadata can reuse the same admission decision.
+func validateAdmission(r pod5.Read) error {
 	if r.SampleRate != 5000 {
 		return fmt.Errorf("sample rate %d: %w", r.SampleRate, ErrUnsupported)
 	}

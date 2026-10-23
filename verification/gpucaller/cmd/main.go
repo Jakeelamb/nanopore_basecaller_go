@@ -23,6 +23,7 @@ func main() {
 	}
 	handlers := gpucaller.Handlers{}
 	handlers.Inventory = gpucaller.InventoryHandlers()
+	handlers.PostcallCheck = gpucaller.PostcallHandlers()
 	err := gpucaller.Dispatch(gpucaller.Request{Unit: gpucaller.Unit(*unit), Mode: gpucaller.Mode(*mode), Input: *input, Output: *output, Admitted: *admitted}, handlers)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
