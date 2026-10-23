@@ -37,25 +37,26 @@ algorithms, so do not assume stock inference is nondeterministic.
 `BasecallerNode.cpp` repeat-pads short chunks. The comment in the chunk planner
 about zero padding does not describe the consuming implementation.
 
-## Remaining full caller boundaries
+## Boundary evidence and remaining work
 
-| Boundary | Acceptance required |
-| --- | --- |
-| POD5 loading | Native signal bytes, calibration, UUID and metadata fixtures, invalid-input rejection |
-| Scaling | Full native ScalerNode and host SIMD parity, including open-pore adjustment and all supported modes |
-| Chunk planning and padding | All three production algorithms and exact model input bytes |
-| Model config and weights | Exact architecture and tensor names, shapes, dtypes and content |
-| HAC inference | Pinned factorized LSTM native forward tensors on development inputs |
-| SUP inference | Pinned transformer native forward tensors on development inputs |
-| CRF decoding | Native guide, posterior, beam tie behavior, quality and move outputs |
-| Stitching | Exact sequences, qualities and moves including partial strides and variable chunks |
-| Split and trim | Native signal split identities, intervals, adapters and quality filtering |
-| Scheduling | Batching, cancellation, bounded memory, deterministic replay and error accounting |
-| BAM and FASTQ output | Canonical records plus separately demonstrated byte identity |
-| Complete caller | Same declared development reads, all parents accounted for, end-to-end native comparison |
+| Boundary | Accepted at HAC freeze `7a0f193` | Remaining acceptance |
+| --- | --- | --- |
+| POD5 loading | Two independent native fixtures, copied signal/calibration/UUID/metadata and selection guards | Broader input versions and complete-file processing |
+| Scaling | Standardized DNA formula and half bits; one whole caller endpoint | Full native ScalerNode/SIMD and other scaling modes |
+| Chunk planning and padding | All three source algorithms, repeat padding, fixed caller chunks | Integrated variable and transformer scheduling |
+| Model config and weights | Exact HAC config and 50 weight hashes/shapes; SUP identified | SUP runtime weight mapping and execution |
+| HAC inference | 55 source-oracle fixtures and one genuine-weight score capture | Other inputs and device paths |
+| SUP inference | Exact graph and weight trace | Native transformer stage and final caller comparisons |
+| CRF decoding | CPU N=1 scans, posteriors, beam diagnostics and quality bits | Batched scans and GPU kernels |
+| Stitching | Source algorithm fixtures including partial strides | Integration with variable chunk paths |
+| Split and trim | No adapter trimming or splitting in admitted mode | Native split identities, intervals, adapters and filtering |
+| Scheduling | Selected reads, CPU batch one, cancellation, ownership, immutable captures and replay | Batching, GPU streams, complete input accounting |
+| BAM and FASTQ output | One FASTQ UUID/sequence/quality endpoint | Stock FASTQ headers, BAM records and separate raw byte identity |
+| Complete caller | One predeclared unsplit untrimmed HAC development read | SUP, default pipeline, complete declared input sets |
 
-Each boundary remains open until its own evidence exists. The package tests and
-CPU CI cannot qualify a full caller, GPU behavior, biological accuracy, or speed.
+The linked unit documents describe the exact fixture and runtime limits. A
+bounded pass does not close the remaining column. Package tests and CPU CI do
+not qualify a full caller, GPU behavior, biological accuracy, or speed.
 
 ## GPU boundary
 
