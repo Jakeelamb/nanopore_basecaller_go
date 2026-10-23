@@ -1,5 +1,10 @@
 #include <cuda_runtime_api.h>
+
+// Dorado includes the Koi C header inside an extern "C" block (TxModules.cpp,
+// FLSTMStack.cpp); the archive exports C linkage symbols only.
+extern "C" {
 #include <koi.h>
+}
 
 #include <algorithm>
 #include <array>
