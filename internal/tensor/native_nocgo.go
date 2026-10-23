@@ -19,3 +19,5 @@ func (*nativeBackend) dataInt64(uint64, int) ([]int64, error)    { return nil, E
 func (*nativeBackend) sdpa(uint64, uint64, uint64, []int64, []byte) (uint64, error) {
 	return 0, ErrUnsupported
 }
+
+func (*nativeBackend) cuda(cudaRequest) (cudaResult, error) { return cudaResult{}, ErrUnsupported }

@@ -143,12 +143,12 @@ func TestNativeDecoderPrimitives(t *testing.T) {
 		t.Fatalf("closed index operand: %v", err)
 	}
 }
-func TestNativeRejectPriorABI(t *testing.T) {
+func TestNativeRejectOldABI(t *testing.T) {
 	path := os.Getenv("NANOPORE_TENSOR_OLD_BACKEND")
 	if path == "" {
-		t.Skip("set NANOPORE_TENSOR_OLD_BACKEND for retained ABI 2 rejection")
+		t.Skip("set NANOPORE_TENSOR_OLD_BACKEND for retained ABI 3 rejection")
 	}
-	if _, err := Open(path); err == nil || !strings.Contains(err.Error(), "unsupported tensor ABI version 2") {
+	if _, err := Open(path); err == nil || !strings.Contains(err.Error(), "unsupported tensor ABI version 3") {
 		t.Fatalf("prior ABI rejection: %v", err)
 	}
 }

@@ -13,3 +13,14 @@ int nt_call_data(nt_library*,uint64_t,uint64_t,float*,size_t,char*,size_t);
 int nt_call_data_int64(nt_library*,uint64_t,uint64_t,int64_t*,size_t,char*,size_t);
 int nt_call_run(nt_library*,uint64_t,int,const uint64_t*,size_t,const int64_t*,size_t,const double*,size_t,uint64_t*,char*,size_t);
 int nt_call_sdpa(nt_library*,uint64_t,uint64_t,uint64_t,uint64_t,const int64_t*,size_t,const uint8_t*,size_t,uint64_t*,char*,size_t);
+
+int nt_call_cuda_device_open(nt_library *library, uint64_t engine, int32_t ordinal, uint64_t *out, nt_cuda_detail *detail, char *error, size_t error_cap);
+int nt_call_cuda_device_close(nt_library *library, uint64_t engine, uint64_t device, nt_cuda_detail *detail, char *error, size_t error_cap);
+int nt_call_cuda_stream_open(nt_library *library, uint64_t engine, uint64_t device, uint64_t *out, nt_cuda_detail *detail, char *error, size_t error_cap);
+int nt_call_cuda_stream_close(nt_library *library, uint64_t engine, uint64_t stream, nt_cuda_detail *detail, char *error, size_t error_cap);
+int nt_call_cuda_half_new(nt_library *library, uint64_t engine, uint64_t device, uint64_t stream, const int64_t *shape, size_t rank, const uint16_t *bits, size_t count, uint64_t *out, nt_cuda_detail *detail, char *error, size_t error_cap);
+int nt_call_cuda_half_view(nt_library *library, uint64_t engine, uint64_t parent, uint64_t offset_elements, const int64_t *shape, const int64_t *strides, size_t rank, uint64_t *out, nt_cuda_detail *detail, char *error, size_t error_cap);
+int nt_call_cuda_half_meta(nt_library *library, uint64_t engine, uint64_t half, nt_half_meta *out, nt_cuda_detail *detail, char *error, size_t error_cap);
+int nt_call_cuda_half_bits(nt_library *library, uint64_t engine, uint64_t stream, uint64_t half, uint16_t *bits, size_t count, nt_cuda_detail *detail, char *error, size_t error_cap);
+int nt_call_cuda_half_release(nt_library *library, uint64_t engine, uint64_t half, nt_cuda_detail *detail, char *error, size_t error_cap);
+int nt_call_cuda_gemm_f16(nt_library *library, uint64_t engine, uint64_t stream, uint64_t a, uint64_t b, uint64_t out, nt_cuda_detail *detail, char *error, size_t error_cap);

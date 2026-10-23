@@ -6,6 +6,8 @@
 #include <cstring>
 #include <limits>
 #include <mutex>
+#include <memory>
+#include "cuda_records.h"
 #include <stdexcept>
 #include <unordered_map>
 #include <vector>
@@ -14,7 +16,13 @@ namespace {
 std::mutex mutex;
 uint64_t next_id = 1;
 using Tensors = std::unordered_map<uint64_t, at::Tensor>;
-std::unordered_map<uint64_t, Tensors> engines;
+struct EngineRecord {
+ Tensors tensors;
+ std::unordered_map<uint64_t,std::shared_ptr<CUDADeviceRecord>> devices;
+ std::unordered_map<uint64_t,std::shared_ptr<CUDAStreamRecord>> streams;
+ std::unordered_map<uint64_t,std::shared_ptr<CUDAHalfRecord>> halves;
+};
+std::unordered_map<uint64_t, EngineRecord> engines;
 void require(bool ok, const char* message) { if (!ok) throw std::runtime_error(message); }
 uint64_t fresh() {
     require(next_id != std::numeric_limits<uint64_t>::max(), "handle IDs exhausted");
@@ -23,7 +31,7 @@ uint64_t fresh() {
 Tensors& engine(uint64_t id) {
     auto it = engines.find(id);
     require(it != engines.end(), "invalid or closed engine handle");
-    return it->second;
+    return it->second.tensors;
 }
 at::Tensor get(Tensors& ts, uint64_t id) {
     auto it = ts.find(id);
@@ -69,13 +77,14 @@ size_t elements(const int64_t* dims, size_t rank) {
     return count;
 }
 }
+#include "cuda_backend.h"
 extern "C" {
 uint32_t nt_version() { return NT_ABI_VERSION; }
 int nt_open(uint64_t* out, char* err, size_t cap) {
-    return boundary(err,cap,[&]{ require(out, "null output"); initialize_tensor_runtime(); auto id=fresh(); engines.emplace(id,Tensors{}); *out=id; });
+    return boundary(err,cap,[&]{ require(out, "null output"); initialize_tensor_runtime(); auto id=fresh(); engines.emplace(id,EngineRecord{}); *out=id; });
 }
 int nt_close(uint64_t e, char* err, size_t cap) {
-    return boundary(err,cap,[&]{ engine(e); engines.erase(e); });
+    return boundary(err,cap,[&]{ engine(e); close_engine_cuda(e); engines.erase(e); });
 }
 int nt_new(uint64_t e, const int64_t* dims, size_t rank, const float* data, size_t count, uint64_t* out, char* err, size_t cap) {
     return boundary(err,cap,[&]{ auto& ts=engine(e); require(out,"null output");

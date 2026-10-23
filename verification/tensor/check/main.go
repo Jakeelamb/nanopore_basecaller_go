@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/Jakeelamb/nanopore_basecaller_go/verification/tensor/runner"
 	"io"
 	"os"
 	"os/exec"
@@ -15,15 +16,8 @@ import (
 	"time"
 )
 
-type commandReceipt struct {
-	Args     []string `json:"command"`
-	Env      []string `json:"environment_overrides"`
-	Started  string   `json:"started_utc"`
-	Finished string   `json:"finished_utc"`
-	Exit     int      `json:"exit_code"`
-	Log      string   `json:"log"`
-	SHA      string   `json:"log_sha256"`
-}
+type commandReceipt = runner.CommandReceipt
+
 type evidence struct {
 	Head     string            `json:"head"`
 	Source   map[string]string `json:"source_sha256"`
@@ -48,16 +42,20 @@ func hash(path string) (string, error) {
 func main() {
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		os.Exit(runner.ExitCode(err))
 	}
 }
 func run() (ret error) {
+	if err := runner.CheckRoot(); err != nil {
+		return err
+	}
+	pure := flag.Bool("pure-only", false, "ordinary, no-cgo, race and vet checks only; no native library load")
 	backend := flag.String("backend", "", "compiled tensor library")
 	weight := flag.String("weight", "", "optional real Dorado weight, captured by builder -weight")
-	oldBackend := flag.String("old-backend", "", "retained ABI 2 library for actual version rejection")
+	oldBackend := flag.String("old-backend", "", "retained ABI 3 library for actual version rejection")
 	out := flag.String("out", filepath.Join("artifacts", "tensor", time.Now().UTC().Format("20060102T150405.000000000Z")+"-checks"), "new receipt directory")
 	flag.Parse()
-	if *backend == "" {
+	if *backend == "" && !*pure {
 		return fmt.Errorf("-backend is required; this gate never skips native execution")
 	}
 	for _, p := range []*string{backend, out} {
@@ -81,12 +79,11 @@ func run() (ret error) {
 		}
 		*oldBackend = v
 	}
-	if _, err := os.Stat(*out); err == nil {
-		return fmt.Errorf("output exists; preserve attempts with a fresh -out")
-	}
-	if err := os.MkdirAll(*out, 0755); err != nil {
+	attempt, err := runner.NewAttempt(*out)
+	if err != nil {
 		return err
 	}
+	*out = attempt
 	m := evidence{Source: map[string]string{}, Inputs: map[string]string{}, Status: "failed"}
 	defer func() {
 		if ret != nil {
@@ -100,6 +97,14 @@ func run() (ret error) {
 			ret = err
 		}
 	}()
+	if !*pure {
+		lock, err := runner.Acquire(runner.HostLock)
+		if err != nil {
+			m.Status = "admission_blocked"
+			return err
+		}
+		defer lock.Close()
+	}
 	for _, root := range []string{"internal/tensor", "verification/tensor"} {
 		if err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 			if err != nil {
@@ -118,19 +123,39 @@ func run() (ret error) {
 			return err
 		}
 	}
-	paths := []string{*backend, filepath.Join(filepath.Dir(*backend), "manifest.json")}
-	if *oldBackend != "" {
-		paths = append(paths, *oldBackend)
-	}
-	if *weight != "" {
-		paths = append(paths, *weight, filepath.Join(filepath.Dir(*backend), "real-weight.json"))
-	}
-	for _, path := range paths {
-		h, err := hash(path)
+	if !*pure {
+		rawBuild, err := os.ReadFile(filepath.Join(filepath.Dir(*backend), "manifest.json"))
 		if err != nil {
 			return err
 		}
-		m.Inputs[path] = h
+		var build struct {
+			ABI    int    `json:"abi_version"`
+			Family string `json:"cuda_family"`
+		}
+		if err = json.Unmarshal(rawBuild, &build); err != nil {
+			return err
+		}
+		if build.ABI != 4 {
+			return fmt.Errorf("check requires an ABI4 build manifest")
+		}
+		if build.Family != "none" {
+			m.Status = "runtime_held"
+			return fmt.Errorf("CUDA backend loading requires the separate admitted CUDA capture/replay command; CPU check does not initialize CUDA")
+		}
+		paths := []string{*backend, filepath.Join(filepath.Dir(*backend), "manifest.json")}
+		if *oldBackend != "" {
+			paths = append(paths, *oldBackend, filepath.Join(filepath.Dir(*oldBackend), "manifest.json"))
+		}
+		if *weight != "" {
+			paths = append(paths, *weight, filepath.Join(filepath.Dir(*backend), "real-weight.json"))
+		}
+		for _, path := range paths {
+			h, err := hash(path)
+			if err != nil {
+				return err
+			}
+			m.Inputs[path] = h
+		}
 	}
 	cmd := exec.Command("git", "rev-parse", "HEAD")
 	head, err := cmd.Output()
@@ -139,66 +164,53 @@ func run() (ret error) {
 	}
 	m.Head = strings.TrimSpace(string(head))
 	execute := func(label string, overrides []string, args ...string) error {
-		r := commandReceipt{Args: args, Env: overrides, Started: time.Now().UTC().Format(time.RFC3339Nano), Log: filepath.Join(*out, label+".log"), Exit: -1}
-		cmd := exec.Command(args[0], args[1:]...)
-		env := os.Environ()
-		for _, kv := range overrides {
-			key, _, _ := strings.Cut(kv, "=")
-			filtered := env[:0]
-			for _, prior := range env {
-				if !strings.HasPrefix(prior, key+"=") {
-					filtered = append(filtered, prior)
-				}
-			}
-			env = append(filtered, kv)
-		}
-		cmd.Env = env
-		data, err := cmd.CombinedOutput()
-		r.Finished = time.Now().UTC().Format(time.RFC3339Nano)
-		if cmd.ProcessState != nil {
-			r.Exit = cmd.ProcessState.ExitCode()
-		}
-		if writeErr := os.WriteFile(r.Log, data, 0644); writeErr != nil {
-			return writeErr
-		}
-		sum := sha256.Sum256(data)
-		r.SHA = hex.EncodeToString(sum[:])
+		r, err := runner.Execute(*out, label, overrides, args...)
 		m.Commands = append(m.Commands, r)
-		if err != nil {
-			return fmt.Errorf("%s failed: %v; see %s", label, err, r.Log)
+		if err == nil {
+			fmt.Printf("%s passed\n", label)
 		}
-		fmt.Printf("%s passed\n", label)
-		return nil
+		return err
 	}
 	if err := execute("go-version", nil, "go", "version"); err != nil {
 		return err
 	}
-	if err := execute("ordinary", []string{"NANOPORE_TENSOR_BACKEND=", "NANOPORE_TENSOR_WEIGHT=", "NANOPORE_TENSOR_OLD_BACKEND="}, "go", "test", "-count=1", "-v", "./internal/tensor"); err != nil {
+	if err := execute("ordinary", []string{"NANOPORE_TENSOR_BACKEND=", "NANOPORE_TENSOR_WEIGHT=", "NANOPORE_TENSOR_OLD_BACKEND=", "NANOPORE_TENSOR_CUDA=", "NANOPORE_TENSOR_RUNTIME_MANIFEST=", "NANOPORE_TENSOR_CUDA_CASE="}, "go", "test", "-count=1", "-v", "./..."); err != nil {
 		return err
 	}
-	if err := execute("nocgo", []string{"CGO_ENABLED=0", "NANOPORE_TENSOR_BACKEND=", "NANOPORE_TENSOR_WEIGHT=", "NANOPORE_TENSOR_OLD_BACKEND="}, "go", "test", "-count=1", "-v", "./internal/tensor"); err != nil {
+	if err := execute("nocgo", []string{"CGO_ENABLED=0", "NANOPORE_TENSOR_BACKEND=", "NANOPORE_TENSOR_WEIGHT=", "NANOPORE_TENSOR_OLD_BACKEND=", "NANOPORE_TENSOR_CUDA=", "NANOPORE_TENSOR_RUNTIME_MANIFEST=", "NANOPORE_TENSOR_CUDA_CASE="}, "go", "test", "-count=1", "-v", "./..."); err != nil {
 		return err
 	}
-	native := []string{"CGO_ENABLED=1", "NANOPORE_TENSOR_BACKEND=" + *backend, "NANOPORE_TENSOR_WEIGHT=" + *weight, "NANOPORE_TENSOR_OLD_BACKEND=" + *oldBackend}
-	if err := execute("native", native, "go", "test", "-count=1", "-v", "./internal/tensor"); err != nil {
-		return err
-	}
-	if err := execute("c-compiler", nil, "cc", "--version"); err != nil {
-		return err
-	}
-	probe := filepath.Join(*out, "abi-probe")
-	if err := execute("compile-abi-probe", nil, "cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-Iinternal/tensor", "verification/tensor/abi_probe.c", "-ldl", "-o", probe); err != nil {
-		return err
-	}
-	m.Inputs[probe], err = hash(probe)
-	if err != nil {
-		return err
-	}
-	if err := execute("abi-probe", nil, probe, *backend); err != nil {
-		return err
-	}
-	if err := execute("race", native, "go", "test", "-count=1", "-race", "./internal/tensor"); err != nil {
-		return err
+	if !*pure {
+		if *oldBackend != "" {
+			if err := execute("real-abi3-rejection", []string{"NANOPORE_TENSOR_BACKEND=", "NANOPORE_TENSOR_OLD_BACKEND=" + *oldBackend}, "go", "test", "-count=1", "-v", "./internal/tensor", "-run", "^TestNativeRejectOldABI$"); err != nil {
+				return err
+			}
+		}
+		native := []string{"CGO_ENABLED=1", "NANOPORE_TENSOR_BACKEND=" + *backend, "NANOPORE_TENSOR_WEIGHT=" + *weight, "NANOPORE_TENSOR_OLD_BACKEND=", "NANOPORE_TENSOR_CUDA=", "NANOPORE_TENSOR_RUNTIME_MANIFEST=", "NANOPORE_TENSOR_CUDA_CASE="}
+		if err := execute("native", native, "go", "test", "-count=1", "-v", "./internal/tensor"); err != nil {
+			return err
+		}
+		if err := execute("c-compiler", nil, "cc", "--version"); err != nil {
+			return err
+		}
+		probe := filepath.Join(*out, "abi-probe")
+		if err := execute("compile-abi-probe", nil, "cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-Iinternal/tensor", "verification/tensor/abi_probe.c", "-ldl", "-o", probe); err != nil {
+			return err
+		}
+		m.Inputs[probe], err = hash(probe)
+		if err != nil {
+			return err
+		}
+		if err := execute("abi-probe", nil, probe, *backend); err != nil {
+			return err
+		}
+		if err := execute("race", native, "go", "test", "-count=1", "-race", "./internal/tensor"); err != nil {
+			return err
+		}
+	} else {
+		if err := execute("race", []string{"NANOPORE_TENSOR_BACKEND=", "NANOPORE_TENSOR_OLD_BACKEND=", "NANOPORE_TENSOR_CUDA="}, "go", "test", "-count=1", "-race", "./internal/tensor", "./verification/tensor/..."); err != nil {
+			return err
+		}
 	}
 	if err := execute("vet", nil, "go", "vet", "./internal/tensor", "./verification/tensor/..."); err != nil {
 		return err

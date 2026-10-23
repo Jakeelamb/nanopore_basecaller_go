@@ -15,8 +15,16 @@ import (
 
 func TestNativeLoadedRuntimePins(t *testing.T) {
 	_ = nativeEngine(t)
+	checkLoadedRuntime(t)
+}
+func checkLoadedRuntime(t *testing.T) {
+	t.Helper()
 	backend := os.Getenv("NANOPORE_TENSOR_BACKEND")
-	raw, err := os.ReadFile(filepath.Join(filepath.Dir(backend), "manifest.json"))
+	manifestPath := os.Getenv("NANOPORE_TENSOR_RUNTIME_MANIFEST")
+	if manifestPath == "" {
+		manifestPath = filepath.Join(filepath.Dir(backend), "manifest.json")
+	}
+	raw, err := os.ReadFile(manifestPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +48,8 @@ func TestNativeLoadedRuntimePins(t *testing.T) {
 		}
 		path := strings.Join(fields[5:], " ")
 		name := filepath.Base(path)
-		if name != "libtorch_cpu.so" && name != "libc10.so" && path != backend {
+		family := strings.HasPrefix(name, "libtorch") || strings.HasPrefix(name, "libc10") || strings.HasPrefix(name, "libcu") || strings.HasPrefix(name, "libnv")
+		if !family && path != backend {
 			continue
 		}
 		if seen[path] {

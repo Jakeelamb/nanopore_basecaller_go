@@ -338,13 +338,24 @@ func TestNativeLoaderABIRejections(t *testing.T) {
 	if os.Getenv("NANOPORE_TENSOR_BACKEND") == "" {
 		t.Skip("native gate not configured")
 	}
-	for _, tt := range []struct{ name, source, want string }{
+	cases := []struct{ name, source, want string }{
 		{"version", "unsigned int nt_version(void) { return 99; }", "unsupported tensor ABI version 99"},
-		{"symbol", "unsigned int nt_version(void) { return 3; }", "missing ABI symbol nt_open"},
-		{"attention symbol", "unsigned int nt_version(void) { return 3; }\n" +
+		{"symbol", "unsigned int nt_version(void) { return 4; }", "missing ABI symbol nt_open"},
+		{"attention symbol", "unsigned int nt_version(void) { return 4; }\n" +
 			"void nt_open(void){} void nt_close(void){} void nt_new(void){} void nt_load(void){} void nt_release(void){}\n" +
 			"void nt_shape(void){} void nt_data(void){} void nt_run(void){} void nt_new_int64(void){} void nt_data_int64(void){}\n", "missing ABI symbol nt_sdpa"},
-	} {
+	}
+	symbols := []string{"nt_open", "nt_close", "nt_new", "nt_load", "nt_release", "nt_shape", "nt_data", "nt_run", "nt_new_int64", "nt_data_int64", "nt_sdpa", "nt_cuda_device_open", "nt_cuda_device_close", "nt_cuda_stream_open", "nt_cuda_stream_close", "nt_cuda_half_new", "nt_cuda_half_view", "nt_cuda_half_meta", "nt_cuda_half_bits", "nt_cuda_half_release", "nt_cuda_gemm_f16"}
+	for _, missing := range symbols[11:] {
+		source := "unsigned int nt_version(void){return 4;}\n"
+		for _, symbol := range symbols {
+			if symbol != missing {
+				source += "void " + symbol + "(void){}\n"
+			}
+		}
+		cases = append(cases, struct{ name, source, want string }{missing, source, "missing ABI symbol " + missing})
+	}
+	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
 			source := filepath.Join(dir, "backend.c")
