@@ -19,7 +19,7 @@ jobs:
           go-version: '1.24.x'
           cache: false
       - name: Install native CPU oracle prerequisites
-        run: sudo apt-get update && sudo apt-get install -y g++ samtools
+        run: sudo apt-get update && sudo apt-get install -y g++ samtools pkg-config libhts-dev
       - name: Obtain pinned source and NVTX headers
         run: ./verification/setup-source.sh
       - name: Check Go code
