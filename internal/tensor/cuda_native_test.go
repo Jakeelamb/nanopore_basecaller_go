@@ -396,7 +396,10 @@ uint32_t nt_version(void){return 4;}
 int nt_open(uint64_t* out,char* e,size_t cap){(void)e;(void)cap;*out=1;return 0;}
 int nt_close(uint64_t id,char* e,size_t cap){(void)id;static int attempts=0;if(++attempts==1){snprintf(e,cap,"injected drain failure");return 1;}return 0;}
 `
-	for _, name := range []string{"nt_new", "nt_load", "nt_release", "nt_shape", "nt_data", "nt_run", "nt_new_int64", "nt_data_int64", "nt_sdpa", "nt_cuda_device_open", "nt_cuda_device_close", "nt_cuda_stream_open", "nt_cuda_stream_close", "nt_cuda_half_new", "nt_cuda_half_view", "nt_cuda_half_meta", "nt_cuda_half_bits", "nt_cuda_half_release", "nt_cuda_gemm_f16"} {
+	for _, name := range []string{"nt_new", "nt_load", "nt_release", "nt_shape", "nt_data", "nt_run", "nt_new_int64", "nt_data_int64", "nt_sdpa", "nt_cuda_device_open", "nt_cuda_device_close", "nt_cuda_stream_open", "nt_cuda_stream_close", "nt_cuda_half_new", "nt_cuda_half_view", "nt_cuda_half_meta", "nt_cuda_half_bits", "nt_cuda_half_release", "nt_cuda_gemm_f16",
+		"nt_cuda_storage_new", "nt_cuda_storage_view", "nt_cuda_storage_meta", "nt_cuda_storage_upload",
+		"nt_cuda_storage_download", "nt_cuda_storage_copy", "nt_cuda_storage_fill", "nt_cuda_storage_scale",
+		"nt_cuda_storage_release"} {
 		body += "void " + name + "(void){}\n"
 	}
 	if err := os.WriteFile(source, []byte(body), 0600); err != nil {

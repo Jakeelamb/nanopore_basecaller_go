@@ -62,6 +62,10 @@ U8 has no `KoiTypeId`, so `Storage.KoiTensor()` rejects it.
   and element counts before the call, and holds no pointers across it.
 - `internal/tensor/cuda_koi.go`: `KoiTensor`, `KoiDim`, `KoiScale`, with the
   pinned `KoiTypeId` values and the I8/F32 scale rule.
+- `internal/tensor/cuda_errors.go`: `DTypeError` now carries the rejection
+  `Reason`, so a dtype rejection names the rule that fired instead of printing
+  only handle and dtype ids. Go-side and native-side dtype rejections are
+  therefore distinguishable in the evidence rather than by position alone.
 
 Native guards (all in `cuda_storage.inc`):
 
@@ -87,19 +91,41 @@ Host lock held for the whole run; no competing compute process was observed.
 
 | Item | Value |
 | --- | --- |
-| Build | `artifacts/tensor/p02-build-003`, `abi_version 4`, `cuda_family 13.0` |
+| Build | `artifacts/tensor/p02-build-004`, `abi_version 4`, `cuda_family 13.0` |
 | Backend SHA-256 | `752f736e8383d554ad0c19887dce24f340636717e038285583dadbe9de29980c` |
-| Capture | `artifacts/tensor/p02-capture-008`, status `storage_koi_device_passed` |
+| Capture | `artifacts/tensor/p02-capture-010`, status `storage_koi_device_passed` |
 | Unit receipt | `storage-capture.json`, SHA-256 `85b7a05b2fef08a1d8418d80dd755f68213751133cd6410d6f316baabfb7a43f` |
 | Device | `GPU-807d7ae7-6a99-c795-12c2-23fc801d38e7`, ordinal 0, driver 615.78.08 |
 | Runtime | `driver=13040 runtime=13040`, CUDA 13.4, Torch 2.9.0.0+cxx11-abi |
-| Consumer | head `d0f5478`, 38 source pins, test binary SHA-256 `79bc60293cae...`, stable after execution |
-| Commands | 7 recorded with clocks and exits; 0 failing |
+| Consumer | head `6546dee`, 38 source pins, test binary SHA-256 `ae992c24a162...`, stable after execution |
+| CPU contracts | 13 accepted CPU-side contracts pass against this CUDA-enabled build |
+| Commands | 8 recorded with clocks and exits; 0 failing |
 | Runtime pins | 34 mapped libraries, re-hashed outside the child |
 
 The child re-hashes every mapped `libtorch*`, `libc10*`, `libcu*`, `libnv*`
 object and the orchestrator re-hashes them again, rejecting any change and any
-CUDA-12 or foreign Torch path.
+CUDA-12 or foreign Torch path. The runtime pin set is the *observed* one recorded
+by the runtime probe, so it includes the host driver `libcuda.so.615.78.08`,
+which is host-supplied and therefore cannot be a build pin.
+
+### CPU contracts
+
+The card requires the accepted CPU-side contracts to keep passing against the
+CUDA-enabled build, so `storage-koi` runs them with the same observed runtime
+pins as the device step and requires all thirteen roots:
+
+`TestNativeTensorOperations`, `TestNativeOwnershipAndCopies`,
+`TestNativeMalformedInputs`, `TestNativeLoadWeight`, `TestNativeConcurrentClose`,
+`TestNativeMissingLibrary`, `TestNativeLoaderABIRejections`,
+`TestNativeLoadedRuntimePins`, `TestNativeDecoderPrimitives`,
+`TestNativeCloseFailureRetainsLibrary`, `TestNativeAttentionPrimitives`,
+`TestNativeAttentionRejections`, `TestNativeABIBoundary`.
+
+The list is one shared `cpuContractTests` value used by both the source-corpus
+unit and the storage unit, so neither can silently drop a contract. Adding the
+storage symbols also forced `TestNativeCloseFailureRetainsLibrary`'s stub backend
+to declare all nine `nt_cuda_storage_*` entrypoints; without them `nt_open`
+correctly fails closed on the missing symbol.
 
 ### Payload checks (exact bytes)
 

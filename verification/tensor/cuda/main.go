@@ -52,6 +52,7 @@ type evidence struct {
 	UnitReceiptSHA    string                  `json:"unit_receipt_sha256,omitempty"`
 	UnitChecks        int                     `json:"unit_checks,omitempty"`
 	UnitRejections    int                     `json:"unit_rejections,omitempty"`
+	CPUContracts      int                     `json:"cpu_contracts,omitempty"`
 }
 
 func main() {
@@ -371,12 +372,11 @@ func run() (ret error) {
 		if err = consumerStable(consumer); err != nil {
 			return err
 		}
-		cpuTests := []string{"TestNativeTensorOperations", "TestNativeOwnershipAndCopies", "TestNativeMalformedInputs", "TestNativeLoadWeight", "TestNativeConcurrentClose", "TestNativeMissingLibrary", "TestNativeLoaderABIRejections", "TestNativeLoadedRuntimePins", "TestNativeDecoderPrimitives", "TestNativeCloseFailureRetainsLibrary", "TestNativeAttentionPrimitives", "TestNativeAttentionRejections", "TestNativeABIBoundary"}
-		cpu, err := execute("cpu-contracts-cuda-library", env, "go", "tool", "test2json", "-t", "-p", "github.com/Jakeelamb/nanopore_basecaller_go/internal/tensor", consumer.TestBinary, "-test.v=test2json", "-test.count=1", "-test.run", "^("+strings.Join(cpuTests, "|")+")$")
+		cpu, err := execute("cpu-contracts-cuda-library", env, "go", "tool", "test2json", "-t", "-p", "github.com/Jakeelamb/nanopore_basecaller_go/internal/tensor", consumer.TestBinary, "-test.v=test2json", "-test.count=1", "-test.run", "^("+strings.Join(cpuContractTests, "|")+")$")
 		if err != nil {
 			return err
 		}
-		if err = runner.RequireGoTestRoots(cpu.Stdout, "github.com/Jakeelamb/nanopore_basecaller_go/internal/tensor", cpuTests); err != nil {
+		if err = runner.RequireGoTestRoots(cpu.Stdout, "github.com/Jakeelamb/nanopore_basecaller_go/internal/tensor", cpuContractTests); err != nil {
 			return err
 		}
 		ownership, err := execute("ownership-controls", env, "go", "tool", "test2json", "-t", "-p", "github.com/Jakeelamb/nanopore_basecaller_go/internal/tensor", consumer.TestBinary, "-test.v=test2json", "-test.count=1", "-test.run", "^TestNativeCUDA(AllHalfBits|OwnershipAndLayouts|ABIBoundary)$")
@@ -575,6 +575,11 @@ func captureBatches(m *evidence, dir, backend, oracle string, ordinal int, build
 	}
 	return nil
 }
+
+// cpuContractTests are the accepted CPU-side contracts that must keep passing
+// against a CUDA-enabled build. They are shared by the source corpus unit and the
+// typed-storage unit so neither can silently drop them.
+var cpuContractTests = []string{"TestNativeTensorOperations", "TestNativeOwnershipAndCopies", "TestNativeMalformedInputs", "TestNativeLoadWeight", "TestNativeConcurrentClose", "TestNativeMissingLibrary", "TestNativeLoaderABIRejections", "TestNativeLoadedRuntimePins", "TestNativeDecoderPrimitives", "TestNativeCloseFailureRetainsLibrary", "TestNativeAttentionPrimitives", "TestNativeAttentionRejections", "TestNativeABIBoundary"}
 
 func currentConsumer(dir string) (consumerEvidence, error) {
 	c := consumerEvidence{Sources: map[string]string{}, TestBinary: filepath.Join(dir, "go-cuda-consumer.test")}
