@@ -71,6 +71,10 @@ func (b *nativeBackend) cuda(q cudaRequest) (cudaResult, error) {
 		code = C.nt_call_cuda_storage_scale(b.library, b.id, C.uint64_t(q.storage), C.uint64_t(q.scale), scaleTag, &d, &buf[0], C.NT_ERROR_CAP)
 	case "storage_release":
 		code = C.nt_call_cuda_storage_release(b.library, b.id, C.uint64_t(q.storage), &d, &buf[0], C.NT_ERROR_CAP)
+	case "conv_small_f16":
+		code = C.nt_call_cuda_conv_small_f16(b.library, b.id, C.uint64_t(q.stream), C.uint64_t(q.in), C.uint64_t(q.weights), C.uint64_t(q.bias), C.uint64_t(q.out), C.int32_t(q.n), C.int32_t(q.cIn), C.int32_t(q.cOut), C.int32_t(q.tIn), C.int32_t(q.window), C.int32_t(q.stride), C.int32_t(q.padding), C.int32_t(q.outNStride), C.uint32_t(q.activation), &d, &buf[0], C.NT_ERROR_CAP)
+	case "weights_permute_cast_f16":
+		code = C.nt_call_cuda_weights_permute_cast_f16(b.library, b.id, C.uint64_t(q.stream), C.uint64_t(q.weights), C.uint64_t(q.bias), C.uint64_t(q.out), C.uint64_t(q.storage), &d, &buf[0], C.NT_ERROR_CAP)
 	default:
 		return r, &CUDAError{Op: q.op, Subsystem: "boundary", Reason: "unknown CUDA operation"}
 	}

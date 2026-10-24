@@ -32,8 +32,12 @@ type cudaRequest struct {
 	op                                      string
 	device, stream, half, a, b, out, offset uint64
 	storage, src, scale                     uint64
+	in, weights, bias                       uint64
 	ordinal                                 int32
 	dtype                                   uint32
+	activation                              uint32
+	n, cIn, cOut, tIn                       int32
+	window, stride, padding, outNStride     int32
 	count                                   int
 	shape, strides                          []int64
 	tags                                    []int32

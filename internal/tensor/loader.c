@@ -37,6 +37,8 @@ struct nt_library {
  int (*cuda_storage_fill)(uint64_t engine, uint64_t stream, uint64_t storage, const uint8_t *pattern, size_t count, nt_cuda_detail *detail, char *error, size_t error_cap);
  int (*cuda_storage_scale)(uint64_t engine, uint64_t storage, uint64_t scale, int32_t scale_tag, nt_cuda_detail *detail, char *error, size_t error_cap);
  int (*cuda_storage_release)(uint64_t engine, uint64_t storage, nt_cuda_detail *detail, char *error, size_t error_cap);
+ int (*cuda_conv_small_f16)(uint64_t engine, uint64_t stream, uint64_t in, uint64_t weights, uint64_t bias, uint64_t out, int32_t n, int32_t c_in, int32_t c_out, int32_t t_in, int32_t window, int32_t stride, int32_t padding, int32_t out_n_stride, uint32_t activation, nt_cuda_detail *detail, char *error, size_t error_cap);
+ int (*cuda_weights_permute_cast_f16)(uint64_t engine, uint64_t stream, uint64_t weight, uint64_t bias, uint64_t packed, uint64_t packed_bias, nt_cuda_detail *detail, char *error, size_t error_cap);
 };
 nt_library* nt_library_open(const char* path,char* err,size_t cap) {
  nt_library* l=calloc(1,sizeof(*l));
@@ -70,6 +72,8 @@ nt_library* nt_library_open(const char* path,char* err,size_t cap) {
  LOAD(cuda_storage_fill,"nt_cuda_storage_fill");
  LOAD(cuda_storage_scale,"nt_cuda_storage_scale");
  LOAD(cuda_storage_release,"nt_cuda_storage_release");
+ LOAD(cuda_conv_small_f16,"nt_cuda_conv_small_f16");
+ LOAD(cuda_weights_permute_cast_f16,"nt_cuda_weights_permute_cast_f16");
  #undef LOAD
  return l;
 }
@@ -123,3 +127,7 @@ int nt_call_cuda_storage_fill(nt_library *library, uint64_t engine, uint64_t str
 int nt_call_cuda_storage_scale(nt_library *library, uint64_t engine, uint64_t storage, uint64_t scale, int32_t scale_tag, nt_cuda_detail *detail, char *error, size_t error_cap) { return library->cuda_storage_scale(engine,storage,scale,scale_tag,detail,error,error_cap); }
 
 int nt_call_cuda_storage_release(nt_library *library, uint64_t engine, uint64_t storage, nt_cuda_detail *detail, char *error, size_t error_cap) { return library->cuda_storage_release(engine,storage,detail,error,error_cap); }
+
+int nt_call_cuda_conv_small_f16(nt_library *library, uint64_t engine, uint64_t stream, uint64_t in, uint64_t weights, uint64_t bias, uint64_t out, int32_t n, int32_t c_in, int32_t c_out, int32_t t_in, int32_t window, int32_t stride, int32_t padding, int32_t out_n_stride, uint32_t activation, nt_cuda_detail *detail, char *error, size_t error_cap) { return library->cuda_conv_small_f16(engine,stream,in,weights,bias,out,n,c_in,c_out,t_in,window,stride,padding,out_n_stride,activation,detail,error,error_cap); }
+
+int nt_call_cuda_weights_permute_cast_f16(nt_library *library, uint64_t engine, uint64_t stream, uint64_t weight, uint64_t bias, uint64_t packed, uint64_t packed_bias, nt_cuda_detail *detail, char *error, size_t error_cap) { return library->cuda_weights_permute_cast_f16(engine,stream,weight,bias,packed,packed_bias,detail,error,error_cap); }

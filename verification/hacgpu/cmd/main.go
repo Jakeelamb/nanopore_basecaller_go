@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/Jakeelamb/nanopore_basecaller_go/verification/hacgpu"
+	"github.com/Jakeelamb/nanopore_basecaller_go/verification/hacgpu/h02"
 	"github.com/Jakeelamb/nanopore_basecaller_go/verification/tensor/runner"
 )
 
@@ -22,7 +23,7 @@ func run() error {
 	if err := runner.CheckRoot(); err != nil {
 		return err
 	}
-	unit := flag.String("unit", "", "build, capture, verify, compare or sources")
+	unit := flag.String("unit", "", "build, capture, verify, compare, sources or small-convs")
 	buildDir := flag.String("build-dir", "", "qualified GCC15 build tree")
 	dorado := flag.String("dorado-source", os.Getenv("DORADO_SOURCE"), "read-only pinned Dorado checkout")
 	build := flag.String("build", "", "oracle build manifest")
@@ -34,6 +35,8 @@ func run() error {
 	chunk := flag.Int("chunk", 0, "fixed chunk length in samples")
 	out := flag.String("out", "", "fresh artifacts directory")
 	compare := flag.String("compare", "", "second capture directory for -unit compare")
+	captureDir := flag.String("capture", "", "admitted H01 capture directory for -unit small-convs")
+	backend := flag.String("backend", "", "ABI4 CUDA13 tensor backend for -unit small-convs")
 	ordinal := flag.Int("ordinal", 0, "CUDA ordinal")
 	admitted := flag.Bool("runtime-admitted", false, "coordinator released this bounded native invocation")
 	flag.Parse()
@@ -81,6 +84,19 @@ func run() error {
 			return err
 		}
 		fmt.Printf("capture verified: %d stages, %s, reservation %d\n", len(c.Stages), c.StageList(), c.Reservation)
+		return nil
+	case "small-convs":
+		if *captureDir == "" || *backend == "" || *model == "" || *out == "" {
+			return fmt.Errorf("-capture, -backend, -model and -out required")
+		}
+		r, err := h02.Run(h02.Options{
+			Capture: *captureDir, Model: *model, Backend: *backend, Out: *out,
+			Ordinal: *ordinal, Admitted: *admitted,
+		})
+		if err != nil {
+			return err
+		}
+		fmt.Printf("%s %s\n", r.Status, r.Attempt)
 		return nil
 	case "compare":
 		if *out == "" || *compare == "" {
