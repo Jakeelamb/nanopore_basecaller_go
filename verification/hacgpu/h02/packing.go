@@ -18,7 +18,7 @@ import (
 //
 // (ConvStack.cpp:230-234). The oracle is never on the caller path; it exists so
 // the pure-Go packer can be checked bit for bit.
-func packAndVerify(d *tensor.Device, s *tensor.Stream, executed []model.HACSmallConvLayer, weights convWeights) ([]Packing, error) {
+func packAndVerify(d *tensor.Device, s *tensor.Stream, executed []model.HACSmallConvLayer, weights ConvWeights) ([]Packing, error) {
 	var out []Packing
 	for i, l := range executed {
 		w := weights.Layers[i]

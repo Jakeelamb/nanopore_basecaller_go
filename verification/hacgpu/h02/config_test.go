@@ -63,7 +63,7 @@ func TestConvParamsLayouts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	params, err := convParams(convs)
+	params, err := ConvParams(convs)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -260,6 +260,41 @@ func (s *Storage) View(offset uint64, shape, strides []int64, tags []KoiTag) (*S
 	return &Storage{state: &storageState{device: s.state.device, id: r.id, dtype: s.state.dtype}}, nil
 }
 
+// Reinterpret creates a checked view that reinterprets the parent's bytes as
+// another element type, the typed equivalent of
+// `backing_tensor.view(dtype)` (WorkingMemory.cpp:48). offsetElements is in the
+// new dtype. A contiguous parent is required: a strided buffer has no single
+// byte interval to reinterpret.
+func (s *Storage) Reinterpret(dtype DType, offsetElements uint64, shape, strides []int64, tags []KoiTag) (*Storage, error) {
+	if s == nil || s.state == nil {
+		return nil, ErrClosed
+	}
+	e := s.state.device.engine
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if err := s.state.valid(); err != nil {
+		return nil, err
+	}
+	if dtype.Size() == 0 {
+		return nil, &DTypeError{Op: "storage_reinterpret", Reason: "unknown storage dtype", Detail: CUDADetail{ExpectedDType: ScalarType(DTypeF16)}}
+	}
+	if _, err := storageSpan(shape, strides, offsetElements); err != nil {
+		return nil, err
+	}
+	if err := storageTags(tags, len(shape)); err != nil {
+		return nil, err
+	}
+	tagValues := make([]int32, len(tags))
+	for i, t := range tags {
+		tagValues[i] = int32(t)
+	}
+	r, err := e.backend.cuda(cudaRequest{op: "storage_reinterpret", storage: s.state.id, dtype: uint32(dtype), offset: offsetElements, shape: shape, strides: strides, tags: tagValues})
+	if err != nil {
+		return nil, err
+	}
+	return &Storage{state: &storageState{device: s.state.device, id: r.id, dtype: dtype}}, nil
+}
+
 func (s *Storage) meta(op string) (StorageMeta, error) {
 	var m StorageMeta
 	if s == nil || s.state == nil {

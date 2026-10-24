@@ -81,6 +81,7 @@ size_t elements(const int64_t* dims, size_t rank) {
 #include "cuda_backend.h"
 #include "cuda_storage.inc"
 #include "hac_smallconv.inc"
+#include "hac_lastconv.inc"
 extern "C" {
 uint32_t nt_version() { return NT_ABI_VERSION; }
 int nt_open(uint64_t* out, char* err, size_t cap) {

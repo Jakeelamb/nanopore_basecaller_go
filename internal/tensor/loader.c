@@ -35,10 +35,13 @@ struct nt_library {
  int (*cuda_storage_download)(uint64_t engine, uint64_t stream, uint64_t storage, uint8_t *bytes, size_t count, nt_cuda_detail *detail, char *error, size_t error_cap);
  int (*cuda_storage_copy)(uint64_t engine, uint64_t stream, uint64_t dst, uint64_t src, nt_cuda_detail *detail, char *error, size_t error_cap);
  int (*cuda_storage_fill)(uint64_t engine, uint64_t stream, uint64_t storage, const uint8_t *pattern, size_t count, nt_cuda_detail *detail, char *error, size_t error_cap);
+ int (*cuda_storage_reinterpret)(uint64_t engine, uint64_t parent, uint32_t dtype, uint64_t offset_elements, const int64_t *shape, const int64_t *strides, const int32_t *tags, size_t rank, uint64_t *out, nt_cuda_detail *detail, char *error, size_t error_cap);
  int (*cuda_storage_scale)(uint64_t engine, uint64_t storage, uint64_t scale, int32_t scale_tag, nt_cuda_detail *detail, char *error, size_t error_cap);
  int (*cuda_storage_release)(uint64_t engine, uint64_t storage, nt_cuda_detail *detail, char *error, size_t error_cap);
  int (*cuda_conv_small_f16)(uint64_t engine, uint64_t stream, uint64_t in, uint64_t weights, uint64_t bias, uint64_t out, int32_t n, int32_t c_in, int32_t c_out, int32_t t_in, int32_t window, int32_t stride, int32_t padding, int32_t out_n_stride, uint32_t activation, nt_cuda_detail *detail, char *error, size_t error_cap);
  int (*cuda_weights_permute_cast_f16)(uint64_t engine, uint64_t stream, uint64_t weight, uint64_t bias, uint64_t packed, uint64_t packed_bias, nt_cuda_detail *detail, char *error, size_t error_cap);
+ int (*cuda_conv_koi_f16)(uint64_t engine, uint64_t stream, uint64_t in, uint64_t weights, uint64_t bias, uint64_t out, int32_t n, int32_t t_in, int32_t c_in, int32_t c_out, int32_t window, int32_t stride, int32_t padding, int32_t in_n_stride, int32_t out_n_stride, int32_t out_t_stride, uint32_t activation, uint32_t in_type, uint32_t out_type, uint32_t accum_type, int32_t *koi_result, nt_cuda_detail *detail, char *error, size_t error_cap);
+ int (*cuda_linear_f16)(uint64_t engine, uint64_t stream, uint64_t in, uint64_t weights, uint64_t bias, uint64_t out, int32_t size0, int32_t size1, int32_t k, int32_t c_out, int32_t in_stride0, int32_t in_stride1, int32_t out_stride0, int32_t out_stride1, uint32_t activation, uint32_t in_type, uint32_t out_type, int32_t *koi_result, nt_cuda_detail *detail, char *error, size_t error_cap);
 };
 nt_library* nt_library_open(const char* path,char* err,size_t cap) {
  nt_library* l=calloc(1,sizeof(*l));
@@ -70,10 +73,13 @@ nt_library* nt_library_open(const char* path,char* err,size_t cap) {
  LOAD(cuda_storage_download,"nt_cuda_storage_download");
  LOAD(cuda_storage_copy,"nt_cuda_storage_copy");
  LOAD(cuda_storage_fill,"nt_cuda_storage_fill");
+ LOAD(cuda_storage_reinterpret,"nt_cuda_storage_reinterpret");
  LOAD(cuda_storage_scale,"nt_cuda_storage_scale");
  LOAD(cuda_storage_release,"nt_cuda_storage_release");
  LOAD(cuda_conv_small_f16,"nt_cuda_conv_small_f16");
  LOAD(cuda_weights_permute_cast_f16,"nt_cuda_weights_permute_cast_f16");
+ LOAD(cuda_conv_koi_f16,"nt_cuda_conv_koi_f16");
+ LOAD(cuda_linear_f16,"nt_cuda_linear_f16");
  #undef LOAD
  return l;
 }
@@ -124,6 +130,8 @@ int nt_call_cuda_storage_copy(nt_library *library, uint64_t engine, uint64_t str
 
 int nt_call_cuda_storage_fill(nt_library *library, uint64_t engine, uint64_t stream, uint64_t storage, const uint8_t *pattern, size_t count, nt_cuda_detail *detail, char *error, size_t error_cap) { return library->cuda_storage_fill(engine,stream,storage,pattern,count,detail,error,error_cap); }
 
+int nt_call_cuda_storage_reinterpret(nt_library *library, uint64_t engine, uint64_t parent, uint32_t dtype, uint64_t offset_elements, const int64_t *shape, const int64_t *strides, const int32_t *tags, size_t rank, uint64_t *out, nt_cuda_detail *detail, char *error, size_t error_cap) { return library->cuda_storage_reinterpret(engine,parent,dtype,offset_elements,shape,strides,tags,rank,out,detail,error,error_cap); }
+
 int nt_call_cuda_storage_scale(nt_library *library, uint64_t engine, uint64_t storage, uint64_t scale, int32_t scale_tag, nt_cuda_detail *detail, char *error, size_t error_cap) { return library->cuda_storage_scale(engine,storage,scale,scale_tag,detail,error,error_cap); }
 
 int nt_call_cuda_storage_release(nt_library *library, uint64_t engine, uint64_t storage, nt_cuda_detail *detail, char *error, size_t error_cap) { return library->cuda_storage_release(engine,storage,detail,error,error_cap); }
@@ -131,3 +139,7 @@ int nt_call_cuda_storage_release(nt_library *library, uint64_t engine, uint64_t 
 int nt_call_cuda_conv_small_f16(nt_library *library, uint64_t engine, uint64_t stream, uint64_t in, uint64_t weights, uint64_t bias, uint64_t out, int32_t n, int32_t c_in, int32_t c_out, int32_t t_in, int32_t window, int32_t stride, int32_t padding, int32_t out_n_stride, uint32_t activation, nt_cuda_detail *detail, char *error, size_t error_cap) { return library->cuda_conv_small_f16(engine,stream,in,weights,bias,out,n,c_in,c_out,t_in,window,stride,padding,out_n_stride,activation,detail,error,error_cap); }
 
 int nt_call_cuda_weights_permute_cast_f16(nt_library *library, uint64_t engine, uint64_t stream, uint64_t weight, uint64_t bias, uint64_t packed, uint64_t packed_bias, nt_cuda_detail *detail, char *error, size_t error_cap) { return library->cuda_weights_permute_cast_f16(engine,stream,weight,bias,packed,packed_bias,detail,error,error_cap); }
+
+int nt_call_cuda_conv_koi_f16(nt_library *library, uint64_t engine, uint64_t stream, uint64_t in, uint64_t weights, uint64_t bias, uint64_t out, int32_t n, int32_t t_in, int32_t c_in, int32_t c_out, int32_t window, int32_t stride, int32_t padding, int32_t in_n_stride, int32_t out_n_stride, int32_t out_t_stride, uint32_t activation, uint32_t in_type, uint32_t out_type, uint32_t accum_type, int32_t *koi_result, nt_cuda_detail *detail, char *error, size_t error_cap) { return library->cuda_conv_koi_f16(engine,stream,in,weights,bias,out,n,t_in,c_in,c_out,window,stride,padding,in_n_stride,out_n_stride,out_t_stride,activation,in_type,out_type,accum_type,koi_result,detail,error,error_cap); }
+
+int nt_call_cuda_linear_f16(nt_library *library, uint64_t engine, uint64_t stream, uint64_t in, uint64_t weights, uint64_t bias, uint64_t out, int32_t size0, int32_t size1, int32_t k, int32_t c_out, int32_t in_stride0, int32_t in_stride1, int32_t out_stride0, int32_t out_stride1, uint32_t activation, uint32_t in_type, uint32_t out_type, int32_t *koi_result, nt_cuda_detail *detail, char *error, size_t error_cap) { return library->cuda_linear_f16(engine,stream,in,weights,bias,out,size0,size1,k,c_out,in_stride0,in_stride1,out_stride0,out_stride1,activation,in_type,out_type,koi_result,detail,error,error_cap); }

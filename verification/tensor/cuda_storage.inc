@@ -177,6 +177,51 @@ int nt_cuda_storage_view(uint64_t e, uint64_t parent_id, uint32_t dtype, uint64_
 #endif
     });
 }
+int nt_cuda_storage_reinterpret(uint64_t e, uint64_t parent_id, uint32_t dtype, uint64_t offset_elements,
+                                const int64_t* shape, const int64_t* strides, const int32_t* tags,
+                                size_t rank, uint64_t* out, nt_cuda_detail* d, char* err, size_t cap) {
+    return cuda_boundary(d, err, cap, [&] {
+        cuda_engine(e, d);
+        cuda_require(out, NT_CUDA_ARGUMENT, "null reinterpret output");
+        storage_elements(shape, rank);
+        storage_tags(tags, rank);
+#ifdef NT_ENABLE_CUDA
+        auto parent = cuda_storage(e, parent_id, d);
+        auto psz = int64_t(storage_dtype_size(parent->dtype));
+        auto nsz = int64_t(storage_dtype_size(dtype));
+        d->handle = parent_id;
+        d->actual_dtype = parent->dtype;
+        d->expected_dtype = dtype;
+        // `backing_tensor.view(dtype)` reinterprets a contiguous buffer. A
+        // strided parent has no single byte interval to reinterpret.
+        cuda_require(parent->tensor.is_contiguous(), NT_CUDA_LAYOUT,
+                     "reinterpret parent must be contiguous");
+        auto start_byte = int64_t(parent->offset) * psz + int64_t(offset_elements) * nsz;
+        cuda_require(start_byte >= 0 && start_byte % nsz == 0, NT_CUDA_LAYOUT,
+                     "reinterpret offset is not a whole element of the new dtype");
+        auto start = uint64_t(start_byte / nsz);
+        auto end = storage_end(shape, strides, rank, start);
+        auto parent_bytes = uint64_t(parent->end) * uint64_t(psz);
+        cuda_require(end <= parent_bytes / uint64_t(nsz), NT_CUDA_LAYOUT,
+                     "reinterpret view exceeds the parent byte interval");
+        auto p = std::make_shared<CUDAStorageRecord>(*parent);
+        p->id = fresh();
+        p->dtype = dtype;
+        p->offset = start;
+        p->end = end;
+        p->storage = parent_bytes / uint64_t(nsz);
+        for (size_t i = 0; i < rank; ++i) p->tags[i] = tags[i];
+        auto flat = parent->tensor.view(storage_scalar(dtype));
+        p->tensor = flat.as_strided(at::IntArrayRef(shape, rank), at::IntArrayRef(strides, rank),
+                                    flat.storage_offset() + int64_t(offset_elements));
+        engines.at(e).storages.emplace(p->id, p);
+        *out = p->id;
+#else
+        (void)parent_id; (void)dtype; (void)offset_elements; (void)strides;
+        throw CUDAFailure(NT_CUDA_UNSUPPORTED, "ABI4 backend built without CUDA");
+#endif
+    });
+}
 int nt_cuda_storage_meta(uint64_t e, uint64_t id, nt_storage_meta* out, nt_cuda_detail* d, char* err, size_t cap) {
     return cuda_boundary(d, err, cap, [&] {
         cuda_engine(e, d);

@@ -38,6 +38,9 @@ type cudaRequest struct {
 	activation                              uint32
 	n, cIn, cOut, tIn                       int32
 	window, stride, padding, outNStride     int32
+	inNStride, inStride1, outTStride        int32
+	tOut, k                                 int32
+	inType, outType, accumType              uint32
 	count                                   int
 	shape, strides                          []int64
 	tags                                    []int32
@@ -45,11 +48,12 @@ type cudaRequest struct {
 	bytes                                   []byte
 }
 type cudaResult struct {
-	id     uint64
-	layout HalfLayout
-	meta   StorageMeta
-	bits   []uint16
-	bytes  []byte
+	id        uint64
+	layout    HalfLayout
+	meta      StorageMeta
+	bits      []uint16
+	bytes     []byte
+	koiResult int32
 }
 
 func halfCount(shape []int64) (int, error) {

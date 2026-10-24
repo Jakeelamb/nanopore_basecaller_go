@@ -47,6 +47,8 @@ func (b *nativeBackend) cuda(q cudaRequest) (cudaResult, error) {
 		code = C.nt_call_cuda_gemm_f16(b.library, b.id, C.uint64_t(q.stream), C.uint64_t(q.a), C.uint64_t(q.b), C.uint64_t(q.out), &d, &buf[0], C.NT_ERROR_CAP)
 	case "storage_new":
 		code = C.nt_call_cuda_storage_new(b.library, b.id, C.uint64_t(q.device), C.uint64_t(q.stream), C.uint32_t(q.dtype), (*C.int64_t)(unsafe.Pointer(pointer(q.shape))), C.size_t(len(q.shape)), (*C.int32_t)(unsafe.Pointer(pointer(q.tags))), (*C.uint8_t)(unsafe.Pointer(pointer(q.bytes))), C.size_t(len(q.bytes)), &id, &d, &buf[0], C.NT_ERROR_CAP)
+	case "storage_reinterpret":
+		code = C.nt_call_cuda_storage_reinterpret(b.library, b.id, C.uint64_t(q.storage), C.uint32_t(q.dtype), C.uint64_t(q.offset), (*C.int64_t)(unsafe.Pointer(pointer(q.shape))), (*C.int64_t)(unsafe.Pointer(pointer(q.strides))), (*C.int32_t)(unsafe.Pointer(pointer(q.tags))), C.size_t(len(q.shape)), &id, &d, &buf[0], C.NT_ERROR_CAP)
 	case "storage_view":
 		code = C.nt_call_cuda_storage_view(b.library, b.id, C.uint64_t(q.storage), C.uint32_t(q.dtype), C.uint64_t(q.offset), (*C.int64_t)(unsafe.Pointer(pointer(q.shape))), (*C.int64_t)(unsafe.Pointer(pointer(q.strides))), (*C.int32_t)(unsafe.Pointer(pointer(q.tags))), C.size_t(len(q.shape)), &id, &d, &buf[0], C.NT_ERROR_CAP)
 	case "storage_meta":
@@ -75,6 +77,18 @@ func (b *nativeBackend) cuda(q cudaRequest) (cudaResult, error) {
 		code = C.nt_call_cuda_conv_small_f16(b.library, b.id, C.uint64_t(q.stream), C.uint64_t(q.in), C.uint64_t(q.weights), C.uint64_t(q.bias), C.uint64_t(q.out), C.int32_t(q.n), C.int32_t(q.cIn), C.int32_t(q.cOut), C.int32_t(q.tIn), C.int32_t(q.window), C.int32_t(q.stride), C.int32_t(q.padding), C.int32_t(q.outNStride), C.uint32_t(q.activation), &d, &buf[0], C.NT_ERROR_CAP)
 	case "weights_permute_cast_f16":
 		code = C.nt_call_cuda_weights_permute_cast_f16(b.library, b.id, C.uint64_t(q.stream), C.uint64_t(q.weights), C.uint64_t(q.bias), C.uint64_t(q.out), C.uint64_t(q.storage), &d, &buf[0], C.NT_ERROR_CAP)
+	case "conv_koi_f16":
+		var koi C.int32_t
+		code = C.nt_call_cuda_conv_koi_f16(b.library, b.id, C.uint64_t(q.stream), C.uint64_t(q.in), C.uint64_t(q.weights), C.uint64_t(q.bias), C.uint64_t(q.out), C.int32_t(q.n), C.int32_t(q.tIn), C.int32_t(q.cIn), C.int32_t(q.cOut), C.int32_t(q.window), C.int32_t(q.stride), C.int32_t(q.padding), C.int32_t(q.inNStride), C.int32_t(q.outNStride), C.int32_t(q.outTStride), C.uint32_t(q.activation), C.uint32_t(q.inType), C.uint32_t(q.outType), C.uint32_t(q.accumType), &koi, &d, &buf[0], C.NT_ERROR_CAP)
+		if code == 0 {
+			r.koiResult = int32(koi)
+		}
+	case "linear_f16":
+		var koi C.int32_t
+		code = C.nt_call_cuda_linear_f16(b.library, b.id, C.uint64_t(q.stream), C.uint64_t(q.in), C.uint64_t(q.weights), C.uint64_t(q.bias), C.uint64_t(q.out), C.int32_t(q.n), C.int32_t(q.tOut), C.int32_t(q.k), C.int32_t(q.cOut), C.int32_t(q.inNStride), C.int32_t(q.inStride1), C.int32_t(q.outNStride), C.int32_t(q.outTStride), C.uint32_t(q.activation), C.uint32_t(q.inType), C.uint32_t(q.outType), &koi, &d, &buf[0], C.NT_ERROR_CAP)
+		if code == 0 {
+			r.koiResult = int32(koi)
+		}
 	default:
 		return r, &CUDAError{Op: q.op, Subsystem: "boundary", Reason: "unknown CUDA operation"}
 	}

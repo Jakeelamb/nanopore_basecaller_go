@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"os"
 
+	hacmodel "github.com/Jakeelamb/nanopore_basecaller_go/internal/model"
 	"github.com/Jakeelamb/nanopore_basecaller_go/verification/hacgpu"
 	"github.com/Jakeelamb/nanopore_basecaller_go/verification/hacgpu/h02"
+	"github.com/Jakeelamb/nanopore_basecaller_go/verification/hacgpu/h03"
 	"github.com/Jakeelamb/nanopore_basecaller_go/verification/tensor/runner"
 )
 
@@ -23,7 +25,7 @@ func run() error {
 	if err := runner.CheckRoot(); err != nil {
 		return err
 	}
-	unit := flag.String("unit", "", "build, capture, verify, compare, sources or small-convs")
+	unit := flag.String("unit", "", "build, capture, verify, compare, sources, small-convs or last-conv")
 	buildDir := flag.String("build-dir", "", "qualified GCC15 build tree")
 	dorado := flag.String("dorado-source", os.Getenv("DORADO_SOURCE"), "read-only pinned Dorado checkout")
 	build := flag.String("build", "", "oracle build manifest")
@@ -39,6 +41,8 @@ func run() error {
 	backend := flag.String("backend", "", "ABI4 CUDA13 tensor backend for -unit small-convs")
 	ordinal := flag.Int("ordinal", 0, "CUDA ordinal")
 	admitted := flag.Bool("runtime-admitted", false, "coordinator released this bounded native invocation")
+	koiConv := flag.Bool("koi-conv", true, "source dev option koi_conv for -unit last-conv")
+	koiConvF32 := flag.Bool("koi-conv-f32", false, "source dev option koi_conv_f32 for -unit last-conv")
 	flag.Parse()
 
 	switch *unit {
@@ -92,6 +96,22 @@ func run() error {
 		r, err := h02.Run(h02.Options{
 			Capture: *captureDir, Model: *model, Backend: *backend, Out: *out,
 			Ordinal: *ordinal, Admitted: *admitted,
+		})
+		if err != nil {
+			return err
+		}
+		fmt.Printf("%s %s\n", r.Status, r.Attempt)
+		return nil
+	case "last-conv":
+		if *captureDir == "" || *backend == "" || *model == "" || *out == "" {
+			return fmt.Errorf("-capture, -backend, -model and -out required")
+		}
+		dev := hacmodel.DefaultLastConvDevOptions()
+		dev.KoiConv = *koiConv
+		dev.KoiConvF32 = *koiConvF32
+		r, err := h03.Run(h03.Options{
+			Capture: *captureDir, Model: *model, Backend: *backend, Out: *out,
+			Ordinal: *ordinal, Admitted: *admitted, DevOptions: &dev,
 		})
 		if err != nil {
 			return err
