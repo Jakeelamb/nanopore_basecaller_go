@@ -31,14 +31,21 @@ type HalfLayout struct {
 type cudaRequest struct {
 	op                                      string
 	device, stream, half, a, b, out, offset uint64
+	storage, src, scale                     uint64
 	ordinal                                 int32
+	dtype                                   uint32
+	count                                   int
 	shape, strides                          []int64
+	tags                                    []int32
 	bits                                    []uint16
+	bytes                                   []byte
 }
 type cudaResult struct {
 	id     uint64
 	layout HalfLayout
+	meta   StorageMeta
 	bits   []uint16
+	bytes  []byte
 }
 
 func halfCount(shape []int64) (int, error) {

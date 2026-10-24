@@ -55,6 +55,42 @@ int nt_cuda_half_meta(uint64_t engine, uint64_t half, nt_half_meta *out, nt_cuda
 int nt_cuda_half_bits(uint64_t engine, uint64_t stream, uint64_t half, uint16_t *bits, size_t count, nt_cuda_detail *detail, char *error, size_t error_cap);
 int nt_cuda_half_release(uint64_t engine, uint64_t half, nt_cuda_detail *detail, char *error, size_t error_cap);
 int nt_cuda_gemm_f16(uint64_t engine, uint64_t stream, uint64_t a, uint64_t b, uint64_t out, nt_cuda_detail *detail, char *error, size_t error_cap);
+
+/* Typed storage. Additive under ABI 4: a backend without these symbols is
+ * rejected by mandatory symbol resolution at library open. Dtypes mirror the
+ * pinned Koi type ids used by the HAC/SUP graphs. */
+#define NT_STORAGE_MAX_RANK 8
+enum nt_dtype { NT_DTYPE_F16=1, NT_DTYPE_I8, NT_DTYPE_U8, NT_DTYPE_I32, NT_DTYPE_F32, NT_DTYPE_E4M3 };
+/* Pinned KoiTensor dim tags: the named enum values 0..2 and the single-character
+ * tags the source passes literally (TxModules.cpp:534-556). */
+enum nt_koi_tag { NT_KOI_TAG_QKV=0, NT_KOI_TAG_GATE_IFGO=1, NT_KOI_TAG_W_U=2 };
+typedef struct nt_storage_meta {
+ uint32_t rank; uint32_t dtype; uint64_t device; int32_t ordinal;
+ uint32_t scale_dtype; uint32_t scale_present; int32_t scale_tag;
+ uint64_t allocation; uint64_t offset_elements; uint64_t storage_elements;
+ int64_t shape[NT_STORAGE_MAX_RANK]; int64_t strides[NT_STORAGE_MAX_RANK];
+ int32_t tags[NT_STORAGE_MAX_RANK];
+} nt_storage_meta;
+int nt_cuda_storage_new(uint64_t engine, uint64_t device, uint64_t stream, uint32_t dtype,
+ const int64_t *shape, size_t rank, const int32_t *tags, const uint8_t *bytes, size_t count,
+ uint64_t *out, nt_cuda_detail *detail, char *error, size_t error_cap);
+int nt_cuda_storage_view(uint64_t engine, uint64_t parent, uint32_t dtype, uint64_t offset_elements,
+ const int64_t *shape, const int64_t *strides, const int32_t *tags, size_t rank, uint64_t *out,
+ nt_cuda_detail *detail, char *error, size_t error_cap);
+int nt_cuda_storage_meta(uint64_t engine, uint64_t storage, nt_storage_meta *out,
+ nt_cuda_detail *detail, char *error, size_t error_cap);
+int nt_cuda_storage_upload(uint64_t engine, uint64_t stream, uint64_t storage, const uint8_t *bytes,
+ size_t count, nt_cuda_detail *detail, char *error, size_t error_cap);
+int nt_cuda_storage_download(uint64_t engine, uint64_t stream, uint64_t storage, uint8_t *bytes,
+ size_t count, nt_cuda_detail *detail, char *error, size_t error_cap);
+int nt_cuda_storage_copy(uint64_t engine, uint64_t stream, uint64_t dst, uint64_t src,
+ nt_cuda_detail *detail, char *error, size_t error_cap);
+int nt_cuda_storage_fill(uint64_t engine, uint64_t stream, uint64_t storage, const uint8_t *pattern,
+ size_t count, nt_cuda_detail *detail, char *error, size_t error_cap);
+int nt_cuda_storage_scale(uint64_t engine, uint64_t storage, uint64_t scale, int32_t scale_tag,
+ nt_cuda_detail *detail, char *error, size_t error_cap);
+int nt_cuda_storage_release(uint64_t engine, uint64_t storage, nt_cuda_detail *detail,
+ char *error, size_t error_cap);
 #ifdef __cplusplus
 }
 #endif

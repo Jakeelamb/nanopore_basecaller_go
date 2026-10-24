@@ -28,6 +28,15 @@ struct nt_library {
  int (*cuda_half_bits)(uint64_t engine, uint64_t stream, uint64_t half, uint16_t *bits, size_t count, nt_cuda_detail *detail, char *error, size_t error_cap);
  int (*cuda_half_release)(uint64_t engine, uint64_t half, nt_cuda_detail *detail, char *error, size_t error_cap);
  int (*cuda_gemm_f16)(uint64_t engine, uint64_t stream, uint64_t a, uint64_t b, uint64_t out, nt_cuda_detail *detail, char *error, size_t error_cap);
+ int (*cuda_storage_new)(uint64_t engine, uint64_t device, uint64_t stream, uint32_t dtype, const int64_t *shape, size_t rank, const int32_t *tags, const uint8_t *bytes, size_t count, uint64_t *out, nt_cuda_detail *detail, char *error, size_t error_cap);
+ int (*cuda_storage_view)(uint64_t engine, uint64_t parent, uint32_t dtype, uint64_t offset_elements, const int64_t *shape, const int64_t *strides, const int32_t *tags, size_t rank, uint64_t *out, nt_cuda_detail *detail, char *error, size_t error_cap);
+ int (*cuda_storage_meta)(uint64_t engine, uint64_t storage, nt_storage_meta *out, nt_cuda_detail *detail, char *error, size_t error_cap);
+ int (*cuda_storage_upload)(uint64_t engine, uint64_t stream, uint64_t storage, const uint8_t *bytes, size_t count, nt_cuda_detail *detail, char *error, size_t error_cap);
+ int (*cuda_storage_download)(uint64_t engine, uint64_t stream, uint64_t storage, uint8_t *bytes, size_t count, nt_cuda_detail *detail, char *error, size_t error_cap);
+ int (*cuda_storage_copy)(uint64_t engine, uint64_t stream, uint64_t dst, uint64_t src, nt_cuda_detail *detail, char *error, size_t error_cap);
+ int (*cuda_storage_fill)(uint64_t engine, uint64_t stream, uint64_t storage, const uint8_t *pattern, size_t count, nt_cuda_detail *detail, char *error, size_t error_cap);
+ int (*cuda_storage_scale)(uint64_t engine, uint64_t storage, uint64_t scale, int32_t scale_tag, nt_cuda_detail *detail, char *error, size_t error_cap);
+ int (*cuda_storage_release)(uint64_t engine, uint64_t storage, nt_cuda_detail *detail, char *error, size_t error_cap);
 };
 nt_library* nt_library_open(const char* path,char* err,size_t cap) {
  nt_library* l=calloc(1,sizeof(*l));
@@ -52,6 +61,15 @@ nt_library* nt_library_open(const char* path,char* err,size_t cap) {
  LOAD(cuda_half_bits,"nt_cuda_half_bits");
  LOAD(cuda_half_release,"nt_cuda_half_release");
  LOAD(cuda_gemm_f16,"nt_cuda_gemm_f16");
+ LOAD(cuda_storage_new,"nt_cuda_storage_new");
+ LOAD(cuda_storage_view,"nt_cuda_storage_view");
+ LOAD(cuda_storage_meta,"nt_cuda_storage_meta");
+ LOAD(cuda_storage_upload,"nt_cuda_storage_upload");
+ LOAD(cuda_storage_download,"nt_cuda_storage_download");
+ LOAD(cuda_storage_copy,"nt_cuda_storage_copy");
+ LOAD(cuda_storage_fill,"nt_cuda_storage_fill");
+ LOAD(cuda_storage_scale,"nt_cuda_storage_scale");
+ LOAD(cuda_storage_release,"nt_cuda_storage_release");
  #undef LOAD
  return l;
 }
@@ -87,3 +105,21 @@ int nt_call_cuda_half_bits(nt_library *library, uint64_t engine, uint64_t stream
 int nt_call_cuda_half_release(nt_library *library, uint64_t engine, uint64_t half, nt_cuda_detail *detail, char *error, size_t error_cap) { return library->cuda_half_release(engine,half,detail,error,error_cap); }
 
 int nt_call_cuda_gemm_f16(nt_library *library, uint64_t engine, uint64_t stream, uint64_t a, uint64_t b, uint64_t out, nt_cuda_detail *detail, char *error, size_t error_cap) { return library->cuda_gemm_f16(engine,stream,a,b,out,detail,error,error_cap); }
+
+int nt_call_cuda_storage_new(nt_library *library, uint64_t engine, uint64_t device, uint64_t stream, uint32_t dtype, const int64_t *shape, size_t rank, const int32_t *tags, const uint8_t *bytes, size_t count, uint64_t *out, nt_cuda_detail *detail, char *error, size_t error_cap) { return library->cuda_storage_new(engine,device,stream,dtype,shape,rank,tags,bytes,count,out,detail,error,error_cap); }
+
+int nt_call_cuda_storage_view(nt_library *library, uint64_t engine, uint64_t parent, uint32_t dtype, uint64_t offset_elements, const int64_t *shape, const int64_t *strides, const int32_t *tags, size_t rank, uint64_t *out, nt_cuda_detail *detail, char *error, size_t error_cap) { return library->cuda_storage_view(engine,parent,dtype,offset_elements,shape,strides,tags,rank,out,detail,error,error_cap); }
+
+int nt_call_cuda_storage_meta(nt_library *library, uint64_t engine, uint64_t storage, nt_storage_meta *out, nt_cuda_detail *detail, char *error, size_t error_cap) { return library->cuda_storage_meta(engine,storage,out,detail,error,error_cap); }
+
+int nt_call_cuda_storage_upload(nt_library *library, uint64_t engine, uint64_t stream, uint64_t storage, const uint8_t *bytes, size_t count, nt_cuda_detail *detail, char *error, size_t error_cap) { return library->cuda_storage_upload(engine,stream,storage,bytes,count,detail,error,error_cap); }
+
+int nt_call_cuda_storage_download(nt_library *library, uint64_t engine, uint64_t stream, uint64_t storage, uint8_t *bytes, size_t count, nt_cuda_detail *detail, char *error, size_t error_cap) { return library->cuda_storage_download(engine,stream,storage,bytes,count,detail,error,error_cap); }
+
+int nt_call_cuda_storage_copy(nt_library *library, uint64_t engine, uint64_t stream, uint64_t dst, uint64_t src, nt_cuda_detail *detail, char *error, size_t error_cap) { return library->cuda_storage_copy(engine,stream,dst,src,detail,error,error_cap); }
+
+int nt_call_cuda_storage_fill(nt_library *library, uint64_t engine, uint64_t stream, uint64_t storage, const uint8_t *pattern, size_t count, nt_cuda_detail *detail, char *error, size_t error_cap) { return library->cuda_storage_fill(engine,stream,storage,pattern,count,detail,error,error_cap); }
+
+int nt_call_cuda_storage_scale(nt_library *library, uint64_t engine, uint64_t storage, uint64_t scale, int32_t scale_tag, nt_cuda_detail *detail, char *error, size_t error_cap) { return library->cuda_storage_scale(engine,storage,scale,scale_tag,detail,error,error_cap); }
+
+int nt_call_cuda_storage_release(nt_library *library, uint64_t engine, uint64_t storage, nt_cuda_detail *detail, char *error, size_t error_cap) { return library->cuda_storage_release(engine,storage,detail,error,error_cap); }

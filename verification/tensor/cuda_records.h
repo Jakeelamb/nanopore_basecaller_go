@@ -27,3 +27,12 @@ struct CUDAHalfRecord {
  uint64_t id=0,allocation=0,offset=0,storage=0,end=0;
  at::Tensor tensor;
 };
+struct CUDAStorageRecord {
+ std::shared_ptr<CUDADeviceRecord> device;
+ uint64_t id=0,allocation=0,offset=0,storage=0,end=0;
+ uint32_t dtype=0,scale_dtype=0;
+ int32_t scale_tag=0;
+ uint64_t scale_owner=0;
+ int32_t tags[8]{};
+ at::Tensor tensor;
+};
