@@ -152,6 +152,20 @@ func captureStorageUnit(m *evidence, dir, backend, torchRoot string, ordinal int
 	if err = os.WriteFile(runtimeManifest, rawManifest, 0o644); err != nil {
 		return err
 	}
+
+	// The accepted CPU contracts must still pass against this CUDA-enabled build,
+	// with the same observed runtime pins the device step uses. The host driver
+	// (`libcuda.so.*`) is loaded by the CUDA-enabled backend and is pinned by
+	// observation here, not by the build, because it is host-supplied.
+	cpuEnv := append(append([]string{}, base...), "NANOPORE_TENSOR_RUNTIME_MANIFEST="+runtimeManifest)
+	cpu, err := execute("cpu-contracts-cuda-library", cpuEnv, "go", "tool", "test2json", "-t", "-p", "github.com/Jakeelamb/nanopore_basecaller_go/internal/tensor", consumer.TestBinary, "-test.v=test2json", "-test.count=1", "-test.run", "^("+strings.Join(cpuContractTests, "|")+")$")
+	if err != nil {
+		return err
+	}
+	if err = runner.RequireGoTestRoots(cpu.Stdout, "github.com/Jakeelamb/nanopore_basecaller_go/internal/tensor", cpuContractTests); err != nil {
+		return err
+	}
+	m.CPUContracts = len(cpuContractTests)
 	env := append(append([]string{}, base...), "NANOPORE_TENSOR_CUDA_DIAGNOSTICS=1", "NANOPORE_TENSOR_RUNTIME_MANIFEST="+runtimeManifest, "NANOPORE_TENSOR_STORAGE_CAPTURE="+receiptPath)
 	const name = "TestNativeCUDAStorageDevice"
 	run, err := execute("storage-koi-device", env, "go", "tool", "test2json", "-t", "-p", "github.com/Jakeelamb/nanopore_basecaller_go/internal/tensor", consumer.TestBinary, "-test.v=test2json", "-test.count=1", "-test.run", "^"+name+"$")
