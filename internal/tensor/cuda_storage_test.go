@@ -54,7 +54,7 @@ int nt_cuda_stream_close(uint64_t e,uint64_t id,nt_cuda_detail*d,char*er,size_t 
 int nt_cuda_storage_new(uint64_t e,uint64_t dev,uint64_t stream,uint32_t dtype,const int64_t*shape,size_t rank,const int32_t*tags,const uint8_t*bytes,size_t count,uint64_t*out,nt_cuda_detail*d,char*er,size_t c){
  (void)dev;(void)stream;(void)d;(void)er;(void)c;size_t n=1;for(size_t i=0;i<rank;i++){if(shape[i]<=0)return 7;n*=(size_t)(shape[i]);}
  if(!dsize(dtype))return 4;if(count!=n*dsize(dtype))return 7;
- for(int i=0;i<256;i++)if(!table[i].id){table[i].id=fresh();table[i].engine=e;table[i].device=100;table[i].dtype=dtype;table[i].rank=(int32_t)rank;table[i].storage=n;table[i].end=n;table[i].allocation=table[i].id;table[i].data=malloc(n*dsize(dtype));if(count)memcpy(table[i].data,bytes,count);for(size_t j=0;j<rank;j++){table[i].shape[j]=shape[j];table[i].strides[j]=j+1<rank?table[i].shape[j+1]*table[i].strides[j+1]:1;table[i].tags[j]=tags[j];}*out=table[i].id;return 0;}
+ for(int i=0;i<256;i++)if(!table[i].id){table[i].id=fresh();table[i].engine=e;table[i].device=100;table[i].dtype=dtype;table[i].rank=(int32_t)rank;table[i].storage=n;table[i].end=n;table[i].allocation=table[i].id;table[i].data=malloc(n*dsize(dtype));if(count)memcpy(table[i].data,bytes,count);for(size_t j=rank;j-->0;){table[i].strides[j]=j+1<rank?table[i].shape[j+1]*table[i].strides[j+1]:1;table[i].shape[j]=shape[j];table[i].tags[j]=tags[j];}*out=table[i].id;return 0;}
  return 1;}
 int nt_cuda_storage_view(uint64_t e,uint64_t parent,uint32_t dtype,uint64_t offset,const int64_t*shape,const int64_t*strides,const int32_t*tags,size_t rank,uint64_t*out,nt_cuda_detail*d,char*er,size_t c){
  (void)d;(void)er;(void)c;rec*p=find(e,parent);if(!p)return 2;if(dtype!=p->dtype)return 4;
@@ -76,6 +76,42 @@ int nt_cuda_storage_scale(uint64_t e,uint64_t id,uint64_t scale,int32_t tag,nt_c
  (void)d;(void)er;(void)c;rec*p=find(e,id);if(!p)return 2;if(!scale){p->scale=0;p->scale_dtype=0;p->scale_tag=0;return 0;}rec*s=find(e,scale);if(!s)return 2;if(p->dtype!=2)return 4;if(s->dtype!=5)return 4;p->scale=scale;p->scale_dtype=s->dtype;p->scale_tag=tag;return 0;}
 int nt_cuda_storage_release(uint64_t e,uint64_t id,nt_cuda_detail*d,char*er,size_t c){
  (void)d;(void)er;(void)c;rec*p=find(e,id);if(!p)return 2;for(int i=0;i<256;i++)if(table[i].scale==id)return 3;if(p->allocation==p->id&&p->offset==0)free(p->data);memset(p,0,sizeof(*p));return 0;}
+static uint16_t h16(float f){_Float16 h=(_Float16)f;uint16_t b;memcpy(&b,&h,2);return b;}
+/* Host-memory stand-in for the small-convolution boundary. It recomputes the
+   same argument contract the native guard enforces, so a Go request that drops
+   or swaps a geometry field is rejected here instead of silently accepted. */
+int nt_cuda_conv_small_f16(uint64_t e,uint64_t stream,uint64_t in,uint64_t w,uint64_t b,uint64_t out,
+ int32_t n,int32_t cin,int32_t cout,int32_t tin,int32_t win,int32_t stride,int32_t pad,int32_t ons,
+ uint32_t act,nt_cuda_detail*d,char*er,size_t c){
+ (void)stream;(void)d;(void)er;(void)c;
+ rec*ri=find(e,in),*rw=find(e,w),*rb=find(e,b),*ro=find(e,out);
+ if(!ri||!rw||!rb||!ro)return 2;
+ for(int k=0;k<4;k++){rec*r=k==0?ri:k==1?rw:k==2?rb:ro;if(r->dtype!=1)return 4;}
+ if(n<=0||cin<=0||cout<=0||tin<=0||win<=0||stride<=0)return 3;
+ if(pad!=win/2)return 7;
+ if(tin%stride)return 7;
+ if(ri->rank!=3||ri->shape[0]!=n||ri->shape[1]!=tin||ri->shape[2]!=cin)return 7;
+ if(rw->rank!=2||rw->shape[0]!=(int64_t)win*cin||rw->shape[1]!=cout)return 7;
+ if(rb->rank!=1||rb->shape[0]!=cout)return 7;
+ if(ro->rank!=3||ro->shape[0]!=n||ro->shape[1]!=tin/stride||ro->shape[2]!=cout)return 7;
+ if(ro->strides[0]!=ons||ro->strides[1]!=cout||ro->strides[2]!=1)return 7;
+ if(act>3)return 8;
+ return 0;}
+/* Host-memory reproduction of weight.permute({2,1,0}).contiguous().flatten(0,1).to(kF16). */
+int nt_cuda_weights_permute_cast_f16(uint64_t e,uint64_t stream,uint64_t w,uint64_t b,uint64_t pw,uint64_t pb,nt_cuda_detail*d,char*er,size_t c){
+ (void)stream;(void)d;(void)er;(void)c;
+ rec*rw=find(e,w),*rb=find(e,b),*rp=find(e,pw),*rpb=find(e,pb);
+ if(!rw||!rb||!rp||!rpb)return 2;
+ if(rw->dtype!=5||rb->dtype!=5||rp->dtype!=1||rpb->dtype!=1)return 4;
+ if(rw->rank!=3)return 7;
+ int64_t co=rw->shape[0],ci=rw->shape[1],win=rw->shape[2];
+ if(rp->rank!=2||rp->shape[0]!=win*ci||rp->shape[1]!=co)return 7;
+ if(rb->rank!=1||rb->shape[0]!=co||rpb->rank!=1||rpb->shape[0]!=co)return 7;
+ const float*src=(const float*)rw->data;uint16_t*dst=(uint16_t*)rp->data;
+ for(int64_t o=0;o<co;o++)for(int64_t i=0;i<ci;i++)for(int64_t k=0;k<win;k++)
+  dst[(k*ci+i)*co+o]=h16(src[(o*ci+i)*win+k]);
+ for(int64_t o=0;o<co;o++)((uint16_t*)rpb->data)[o]=h16(((const float*)rb->data)[o]);
+ return 0;}
 `
 
 // The loader resolves every ABI symbol at open, so the host-memory backend also

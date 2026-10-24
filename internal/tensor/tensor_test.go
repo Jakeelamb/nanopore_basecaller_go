@@ -345,7 +345,7 @@ func TestNativeLoaderABIRejections(t *testing.T) {
 			"void nt_open(void){} void nt_close(void){} void nt_new(void){} void nt_load(void){} void nt_release(void){}\n" +
 			"void nt_shape(void){} void nt_data(void){} void nt_run(void){} void nt_new_int64(void){} void nt_data_int64(void){}\n", "missing ABI symbol nt_sdpa"},
 	}
-	symbols := []string{"nt_open", "nt_close", "nt_new", "nt_load", "nt_release", "nt_shape", "nt_data", "nt_run", "nt_new_int64", "nt_data_int64", "nt_sdpa", "nt_cuda_device_open", "nt_cuda_device_close", "nt_cuda_stream_open", "nt_cuda_stream_close", "nt_cuda_half_new", "nt_cuda_half_view", "nt_cuda_half_meta", "nt_cuda_half_bits", "nt_cuda_half_release", "nt_cuda_gemm_f16", "nt_cuda_storage_new", "nt_cuda_storage_view", "nt_cuda_storage_meta", "nt_cuda_storage_upload", "nt_cuda_storage_download", "nt_cuda_storage_copy", "nt_cuda_storage_fill", "nt_cuda_storage_scale", "nt_cuda_storage_release"}
+	symbols := []string{"nt_open", "nt_close", "nt_new", "nt_load", "nt_release", "nt_shape", "nt_data", "nt_run", "nt_new_int64", "nt_data_int64", "nt_sdpa", "nt_cuda_device_open", "nt_cuda_device_close", "nt_cuda_stream_open", "nt_cuda_stream_close", "nt_cuda_half_new", "nt_cuda_half_view", "nt_cuda_half_meta", "nt_cuda_half_bits", "nt_cuda_half_release", "nt_cuda_gemm_f16", "nt_cuda_storage_new", "nt_cuda_storage_view", "nt_cuda_storage_meta", "nt_cuda_storage_upload", "nt_cuda_storage_download", "nt_cuda_storage_copy", "nt_cuda_storage_fill", "nt_cuda_storage_scale", "nt_cuda_storage_release", "nt_cuda_conv_small_f16", "nt_cuda_weights_permute_cast_f16"}
 	for _, missing := range symbols[11:] {
 		source := "unsigned int nt_version(void){return 4;}\n"
 		for _, symbol := range symbols {

@@ -78,6 +78,7 @@ func run() (ret error) {
 	weight := flag.String("weight", "", "optional read-only real Dorado weight for independent float32 snapshot")
 	family := flag.String("cuda-family", "none", "none or 13.0; build and link only, never capture")
 	cudaRoot := flag.String("cuda-root", "/opt/cuda", "CUDA13 toolkit for compile and link only")
+	koi := flag.String("koi", os.Getenv("LIBKOI_ROOT"), "read-only pinned libkoi prefix; required for a CUDA build because the HAC boundary calls host_convolution_f16")
 	dorado := flag.String("dorado-source", os.Getenv("DORADO_SOURCE"), "read-only pinned Dorado checkout for initialization and archive contracts")
 	flag.Parse()
 	if *family != "none" && *family != "13.0" {
@@ -85,6 +86,9 @@ func run() (ret error) {
 	}
 	if *torch == "" || *archive == "" || *dorado == "" {
 		return fmt.Errorf("-torch, -archive, and -dorado-source are required; no downloads are performed")
+	}
+	if *family == "13.0" && *koi == "" {
+		return fmt.Errorf("-koi is required for a CUDA build: the HAC small-convolution boundary links the pinned libkoi")
 	}
 	for _, v := range []*string{torch, archive, out, dorado} {
 		p, err := filepath.Abs(*v)
@@ -99,6 +103,13 @@ func run() (ret error) {
 		if err != nil {
 			return err
 		}
+	}
+	if *koi != "" {
+		p, err := filepath.Abs(*koi)
+		if err != nil {
+			return err
+		}
+		*koi = p
 	}
 	attempt, err := runner.NewAttempt(*out)
 	if err != nil {
@@ -189,9 +200,15 @@ func run() (ret error) {
 	if m.ArchiveSHA != archivePin {
 		return fmt.Errorf("archive SHA256 mismatch: %s", m.ArchiveSHA)
 	}
-	inputs := []string{"verification/tensor/backend.cpp", "verification/tensor/cuda_records.h", "verification/tensor/cuda_backend.h", "verification/tensor/cuda_storage.inc", "verification/tensor/drain_ownership.h", "verification/tensor/cuda_failure_test.cpp", "verification/tensor/cuda_oracle.cpp", "verification/tensor/fixtures.cpp", "verification/tensor/runtime.h", "verification/tensor/source-pins.json", "verification/tensor/build/main.go", "internal/tensor/abi.h", filepath.Join(*torch, "build-version"), filepath.Join(*torch, "include/ATen/ATen.h"), filepath.Join(*torch, "include/torch/csrc/api/include/torch/serialize.h"), filepath.Join(*torch, "lib/libtorch_cpu.so"), filepath.Join(*torch, "lib/libc10.so")}
+	inputs := []string{"verification/tensor/backend.cpp", "verification/tensor/cuda_records.h", "verification/tensor/cuda_backend.h", "verification/tensor/cuda_storage.inc", "verification/tensor/hac_smallconv.inc", "verification/tensor/drain_ownership.h", "verification/tensor/cuda_failure_test.cpp", "verification/tensor/cuda_oracle.cpp", "verification/tensor/fixtures.cpp", "verification/tensor/runtime.h", "verification/tensor/source-pins.json", "verification/tensor/build/main.go", "internal/tensor/abi.h", filepath.Join(*torch, "build-version"), filepath.Join(*torch, "include/ATen/ATen.h"), filepath.Join(*torch, "include/torch/csrc/api/include/torch/serialize.h"), filepath.Join(*torch, "lib/libtorch_cpu.so"), filepath.Join(*torch, "lib/libc10.so")}
 	if *weight != "" {
 		inputs = append(inputs, *weight)
+	}
+	if *family == "13.0" {
+		// The HAC boundary calls libkoi's host_convolution_f16. Both the header
+		// and the static archive are pinned inputs, so a capture can never run
+		// against a different Koi build.
+		inputs = append(inputs, filepath.Join(*koi, "include/koi.h"), filepath.Join(*koi, "lib/libkoi.a"))
 	}
 	for _, path := range inputs {
 		h, err := hash(path)
@@ -261,8 +278,8 @@ func run() (ret error) {
 		if m.ToolkitVersion/1000 != 13 {
 			return fmt.Errorf("CUDA toolkit must be major family 13; got %d", m.ToolkitVersion)
 		}
-		common = append(common, "-DNT_ENABLE_CUDA=1", "-I"+filepath.Join(*cudaRoot, "include"))
-		link = append(link, "-L"+filepath.Join(*cudaRoot, "lib64"), "-Wl,-rpath,"+filepath.Join(*cudaRoot, "lib64"), "-ltorch_cuda", "-lc10_cuda", "-lcudart", "-lcublas")
+		common = append(common, "-DNT_ENABLE_CUDA=1", "-I"+filepath.Join(*cudaRoot, "include"), "-I"+filepath.Join(*koi, "include"))
+		link = append(link, "-L"+filepath.Join(*cudaRoot, "lib64"), "-Wl,-rpath,"+filepath.Join(*cudaRoot, "lib64"), "-ltorch_cuda", "-lc10_cuda", "-lcudart", "-lcublas", filepath.Join(*koi, "lib/libkoi.a"))
 	}
 	m.Output = filepath.Join(*out, "libnanopore_tensor.so")
 	args := append([]string{compiler}, common...)

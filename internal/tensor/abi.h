@@ -91,6 +91,23 @@ int nt_cuda_storage_scale(uint64_t engine, uint64_t storage, uint64_t scale, int
  nt_cuda_detail *detail, char *error, size_t error_cap);
 int nt_cuda_storage_release(uint64_t engine, uint64_t storage, nt_cuda_detail *detail,
  char *error, size_t error_cap);
+
+/* HAC small convolution. Additive under ABI 4, like typed storage: a backend
+ * without these symbols is rejected by mandatory symbol resolution at open.
+ * The one caller-facing primitive is a single pinned host_convolution_f16 call
+ * (ConvStack.cpp:239-262). The weight-packing symbol is a verification-only
+ * oracle: the Go caller packs weights itself and the consumer compares the two
+ * byte for byte. It is never part of the caller path. */
+enum nt_koi_activation { NT_KOI_IDENTITY=0, NT_KOI_SWISH, NT_KOI_SWISH_CLAMP,
+ NT_KOI_TANH, NT_KOI_TANH_X5 };
+int nt_cuda_conv_small_f16(uint64_t engine, uint64_t stream,
+ uint64_t in, uint64_t weights, uint64_t bias, uint64_t out,
+ int32_t n, int32_t c_in, int32_t c_out, int32_t t_in,
+ int32_t window, int32_t stride, int32_t padding, int32_t out_n_stride,
+ uint32_t activation, nt_cuda_detail *detail, char *error, size_t error_cap);
+int nt_cuda_weights_permute_cast_f16(uint64_t engine, uint64_t stream,
+ uint64_t weight, uint64_t bias, uint64_t packed, uint64_t packed_bias,
+ nt_cuda_detail *detail, char *error, size_t error_cap);
 #ifdef __cplusplus
 }
 #endif
