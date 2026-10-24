@@ -94,12 +94,12 @@ func ModelConvs(modelDir string) ([]ConvSpec, error) {
 	return out, nil
 }
 
-// convParams turns the declared sublayers into caller parameters. Only the last
+// ConvParams turns the declared sublayers into caller parameters. Only the last
 // layer's layout is decided by the source, through
 // `get_koi_lstm_input_layout(lp.size, lp.inner_dim, lp.activation)`
 // (ConvStack.cpp:138-139); every earlier layer keeps the NTC default
 // (ConvStack.h:32).
-func convParams(convs []ConvSpec) ([]model.SmallConvParams, error) {
+func ConvParams(convs []ConvSpec) ([]model.SmallConvParams, error) {
 	out := make([]model.SmallConvParams, len(convs))
 	for i, c := range convs {
 		activation, err := convActivation(c.Activation)

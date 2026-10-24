@@ -267,7 +267,7 @@ func Run(o Options) (r Receipt, err error) {
 	if len(convs) != capture.Convs {
 		return r, fmt.Errorf("model declares %d convolutions but the capture has %d", len(convs), capture.Convs)
 	}
-	params, err := convParams(convs)
+	params, err := ConvParams(convs)
 	if err != nil {
 		return r, err
 	}

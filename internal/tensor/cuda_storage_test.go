@@ -62,6 +62,20 @@ int nt_cuda_storage_view(uint64_t e,uint64_t parent,uint32_t dtype,uint64_t offs
  if(end>=p->end)return 7;
  for(int i=0;i<256;i++)if(!table[i].id){table[i]=*p;table[i].id=fresh();table[i].offset=p->offset+offset;table[i].end=end+1;table[i].rank=(int32_t)rank;for(size_t j=0;j<rank;j++){table[i].shape[j]=shape[j];table[i].strides[j]=strides[j];table[i].tags[j]=tags[j];}*out=table[i].id;return 0;}
  return 1;}
+static int contig(rec*p){if(p->rank<=0)return 1;if(p->strides[p->rank-1]!=1)return 0;
+ for(int i=p->rank-2;i>=0;i--)if(p->strides[i]!=p->shape[i+1]*p->strides[i+1])return 0;return 1;}
+int nt_cuda_storage_reinterpret(uint64_t e,uint64_t parent,uint32_t dtype,uint64_t off,
+ const int64_t*shape,const int64_t*strides,const int32_t*tags,size_t rank,uint64_t*out,
+ nt_cuda_detail*d,char*er,size_t c){
+ (void)d;(void)er;(void)c;rec*p=find(e,parent);if(!p)return 2;
+ if(!contig(p))return 7;
+ size_t nsz=dsize(dtype),psz=dsize(p->dtype);if(!nsz||!psz)return 4;
+ uint64_t start=(uint64_t)p->offset*psz+off*nsz;if(start%nsz)return 7;
+ uint64_t st=start/nsz,end=st;
+ for(size_t i=0;i<rank;i++){if(strides[i]<0)return 7;end+=(uint64_t)(shape[i]-1)*(uint64_t)strides[i];}
+ uint64_t limit=(uint64_t)p->end*psz/nsz;if(end>=limit)return 7;
+ for(int i=0;i<256;i++)if(!table[i].id){table[i]=*p;table[i].id=fresh();table[i].dtype=dtype;table[i].offset=st;table[i].end=end+1;table[i].storage=limit;table[i].rank=(int32_t)rank;for(size_t j=0;j<rank;j++){table[i].shape[j]=shape[j];table[i].strides[j]=strides[j];table[i].tags[j]=tags[j];}*out=table[i].id;return 0;}
+ return 1;}
 int nt_cuda_storage_meta(uint64_t e,uint64_t id,nt_storage_meta*m,nt_cuda_detail*d,char*er,size_t c){
  (void)d;(void)er;(void)c;rec*p=find(e,id);if(!p)return 2;memset(m,0,sizeof(*m));m->rank=p->rank;m->dtype=p->dtype;m->device=p->device;m->allocation=p->allocation;m->offset_elements=p->offset;m->storage_elements=p->storage;m->scale_dtype=p->scale_dtype;m->scale_present=p->scale!=0;m->scale_tag=p->scale_tag;for(int i=0;i<p->rank;i++){m->shape[i]=p->shape[i];m->strides[i]=p->strides[i];m->tags[i]=p->tags[i];}return 0;}
 int nt_cuda_storage_upload(uint64_t e,uint64_t stream,uint64_t id,const uint8_t*bytes,size_t count,nt_cuda_detail*d,char*er,size_t c){
@@ -112,6 +126,52 @@ int nt_cuda_weights_permute_cast_f16(uint64_t e,uint64_t stream,uint64_t w,uint6
   dst[(k*ci+i)*co+o]=h16(src[(o*ci+i)*win+k]);
  for(int64_t o=0;o<co;o++)((uint16_t*)rpb->data)[o]=h16(((const float*)rb->data)[o]);
  return 0;}
+/* Host-memory stand-in for the last-convolution boundary. It recomputes the
+   same argument contract the native guard enforces, so a Go request that drops
+   or swaps a geometry field is rejected here instead of silently accepted.
+   Koi type ids are not nt_dtype ids; map one to the other explicitly. */
+static uint32_t koi_dtype(uint32_t t){switch(t){case 2:return 2;case 3:return 4;case 4:return 6;case 5:return 1;case 6:return 5;}return 0;}
+int nt_cuda_conv_koi_f16(uint64_t e,uint64_t stream,uint64_t in,uint64_t w,uint64_t b,uint64_t out,
+ int32_t n,int32_t tin,int32_t cin,int32_t cout,int32_t win,int32_t stride,int32_t pad,
+ int32_t ins,int32_t ons,int32_t ots,uint32_t act,uint32_t it,uint32_t ot,uint32_t at,
+ int32_t*res,nt_cuda_detail*d,char*er,size_t c){
+ (void)stream;(void)d;(void)er;(void)c;
+ if(!res)return 3;*res=-1;
+ rec*ri=find(e,in),*rw=find(e,w),*rb=find(e,b),*ro=find(e,out);
+ if(!ri||!rw||!rb||!ro)return 2;
+ if(ri->dtype!=koi_dtype(it)||ro->dtype!=koi_dtype(ot)||rw->dtype!=1||rb->dtype!=1)return 4;
+ if(at!=5&&at!=6)return 4;
+ if(n<=0||tin<=0||cin<=0||cout<=0||win<=0||stride<=0)return 3;
+ if(pad!=win/2)return 7;
+ if(tin%stride)return 7;
+ int32_t tout=tin/stride;
+ if(ri->rank!=3||ri->shape[0]!=n||ri->shape[1]!=(int64_t)tin+2*(int64_t)pad||ri->shape[2]!=cin)return 7;
+ if(ri->strides[0]!=ins||ri->strides[1]!=cin||ri->strides[2]!=1)return 7;
+ if(rw->rank!=2||rw->shape[0]!=cout||rw->shape[1]!=(int64_t)win*cin)return 7;
+ if(rb->rank!=1||rb->shape[0]!=cout)return 7;
+ if(ro->rank!=3||ro->shape[0]!=n||ro->shape[1]!=tout||ro->shape[2]!=cout)return 7;
+ if(ro->strides[0]!=ons||ro->strides[1]!=ots||ro->strides[2]!=1)return 7;
+ if(act<1||act>3)return 8;
+ *res=0;return 0;}
+int nt_cuda_linear_f16(uint64_t e,uint64_t stream,uint64_t in,uint64_t w,uint64_t b,uint64_t out,
+ int32_t size0,int32_t size1,int32_t k,int32_t cout,int32_t is0,int32_t is1,
+ int32_t os0,int32_t os1,uint32_t act,uint32_t it,uint32_t ot,
+ int32_t*res,nt_cuda_detail*d,char*er,size_t c){
+ (void)stream;(void)d;(void)er;(void)c;
+ if(!res)return 3;*res=-1;
+ rec*ri=find(e,in),*rw=find(e,w),*rb=find(e,b),*ro=find(e,out);
+ if(!ri||!rw||!rb||!ro)return 2;
+ if(ri->dtype!=koi_dtype(it)||ro->dtype!=koi_dtype(ot)||rw->dtype!=1||rb->dtype!=1)return 4;
+ if(size0<=0||size1<=0||k<=0||cout<=0)return 3;
+ if(ri->rank!=3||ri->shape[0]!=size0)return 7;
+ if(ri->strides[0]!=is0||ri->strides[2]!=1)return 7;
+ if((int64_t)(size1-1)*(int64_t)is1+(int64_t)k>(int64_t)ri->shape[1]*(int64_t)ri->shape[2])return 7;
+ if(rw->rank!=2||rw->shape[0]!=cout||rw->shape[1]!=k)return 7;
+ if(rb->rank!=1||rb->shape[0]!=cout)return 7;
+ if(ro->rank!=3||ro->shape[0]!=size0||ro->shape[1]!=size1||ro->shape[2]!=cout)return 7;
+ if(ro->strides[0]!=os0||ro->strides[1]!=os1||ro->strides[2]!=1)return 7;
+ if(act<1||act>3)return 8;
+ *res=0;return 0;}
 `
 
 // The loader resolves every ABI symbol at open, so the host-memory backend also

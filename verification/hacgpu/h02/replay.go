@@ -98,7 +98,7 @@ func replay(dir string, r *Receipt, plan *model.HACSmallConvPlan, convs []ConvSp
 		return err
 	}
 
-	weights, err := loadConvWeights(e, r.Model, convs)
+	weights, err := LoadConvWeights(e, r.Model, convs)
 	if err != nil {
 		return err
 	}

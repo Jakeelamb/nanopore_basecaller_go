@@ -89,6 +89,16 @@ int nt_cuda_storage_fill(uint64_t engine, uint64_t stream, uint64_t storage, con
  size_t count, nt_cuda_detail *detail, char *error, size_t error_cap);
 int nt_cuda_storage_scale(uint64_t engine, uint64_t storage, uint64_t scale, int32_t scale_tag,
  nt_cuda_detail *detail, char *error, size_t error_cap);
+/* Reinterpret the parent's bytes as another element type. This is the typed
+ * equivalent of WorkingMemory.cpp:48 `backing_tensor.view(dtype)`: one
+ * whole-model reservation holds F16 convolution views and the I8 CUTLASS output
+ * view, so a view that can only inherit the parent dtype cannot express the
+ * plan. Additive under ABI 4 and mandatory at open. `offset_elements` is in the
+ * new dtype. */
+int nt_cuda_storage_reinterpret(uint64_t engine, uint64_t parent, uint32_t dtype,
+ uint64_t offset_elements, const int64_t *shape, const int64_t *strides,
+ const int32_t *tags, size_t rank, uint64_t *out, nt_cuda_detail *detail,
+ char *error, size_t error_cap);
 int nt_cuda_storage_release(uint64_t engine, uint64_t storage, nt_cuda_detail *detail,
  char *error, size_t error_cap);
 
@@ -108,6 +118,31 @@ int nt_cuda_conv_small_f16(uint64_t engine, uint64_t stream,
 int nt_cuda_weights_permute_cast_f16(uint64_t engine, uint64_t stream,
  uint64_t weight, uint64_t bias, uint64_t packed, uint64_t packed_bias,
  nt_cuda_detail *detail, char *error, size_t error_cap);
+
+/* HAC last convolution (ConvStack.cpp:264-322). Also additive under ABI 4.
+ *
+ * The shared declaration site for the two Koi primitives the CUTLASS branch
+ * uses, so later cards reuse these declarations rather than redeclaring them.
+ * Go owns the dispatch: it calls the fast path first and, on a non-success
+ * KoiResult, calls the linear fallback, exactly as the source does. Each call
+ * reports the primitive's own KoiResult through `koi_result`, so a caller can
+ * tell "the boundary refused this request" from "the device refused this
+ * shape". `nt_koi_type` mirrors KoiTypeId (koi.h:3). */
+enum nt_koi_type { NT_KOI_NONE=0, NT_KOI_E2M1, NT_KOI_I8, NT_KOI_I32, NT_KOI_E4M3,
+ NT_KOI_F16, NT_KOI_F32 };
+int nt_cuda_conv_koi_f16(uint64_t engine, uint64_t stream,
+ uint64_t in, uint64_t weights, uint64_t bias, uint64_t out,
+ int32_t n, int32_t t_in, int32_t c_in, int32_t c_out,
+ int32_t window, int32_t stride, int32_t padding,
+ int32_t in_n_stride, int32_t out_n_stride, int32_t out_t_stride,
+ uint32_t activation, uint32_t in_type, uint32_t out_type, uint32_t accum_type,
+ int32_t *koi_result, nt_cuda_detail *detail, char *error, size_t error_cap);
+int nt_cuda_linear_f16(uint64_t engine, uint64_t stream,
+ uint64_t in, uint64_t weights, uint64_t bias, uint64_t out,
+ int32_t size0, int32_t size1, int32_t k, int32_t c_out,
+ int32_t in_stride0, int32_t in_stride1, int32_t out_stride0, int32_t out_stride1,
+ uint32_t activation, uint32_t in_type, uint32_t out_type,
+ int32_t *koi_result, nt_cuda_detail *detail, char *error, size_t error_cap);
 #ifdef __cplusplus
 }
 #endif

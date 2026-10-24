@@ -10,10 +10,10 @@ import (
 	"github.com/Jakeelamb/nanopore_basecaller_go/internal/tensor"
 )
 
-// weightManifestPath is the caller's own weight pin file. The consumer reads the
+// WeightManifestPath is the caller's own weight pin file. A consumer reads the
 // same file the caller loads against, so the replay cannot be pinned to a
 // different checkpoint than the port.
-const weightManifestPath = "internal/model/hac_weights.json"
+const WeightManifestPath = "internal/model/hac_weights.json"
 
 type weightReceipt struct {
 	Name   string  `json:"name"`
@@ -21,8 +21,8 @@ type weightReceipt struct {
 	Shape  []int64 `json:"shape"`
 }
 
-// convWeight is one loaded convolution's float32 parameters and their pins.
-type convWeight struct {
+// ConvWeight is one loaded convolution's float32 parameters and their pins.
+type ConvWeight struct {
 	Index     int
 	Weight    []float32
 	Bias      []float32
@@ -31,23 +31,24 @@ type convWeight struct {
 	Shape     []int64
 }
 
-// convWeights is the loaded stack plus the manifest digest it was checked
+// ConvWeights is the loaded stack plus the manifest digest it was checked
 // against.
-type convWeights struct {
+type ConvWeights struct {
 	ManifestSHA string
-	Layers      []convWeight
+	Layers      []ConvWeight
 }
 
-// loadConvWeights loads every convolution weight and bias through the CPU ATen
+// LoadConvWeights loads every convolution weight and bias through the CPU ATen
 // engine and requires the file digest and shape to match the caller's manifest
-// before a single byte reaches the device.
-func loadConvWeights(e *tensor.Engine, modelDir string, convs []ConvSpec) (convWeights, error) {
-	var out convWeights
-	raw, err := os.ReadFile(weightManifestPath)
+// before a single byte reaches the device. It is exported so a later consumer
+// (H03) reuses the same pin checks instead of re-implementing them.
+func LoadConvWeights(e *tensor.Engine, modelDir string, convs []ConvSpec) (ConvWeights, error) {
+	var out ConvWeights
+	raw, err := os.ReadFile(WeightManifestPath)
 	if err != nil {
 		return out, err
 	}
-	if out.ManifestSHA, err = fileSHA(weightManifestPath); err != nil {
+	if out.ManifestSHA, err = fileSHA(WeightManifestPath); err != nil {
 		return out, err
 	}
 	var manifest []weightReceipt
@@ -98,7 +99,7 @@ func loadConvWeights(e *tensor.Engine, modelDir string, convs []ConvSpec) (convW
 		if err = b.Close(); err != nil {
 			return out, err
 		}
-		out.Layers = append(out.Layers, convWeight{
+		out.Layers = append(out.Layers, ConvWeight{
 			Index: c.Index, Weight: weight, Bias: bias,
 			WeightSHA: byName[prefix+"weight.tensor"].SHA256,
 			BiasSHA:   byName[prefix+"bias.tensor"].SHA256,

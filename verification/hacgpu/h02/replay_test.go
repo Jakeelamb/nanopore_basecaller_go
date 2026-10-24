@@ -35,7 +35,7 @@ func syntheticPlan(t *testing.T) (*model.HACSmallConvPlan, []ConvSpec) {
 		{Index: 1, CIn: 16, COut: 16, WinLen: 5, Stride: 1, Padding: 2, Activation: "swish"},
 		{Index: 2, CIn: 16, COut: 1024, WinLen: 19, Stride: 6, Padding: 9, Activation: "tanh"},
 	}
-	params, err := convParams(convs)
+	params, err := ConvParams(convs)
 	if err != nil {
 		t.Fatal(err)
 	}

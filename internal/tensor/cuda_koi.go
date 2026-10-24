@@ -15,6 +15,26 @@ const (
 	KoiF32  KoiDType = 6
 )
 
+func (t KoiDType) String() string {
+	switch t {
+	case KoiNone:
+		return "KOI_NONE"
+	case KoiE2M1:
+		return "KOI_E2M1"
+	case KoiI8:
+		return "KOI_I8"
+	case KoiI32:
+		return "KOI_I32"
+	case KoiE4M3:
+		return "KOI_E4M3"
+	case KoiF16:
+		return "KOI_F16"
+	case KoiF32:
+		return "KOI_F32"
+	}
+	return fmt.Sprintf("KoiTypeId(%d)", uint32(t))
+}
+
 // KoiDim is one tagged KoiTensor dimension.
 type KoiDim struct {
 	Tag          KoiTag
