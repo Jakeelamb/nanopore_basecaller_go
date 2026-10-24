@@ -47,6 +47,11 @@ type evidence struct {
 	Cases             []savedCase             `json:"cases"`
 	Commands          []runner.CommandReceipt `json:"commands"`
 	MutantDifferences int                     `json:"precision_mutant_distinguished_cases"`
+	Unit              string                  `json:"unit,omitempty"`
+	UnitReceipt       string                  `json:"unit_receipt,omitempty"`
+	UnitReceiptSHA    string                  `json:"unit_receipt_sha256,omitempty"`
+	UnitChecks        int                     `json:"unit_checks,omitempty"`
+	UnitRejections    int                     `json:"unit_rejections,omitempty"`
 }
 
 func main() {
@@ -65,6 +70,7 @@ func run() (ret error) {
 	out := flag.String("out", "", "new artifacts/tensor attempt")
 	admitted := flag.Bool("runtime-admitted", false, "coordinator has lifted the operational CUDA hold for this invocation")
 	ordinal := flag.Int("ordinal", 0, "visible CUDA ordinal")
+	unit := flag.String("unit", "", "capture unit; empty selects the source half-GEMM corpus, storage-koi selects typed storage")
 	flag.Parse()
 	if *backend == "" || *out == "" {
 		return fmt.Errorf("-backend and -out required")
@@ -279,6 +285,16 @@ func run() (ret error) {
 			}
 		}
 	}()
+	if *unit == "storage-koi" {
+		m.Schema = "nanopore-cuda-storage-capture/v1"
+		if *capture != "" {
+			return fmt.Errorf("storage-koi is a fresh-capture unit")
+		}
+		return captureStorageUnit(&m, dir, *backend, build.Torch, *ordinal, baseEnv, pin, execute)
+	}
+	if *unit != "" {
+		return fmt.Errorf("unknown capture unit %q", *unit)
+	}
 	if *capture == "" {
 		if err = captureBatches(&m, dir, *backend, oracle, *ordinal, build.Inputs, baseEnv, pin, execute, loaded); err != nil {
 			return err

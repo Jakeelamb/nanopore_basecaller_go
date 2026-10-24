@@ -30,7 +30,7 @@ void cuda_unknown(uint64_t e,uint64_t id,nt_cuda_detail* d) {
    d->actual_engine=pair.first;d->actual_dtype=t->second.scalar_type()==at::kFloat?NT_SCALAR_F32:NT_SCALAR_I64;d->expected_dtype=NT_SCALAR_F16;
    cuda_require(pair.first==e,NT_CUDA_OWNER,"foreign engine handle");throw CUDAFailure(NT_CUDA_DTYPE,"CPU tensor is not a CUDA half handle");
   }
-  if(r.devices.count(id)||r.streams.count(id)||r.halves.count(id)) {
+  if(r.devices.count(id)||r.streams.count(id)||r.halves.count(id)||r.storages.count(id)) {
    d->actual_engine=pair.first;cuda_require(pair.first==e,NT_CUDA_OWNER,"foreign engine handle");throw CUDAFailure(NT_CUDA_ARGUMENT,"wrong handle kind");
   }
  }
@@ -78,6 +78,7 @@ void close_device_cuda(uint64_t e,const std::shared_ptr<CUDADeviceRecord>& dev,n
  release_after_drain([&]{for(auto& item:r.streams)if(item.second->device==dev && item.second->stream)cuda_drain(item.second,d);},[&]{
  for(auto& item:r.streams)if(item.second->device==dev && item.second->stream){d->stage=NT_CUDA_DESTROY;auto status=cudaStreamDestroy(item.second->stream);d->native_code=status;cuda_require(status==cudaSuccess,NT_CUDA_RUNTIME,"stream destroy failed; owners retained");item.second->stream=nullptr;}
  for(auto i=r.halves.begin();i!=r.halves.end();)if(i->second->device==dev)i=r.halves.erase(i);else ++i;
+ for(auto i=r.storages.begin();i!=r.storages.end();)if(i->second->device==dev)i=r.storages.erase(i);else ++i;
  for(auto i=r.streams.begin();i!=r.streams.end();)if(i->second->device==dev)i=r.streams.erase(i);else ++i;
  dev->pending.reset();r.devices.erase(dev->id);});
 }

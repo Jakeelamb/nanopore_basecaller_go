@@ -189,7 +189,7 @@ func run() (ret error) {
 	if m.ArchiveSHA != archivePin {
 		return fmt.Errorf("archive SHA256 mismatch: %s", m.ArchiveSHA)
 	}
-	inputs := []string{"verification/tensor/backend.cpp", "verification/tensor/cuda_records.h", "verification/tensor/cuda_backend.h", "verification/tensor/drain_ownership.h", "verification/tensor/cuda_failure_test.cpp", "verification/tensor/cuda_oracle.cpp", "verification/tensor/fixtures.cpp", "verification/tensor/runtime.h", "verification/tensor/source-pins.json", "verification/tensor/build/main.go", "internal/tensor/abi.h", filepath.Join(*torch, "build-version"), filepath.Join(*torch, "include/ATen/ATen.h"), filepath.Join(*torch, "include/torch/csrc/api/include/torch/serialize.h"), filepath.Join(*torch, "lib/libtorch_cpu.so"), filepath.Join(*torch, "lib/libc10.so")}
+	inputs := []string{"verification/tensor/backend.cpp", "verification/tensor/cuda_records.h", "verification/tensor/cuda_backend.h", "verification/tensor/cuda_storage.inc", "verification/tensor/drain_ownership.h", "verification/tensor/cuda_failure_test.cpp", "verification/tensor/cuda_oracle.cpp", "verification/tensor/fixtures.cpp", "verification/tensor/runtime.h", "verification/tensor/source-pins.json", "verification/tensor/build/main.go", "internal/tensor/abi.h", filepath.Join(*torch, "build-version"), filepath.Join(*torch, "include/ATen/ATen.h"), filepath.Join(*torch, "include/torch/csrc/api/include/torch/serialize.h"), filepath.Join(*torch, "lib/libtorch_cpu.so"), filepath.Join(*torch, "lib/libc10.so")}
 	if *weight != "" {
 		inputs = append(inputs, *weight)
 	}

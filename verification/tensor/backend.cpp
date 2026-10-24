@@ -21,6 +21,7 @@ struct EngineRecord {
  std::unordered_map<uint64_t,std::shared_ptr<CUDADeviceRecord>> devices;
  std::unordered_map<uint64_t,std::shared_ptr<CUDAStreamRecord>> streams;
  std::unordered_map<uint64_t,std::shared_ptr<CUDAHalfRecord>> halves;
+ std::unordered_map<uint64_t,std::shared_ptr<CUDAStorageRecord>> storages;
 };
 std::unordered_map<uint64_t, EngineRecord> engines;
 void require(bool ok, const char* message) { if (!ok) throw std::runtime_error(message); }
@@ -78,6 +79,7 @@ size_t elements(const int64_t* dims, size_t rank) {
 }
 }
 #include "cuda_backend.h"
+#include "cuda_storage.inc"
 extern "C" {
 uint32_t nt_version() { return NT_ABI_VERSION; }
 int nt_open(uint64_t* out, char* err, size_t cap) {

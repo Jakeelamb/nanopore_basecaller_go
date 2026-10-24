@@ -25,10 +25,14 @@ type CUDADetail struct {
 }
 type DTypeError struct {
 	Op     string
+	Reason string
 	Detail CUDADetail
 }
 
 func (e *DTypeError) Error() string {
+	if e.Reason != "" {
+		return fmt.Sprintf("%s: handle %d dtype %d requires %d: %s", e.Op, e.Detail.Handle, e.Detail.ActualDType, e.Detail.ExpectedDType, e.Reason)
+	}
 	return fmt.Sprintf("%s: handle %d dtype %d requires %d", e.Op, e.Detail.Handle, e.Detail.ActualDType, e.Detail.ExpectedDType)
 }
 
@@ -89,7 +93,7 @@ func cudaStatus(op string, code int, d CUDADetail, reason string) error {
 	case 3, 5:
 		return &DeviceError{Op: op, Reason: reason, Detail: d}
 	case 4:
-		return &DTypeError{Op: op, Detail: d}
+		return &DTypeError{Op: op, Reason: reason, Detail: d}
 	case 6:
 		return &StreamError{Op: op, Reason: reason, Detail: d}
 	case 7:
