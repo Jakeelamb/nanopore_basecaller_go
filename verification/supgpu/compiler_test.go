@@ -183,8 +183,6 @@ func TestUnavailableCompilerRuntimeStopsBeforeFirstQuery(t *testing.T) {
 func assertCompilerStoppedBeforeQuery(t *testing.T, p BuildPlan, want, detail string) {
 	t.Helper()
 	out := t.TempDir()
-	// A nonexistent sentinel also prevents native execution if the closure guard
-	// regresses. The intended error and absence of command logs distinguish it.
 	_, err := executeCompiler(p, out, out, "must-not-start", []string{"/must-not-execute-supgpu-query"})
 	if err == nil || !strings.Contains(err.Error(), want) || !strings.Contains(err.Error(), detail) {
 		t.Fatalf("compiler runtime violation did not stop launch: %v", err)
