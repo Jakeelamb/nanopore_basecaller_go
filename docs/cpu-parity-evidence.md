@@ -70,3 +70,44 @@ Review is independent within the Sol model family. No cross-family review ran.
 Synthetic fixture parity, CPU CI, prerequisite downloads, and compilation remain
 separate from complete input processing, GPU behavior, biological accuracy, and
 performance qualification. No speedup or model improvement is claimed.
+
+## Portable tests and qualified host audits
+
+The CPU CI workflow uses Go 1.24.x. The CGO0 testmain fixture declares the
+module's minimum Go version, 1.24.0, and checks the running toolchain's generated
+bytes and package selection. The production H08 compiler plan keeps its separate
+Go1.27.3 qualification requirement.
+
+Portable SUP compiler tests use inert ELF metadata fixtures to check exact DSO,
+interpreter, and loader-cache inputs, lookup answers, and omitted or changed
+inputs. The transitive closure fixture checks all three declared objects and
+rejects an unknown mapping, changed pin, linker-script seed, or missing dependency.
+HAC map fixtures check exact cache bytes and reject writable or executable cache
+mappings, unexpected mappings, and missing required objects. No fixture compiler
+or loader executes. A missing qualified GCC layout also rejects before command
+logs or a compiler query can start.
+
+Three static host audits require `NANOPORE_QUALIFIED_HOST_TESTS=1`:
+
+- `hacvcsaux.TestIndependentLoaderCacheIsExactSystemCache` checks the immutable
+  compiler baseline and exact live `/etc/ld.so.cache` pin.
+- `supgpu.TestQualifiedCompilerRuntimeStaticMetadata` checks the qualified GCC15
+  tool, plugin, interpreter, and DSO family.
+- `supgpu.TestCompilerRuntimeGatePrecedesFirstQuery` removes the compiler-only
+  libisl input and requires rejection before any command logs appear.
+
+Without that variable, those three tests report skips with an unavailable-host
+message. When enabled, missing files, changed pins, and runtime violations fail.
+The opt-in changes only tests. Production compiler and runtime admission still
+require their original qualified paths, identities, and checks.
+
+```sh
+GOMAXPROCS=2 GOMEMLIMIT=3GiB NANOPORE_QUALIFIED_HOST_TESTS=1 \
+	go test -p=2 -count=1 -v \
+	-run '^(TestIndependentLoaderCacheIsExactSystemCache|TestQualifiedCompilerRuntimeStaticMetadata|TestCompilerRuntimeGatePrecedesFirstQuery)$' \
+	./verification/hacvcsaux ./verification/supgpu
+```
+
+These read-only audits establish no native compilation, GPU execution, full
+caller parity, or biological qualification. The full repository suite and
+`verification/verify.sh` remain separate integration checks.

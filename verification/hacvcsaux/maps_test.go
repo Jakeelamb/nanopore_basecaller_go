@@ -85,6 +85,9 @@ func TestMapsRejectCorruptCacheAndUnexpectedMappings(t *testing.T) {
 }
 
 func TestIndependentLoaderCacheIsExactSystemCache(t *testing.T) {
+	if os.Getenv("NANOPORE_QUALIFIED_HOST_TESTS") != "1" {
+		t.Skip("qualified host audit unavailable by default; set NANOPORE_QUALIFIED_HOST_TESTS=1 to require the pinned compiler baseline and system cache")
+	}
 	pin, err := closedbuild.PinFile(CompilerBaselinePath)
 	if err != nil || pin.SHA256 != CompilerBaselineSHA256 {
 		t.Fatalf("independent compiler baseline differs: %v", err)

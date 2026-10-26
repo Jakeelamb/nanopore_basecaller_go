@@ -151,19 +151,29 @@ func TestWrappedLibrariesAndLookupBindingsAreProspective(t *testing.T) {
 }
 
 func TestReadOnlyTransitiveELFClosureAndUnknownRuntimeControl(t *testing.T) {
-	binary, err := isELF("/usr/lib/libm.so")
+	dir := t.TempDir()
+	script := filepath.Join(dir, "libm.so")
+	if err := os.WriteFile(script, []byte("/* GNU ld script */ GROUP ( libm.so.6 )\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	binary, err := isELF(script)
 	if err != nil || binary {
 		t.Fatal("linker script was mistaken for a runtime DSO")
 	}
-	seed, err := canonicalPin("/usr/lib/libm.so.6")
+	leaf := metadataELF(t, filepath.Join(dir, "libc.so.6"), "", "")
+	middle := metadataELF(t, filepath.Join(dir, "libmvec.so.1"), filepath.Base(leaf.Path), "")
+	seed := metadataELF(t, filepath.Join(dir, "libm.so.6"), filepath.Base(middle.Path), "")
+	if binary, err := isELF(seed.Path); err != nil || !binary {
+		t.Fatalf("ELF fixture rejected: %v", err)
+	}
+	nodes, inputs, err := elfClosure([]Pin{seed}, []string{dir})
 	if err != nil {
 		t.Fatal(err)
 	}
-	nodes, inputs, err := elfClosure([]Pin{seed}, []string{"/usr/lib", "/lib"})
-	if err != nil {
-		t.Fatal(err)
+	if !reflect.DeepEqual(inputs, []Pin{seed, middle, leaf}) || len(nodes) != len(inputs) {
+		t.Fatalf("transitive ELF inputs differ: %+v", inputs)
 	}
-	if len(nodes) < 2 || len(nodes) != len(inputs) {
+	if !reflect.DeepEqual(nodes[0].Needed, []string{filepath.Base(middle.Path)}) || !reflect.DeepEqual(nodes[1].Needed, []string{filepath.Base(leaf.Path)}) || len(nodes[2].Needed) != 0 {
 		t.Fatal("transitive ELF dependencies were omitted")
 	}
 	if err = requireRuntimeMappings([]Pin{seed}, inputs); err != nil {
@@ -184,6 +194,19 @@ func TestReadOnlyTransitiveELFClosureAndUnknownRuntimeControl(t *testing.T) {
 	changed.SHA256 = strings.Repeat("0", 64)
 	if err = requireRuntimeMappings([]Pin{changed}, inputs); err == nil {
 		t.Fatal("changed mapped runtime bytes accepted")
+	}
+	scriptPin, err := pin(script)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err = elfClosure([]Pin{scriptPin}, []string{dir}); err == nil || !strings.Contains(err.Error(), "runtime seed is not ELF") {
+		t.Fatalf("linker script accepted as a runtime seed: %v", err)
+	}
+	if err = os.Remove(leaf.Path); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err = elfClosure([]Pin{seed}, []string{dir}); err == nil || !strings.Contains(err.Error(), "unresolved prospective DT_NEEDED libc.so.6") {
+		t.Fatalf("missing transitive dependency accepted: %v", err)
 	}
 }
 

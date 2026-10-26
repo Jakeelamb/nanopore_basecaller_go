@@ -15,7 +15,7 @@ func targetFixture(t *testing.T) Plan {
 	t.Helper()
 	root := t.TempDir()
 	files := map[string]string{
-		"go.mod":                          "module " + Module + "\n\ngo 1.27.3\n",
+		"go.mod":                          "module " + Module + "\n\ngo 1.24.0\n",
 		"internal/tensor/tensor.go":       "package tensor\nfunc Value() int { return 1 }\n",
 		"internal/tensor/tensor_test.go":  "package tensor\nimport \"testing\"\nfunc TestAlpha(t *testing.T) {}\nfunc TestBeta(t *testing.T) {}\n",
 		"internal/adapter/adapter.go":     "package adapter\nimport \"github.com/Jakeelamb/nanopore_basecaller_go/internal/tensor\"\nfunc Value() int { return tensor.Value() }\n",

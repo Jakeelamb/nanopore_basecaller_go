@@ -75,13 +75,21 @@ func TestCompilerDSOAndInterpreterMustBeFrozenBeforeLaunch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(c.Nodes) != 3 || len(c.Inputs) != 4 || c.Nodes[0].Interpreter != loader.Path || !reflect.DeepEqual(c.Nodes[0].Needed, []string{filepath.Base(math.Path)}) {
+	if len(c.Nodes) != 3 || !reflect.DeepEqual(c.Inputs, []Pin{tool, math, loader, cache}) || c.Nodes[0].Interpreter != loader.Path || !reflect.DeepEqual(c.Nodes[0].Needed, []string{filepath.Base(math.Path)}) {
 		t.Fatalf("compiler dependency or interpreter omitted: %+v", c)
 	}
 	if err = requireCompilerInputs(c, c.Inputs); err != nil {
 		t.Fatal(err)
 	}
-	for _, omitted := range []Pin{math, loader, cache} {
+	for _, q := range compilerQueries(c) {
+		if err = sameQueryResult(q.Expected+"\n", q, dir); err != nil {
+			t.Fatal(err)
+		}
+		if err = sameQueryResult(loader.Path+"\n", q, dir); err == nil {
+			t.Fatal("a different compiler-selected program was accepted")
+		}
+	}
+	for _, omitted := range []Pin{tool, math, loader, cache} {
 		inputs := []Pin{}
 		for _, p := range c.Inputs {
 			if p != omitted {
@@ -101,11 +109,7 @@ func TestCompilerDSOAndInterpreterMustBeFrozenBeforeLaunch(t *testing.T) {
 }
 
 func TestQualifiedCompilerRuntimeStaticMetadata(t *testing.T) {
-	compiler := "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/bin/g++-15"
-	c, err := planCompilerRuntime(compiler)
-	if err != nil {
-		t.Fatal(err)
-	}
+	_, c := qualifiedCompilerRuntime(t)
 	if len(c.Tools) != 10 || len(c.Plugins) != 4 {
 		t.Fatal("compiler program family is incomplete")
 	}
@@ -118,11 +122,11 @@ func TestQualifiedCompilerRuntimeStaticMetadata(t *testing.T) {
 			t.Fatalf("actual compiler runtime omission: %s", name)
 		}
 	}
-	if err = requireCompilerInputs(c, c.Inputs); err != nil {
+	if err := requireCompilerInputs(c, c.Inputs); err != nil {
 		t.Fatal(err)
 	}
 	for _, q := range compilerQueries(c) {
-		if err = sameQueryResult(q.Expected+"\n", q, t.TempDir()); err != nil {
+		if err := sameQueryResult(q.Expected+"\n", q, t.TempDir()); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -144,6 +148,21 @@ func TestCompilerProgramQueryUsesOnlyDeclaredPATH(t *testing.T) {
 }
 
 func TestCompilerRuntimeGatePrecedesFirstQuery(t *testing.T) {
+	driver, c := qualifiedCompilerRuntime(t)
+	p := BuildPlan{Compiler: driver, CompilerRuntime: c, Inputs: []Pin{}}
+	for _, input := range c.Inputs {
+		if !strings.Contains(filepath.Base(input.Path), "libisl.so.") {
+			p.Inputs = append(p.Inputs, input)
+		}
+	}
+	assertCompilerStoppedBeforeQuery(t, p, "compiler runtime input absent", "libisl.so.")
+}
+
+func qualifiedCompilerRuntime(t *testing.T) (Pin, CompilerRuntime) {
+	t.Helper()
+	if os.Getenv("NANOPORE_QUALIFIED_HOST_TESTS") != "1" {
+		t.Skip("qualified host audit unavailable by default; set NANOPORE_QUALIFIED_HOST_TESTS=1 to require the GCC15 runtime")
+	}
 	compiler := "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/bin/g++-15"
 	c, err := planCompilerRuntime(compiler)
 	if err != nil {
@@ -153,18 +172,22 @@ func TestCompilerRuntimeGatePrecedesFirstQuery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := BuildPlan{Compiler: driver, CompilerRuntime: c, Inputs: []Pin{}}
-	for _, input := range c.Inputs {
-		if !strings.Contains(filepath.Base(input.Path), "libisl.so.") {
-			p.Inputs = append(p.Inputs, input)
-		}
-	}
+	return driver, c
+}
+
+func TestUnavailableCompilerRuntimeStopsBeforeFirstQuery(t *testing.T) {
+	p := BuildPlan{Compiler: Pin{Path: filepath.Join(t.TempDir(), "absent", "bin", "g++-15")}}
+	assertCompilerStoppedBeforeQuery(t, p, "qualified GCC program directory is ambiguous", "")
+}
+
+func assertCompilerStoppedBeforeQuery(t *testing.T, p BuildPlan, want, detail string) {
+	t.Helper()
 	out := t.TempDir()
 	// A nonexistent sentinel also prevents native execution if the closure guard
 	// regresses. The intended error and absence of command logs distinguish it.
-	_, err = executeCompiler(p, out, out, "must-not-start", []string{"/must-not-execute-supgpu-query"})
-	if err == nil || !strings.Contains(err.Error(), "compiler runtime input absent") || !strings.Contains(err.Error(), "libisl.so.") {
-		t.Fatalf("omitted compiler DSO did not stop launch: %v", err)
+	_, err := executeCompiler(p, out, out, "must-not-start", []string{"/must-not-execute-supgpu-query"})
+	if err == nil || !strings.Contains(err.Error(), want) || !strings.Contains(err.Error(), detail) {
+		t.Fatalf("compiler runtime violation did not stop launch: %v", err)
 	}
 	files, err := os.ReadDir(out)
 	if err != nil || len(files) != 0 {
