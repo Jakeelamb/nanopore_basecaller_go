@@ -158,10 +158,39 @@ outputs, case descriptions, native stderr, and run receipt. Use a fresh director
 for each attempt because filenames within one directory are fixed. Failed native
 runs preserve their output and exit receipt before the test reports failure.
 
-## Stride qualification status
+## Stride qualification
 
-The stride extension has no fresh native numerical qualification yet.
-The implementation worker runs only these focused checks, with
+On 2026-10-26, source revision `de42652cef217b5fc54b7c605c3be74f4737927e`
+passed fresh maintained CPU acceptance against the pinned scalar source.
+All 1694 records matched sequence, quality, moves and states exactly, with zero
+differing `FinalScore` or `QualData` float bits. The run retains all 1465
+historical records, 113 packed/strided pairs and three sensitivity records.
+Wrong contiguous row spacing changes the native witness sequence from `AA` to
+`AT`; changing one logical score changes the native final-score bits. The legacy/v2
+bridge and all 21 malformed framing/span controls pass. Source mutation is rejected.
+
+Local `go vet -p 2 ./...`, `go test -p 2 -count=1 ./...`, the maintained
+`verification/verify.sh`, and focused CGO0 decode tests all exit zero under the
+existing host lock and verified 2-CPU, 3-GiB, zero-swap, 64-task limits.
+The ordinary suite records 361 root passes and 57 explicit opt-in skips.
+Local Go is 1.27.3 and the oracle compiler is GCC 16.2.1. These observations
+qualify the tested extracted float CPU beam and sequence-generation boundary.
+They do not qualify the Torch CPUDecoder wrapper/batching, tensor ABI, GPU,
+complete caller, biology, performance or every possible score view and tie.
+
+Raw evidence remains ignored under
+`artifacts/stride-acceptance-001/parity/d624af73c9fbffbb-2290897111/decode/`.
+Its `run-receipt.json` SHA256 is
+`30481c80656e464fb4d4cc07455aa8e552bc3fc8ea6ee6fa3208bbfb02c61201`;
+`build-receipt.json` SHA256 is
+`a80e9e5552c29459a4db7143437cbcb4889781160bf38cc3722d714004258b99`.
+The driver SHA256 is
+`a234511cdb07da0c9bb6862d4047d73b32289eaa806003dc38d37a87ce4ee85b`.
+The source/slice, compiler, input/output and per-control pins remain in those
+receipts and the enclosing maintained CPU receipt. Later evidence-document edits
+do not change its 322 declared executable inputs.
+
+The implementation worker first ran these focused checks with
 `DORADO_SOURCE` and `NANOPORE_TENSOR_BACKEND` unset:
 
 ```sh
@@ -190,11 +219,12 @@ under `controls/` retain raw inputs, outputs, stderr, clocks, exit status, and
 hashes. They check legacy/v2 bridge equality and malformed framing rejection.
 The whole-file source-mutation rejection remains in place.
 
-The controller must run fresh maintained native CPU acceptance and repository
-acceptance under its host lock and resource caps. Use a new
-`DECODE_ARTIFACT_DIR`, such as `artifacts/decode/stride-v2-attempt-01`.
-No native, full-repository, tensor, model, GPU, biological, or performance
-qualification follows from the focused checks.
+To reproduce the native comparison, use the commands above and a new
+`DECODE_ARTIFACT_DIR`, such as `artifacts/decode/stride-v2-attempt-01`, under
+the host's resource coordination. `verification/verify.sh --source
+"$PWD/external/dorado-source"` includes this native gate. The focused checks alone
+remain unit evidence; the narrower numerical claim comes from the actual oracle
+comparison and controls retained above.
 
 ## Historical packed qualification
 
