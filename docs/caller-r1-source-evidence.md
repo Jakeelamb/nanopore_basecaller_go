@@ -1,5 +1,10 @@
 # Caller and R1 source checkpoint
 
+This record describes the packaged checkpoint at `52ddab1`. Later CPU CI
+corrections are recorded in [CPU parity evidence](cpu-parity-evidence.md).
+The source manifests and receipts below identify that checkpoint, rather than
+the later branch head.
+
 This branch packages the accepted Go caller integration and its integrated model,
 decoder, tensor ABI5, and verification dependencies. The caller owns model caches,
 invocations, output, and cleanup. Native operations remain behind the typed tensor
