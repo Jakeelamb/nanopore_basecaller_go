@@ -19,7 +19,7 @@ Its 762-file manifest has SHA256
 members and the packaging changes. The owned caller/R1 review covered a 49-path
 delta over the integrated dependency snapshot. Those dependencies are included
 here because the caller cannot compile against the earlier committed baseline.
-This is an integration checkpoint, not 407 newly authored caller files.
+This is an integration checkpoint; its dependency source predates the owned delta.
 
 Two independent Sol XHigh processes accepted the frozen delta with no unresolved
 findings. Their report hashes are
@@ -49,8 +49,12 @@ Raw receipts and payloads remain under ignored project artifact paths. On the
 originating host, the review and verification summaries are in
 `artifacts/pstack-herdr-parity-20261026/`; the packaging audit is task `t-487826`.
 The shipping worktree excludes generated Python bytecode, adds cache ignore rules,
-and removes one trailing blank line from a native header. It adds this note and
-the accepted manifest. No Go computation or native statement changes.
+and preserves the accepted native header bytes. It adds this note and the
+accepted manifest. No Go or native source changes. An initial packaging commit
+trimmed that header, which changed a declared CPU input pin. Independent audit
+rejected exact-input evidence reuse for that commit. The correction restores
+the accepted header, including its inherited trailing blank line. The original
+`git diff --check` whitespace warning remains; it does not change computation.
 
 ## Limits
 

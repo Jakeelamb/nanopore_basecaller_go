@@ -766,5 +766,5 @@
     "verification/verify.sh": "8e46062557227badac119c45104db81cb5c663be566d4e36b17d6b3331288132"
   },
   "shipping_excluded_generated_path": "verification/supgpu/tools/__pycache__/watch_roles.cpython-315.pyc",
-  "shipping_whitespace_only_path": "verification/hacvcsaux/native/capture.h"
+  "shipping_preserved_inherited_whitespace_path": "verification/hacvcsaux/native/capture.h"
 }
