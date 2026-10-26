@@ -2,6 +2,7 @@ package supgpu
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -71,36 +72,42 @@ func observeProcessGroup(pgid int) (ProcessGroupObservation, error) {
 	if err != nil {
 		return o, err
 	}
+	o.Members, err = scanProcessGroup(pgid, entries, os.ReadFile)
+	return o, err
+}
+
+func scanProcessGroup(pgid int, entries []os.DirEntry, readFile func(string) ([]byte, error)) ([]ProcessGroupMember, error) {
+	members := []ProcessGroupMember{}
 	for _, entry := range entries {
 		pid, err := strconv.Atoi(entry.Name())
 		if err != nil || !entry.IsDir() {
 			continue
 		}
-		raw, err := os.ReadFile(filepath.Join("/proc", entry.Name(), "stat"))
-		if os.IsNotExist(err) {
+		raw, err := readFile(filepath.Join("/proc", entry.Name(), "stat"))
+		if os.IsNotExist(err) || errors.Is(err, syscall.ESRCH) {
 			continue
 		}
 		if err != nil {
-			return o, err
+			return members, err
 		}
 		end := strings.LastIndexByte(string(raw), ')')
 		if end < 0 {
-			return o, fmt.Errorf("invalid process stat for %d", pid)
+			return members, fmt.Errorf("invalid process stat for %d", pid)
 		}
 		fields := strings.Fields(string(raw[end+1:]))
 		if len(fields) < 3 {
-			return o, fmt.Errorf("short process stat for %d", pid)
+			return members, fmt.Errorf("short process stat for %d", pid)
 		}
 		group, err := strconv.Atoi(fields[2])
 		if err != nil {
-			return o, err
+			return members, err
 		}
 		if group == pgid {
-			o.Members = append(o.Members, ProcessGroupMember{PID: pid, State: fields[0], Stat: string(raw)})
+			members = append(members, ProcessGroupMember{PID: pid, State: fields[0], Stat: string(raw)})
 		}
 	}
-	sort.Slice(o.Members, func(i, j int) bool { return o.Members[i].PID < o.Members[j].PID })
-	return o, nil
+	sort.Slice(members, func(i, j int) bool { return members[i].PID < members[j].PID })
+	return members, nil
 }
 
 func killProcessGroup(g *ProcessGroupCleanup) error {

@@ -122,3 +122,27 @@ GOMAXPROCS=2 GOMEMLIMIT=3GiB NANOPORE_QUALIFIED_HOST_TESTS=1 \
 These audits establish no native compilation, GPU execution, full
 caller parity, or biological qualification. The full repository suite and
 `verification/verify.sh` remain separate integration checks.
+
+## Process disappearance during cleanup
+
+CI run `40418303031` at `f8d9eb8bc211acd773a2c5e8e04f6c95dd6fbbfe`
+failed when a descendant exited between listing `/proc` and reading its `stat`.
+The read returned `ESRCH`, which the observer treated as a failure.
+`observeProcessGroup` now omits both `ENOENT` and `ESRCH` reads. Its private
+`scanProcessGroup` helper accepts the listed entries and stat reader so tests can
+reproduce disappearance without scheduling a real process exit. The regression
+retains a surviving member and excludes a different process group. Permission,
+I/O, unknown read errors, and malformed stat records still fail.
+
+```sh
+env -u DORADO_SOURCE GOMAXPROCS=2 GOMEMLIMIT=3GiB GOPROXY=off GOSUMDB=off \
+	go test -p=2 -count=1 -v -run '^TestProcessGroupScan' ./verification/supgpu
+env -u DORADO_SOURCE GOMAXPROCS=2 GOMEMLIMIT=3GiB GOPROXY=off GOSUMDB=off \
+	go test -p=2 -count=3 -v -run '^TestLoaderCleansDescendantsAfterLeaderExit$' ./verification/supgpu
+```
+
+The fake-peer cleanup test still requires SIGKILL evidence, a final empty
+observation, rejection of surviving descendants, and preservation of unrelated
+processes. Cleanup timeouts and runtime admission are unchanged. Earlier source
+hashes are historical after this guard edit. Native and model acceptance remain
+open. These focused CPU tests establish no GPU or native execution qualification.

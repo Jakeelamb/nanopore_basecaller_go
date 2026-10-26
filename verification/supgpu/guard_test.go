@@ -3,6 +3,7 @@ package supgpu
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -13,6 +14,91 @@ import (
 	"testing"
 	"time"
 )
+
+func processGroupScanEntries(t *testing.T) []os.DirEntry {
+	t.Helper()
+	dir := t.TempDir()
+	for _, name := range []string{"101", "102", "103"} {
+		if err := os.Mkdir(filepath.Join(dir, name), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return entries
+}
+
+func TestProcessGroupScanDisappearance(t *testing.T) {
+	entries := processGroupScanEntries(t)
+	for _, errno := range []syscall.Errno{syscall.ENOENT, syscall.ESRCH} {
+		t.Run(errno.Error(), func(t *testing.T) {
+			const survivor = "102 (surviving peer) S 1 77 0"
+			calls := 0
+			members, err := scanProcessGroup(77, entries, func(path string) ([]byte, error) {
+				calls++
+				switch path {
+				case "/proc/101/stat":
+					return nil, &os.PathError{Op: "read", Path: path, Err: errno}
+				case "/proc/102/stat":
+					return []byte(survivor), nil
+				case "/proc/103/stat":
+					return []byte("103 (unrelated peer) S 1 88 0"), nil
+				default:
+					t.Fatalf("unexpected stat read: %s", path)
+					return nil, nil
+				}
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if calls != 3 || len(members) != 1 || members[0] != (ProcessGroupMember{PID: 102, State: "S", Stat: survivor}) {
+				t.Fatalf("disappearance hid a survivor or retained another group: calls=%d members=%+v", calls, members)
+			}
+		})
+	}
+}
+
+func TestProcessGroupScanRejectsErrors(t *testing.T) {
+	entries := processGroupScanEntries(t)
+	for _, tc := range []struct {
+		name    string
+		readErr error
+		raw     string
+		want    string
+	}{
+		{name: "permission", readErr: syscall.EACCES},
+		{name: "operation-not-permitted", readErr: syscall.EPERM},
+		{name: "io", readErr: syscall.EIO},
+		{name: "unknown", readErr: errors.New("unknown stat read failure")},
+		{name: "missing-comm-end", raw: "101 (broken", want: "invalid process stat"},
+		{name: "short-stat", raw: "101 (peer) S 1", want: "short process stat"},
+		{name: "invalid-group", raw: "101 (peer) S 1 invalid", want: "invalid syntax"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var readErr error
+			if tc.readErr != nil {
+				readErr = &os.PathError{Op: "read", Path: "/proc/101/stat", Err: tc.readErr}
+			}
+			calls := 0
+			_, err := scanProcessGroup(77, entries, func(path string) ([]byte, error) {
+				calls++
+				return []byte(tc.raw), readErr
+			})
+			if err == nil || calls != 1 {
+				t.Fatalf("scan did not stop at the invalid stat: calls=%d error=%v", calls, err)
+			}
+			if readErr != nil {
+				if err != readErr {
+					t.Fatalf("read error changed: got %v, want %v", err, readErr)
+				}
+			} else if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("wrong parse error: %v", err)
+			}
+		})
+	}
+}
 
 func TestSelectedRuntimePolicyRejectsKnownWrongTier(t *testing.T) {
 	dir := t.TempDir()
