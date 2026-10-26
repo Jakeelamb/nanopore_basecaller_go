@@ -2,7 +2,7 @@
 
 `internal/crf` gives Go ownership of Dorado's forward and backward guide loops,
 transition index construction, reverse-time scheduling, and posterior scheduling.
-Native calls perform individual tensor operations through tensor ABI 2. There
+Native calls perform individual tensor operations through the maintained tensor ABI. There
 is no native production CRF scan or whole-decoder wrapper.
 
 ## Interface and storage
@@ -162,8 +162,8 @@ and CGO-disabled tests run without native opt-in variables. The historical
 producer path requires explicit `-mode native-produce`, or
 `CRF_ORACLE_MODE=native-produce` for `TestNativeScanParity`.
 
-The retained backend is ABI2. This checkout's loader requires ABI5. The initial
-lane-composition preflight verified retained pins but failed backend loading with
+The retained backend is ABI2. Current main requires ABI4; the implementation
+worktree required ABI5. The initial lane-composition preflight verified retained pins but failed backend loading with
 `unsupported tensor ABI version 2`. Consequently the new batch differential,
 native composition, and lifetime tests remain unexecuted here. A compatible
 qualified backend and explicit evidence linkage are required before accepting
