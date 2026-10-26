@@ -21,12 +21,15 @@ result, err := decode.Decode(input, decode.Options{
 })
 ```
 
-All tensors use contiguous row-major `float32` storage. `Scores` has shape
-`[T,4*S]`. `BackGuides` and `Posts` each have shape `[T+1,S]`.
+`Scores` has logical shape `[T,C]`, where `C=4*S`. Channels within each row
+are contiguous `float32` elements. `Input.ScoreStride` is the row stride `R`
+in elements. Zero resolves to `C`, preserving packed inputs. For a selected
+lane, the caller supplies a subslice beginning at that lane's first channel.
+`BackGuides` and `Posts` remain contiguous with shape `[T+1,S]`.
 The initial guide row selects seed states. Row `block+1` guides each extension
 and supplies posteriors for that block. Score and posterior scaling are both
-one, matching Dorado's float dispatch. No tensor stride or quantized path is
-exposed.
+one, matching Dorado's float dispatch. The API does not expose channel strides
+or quantized scores.
 
 `Result.Sequence` and `Result.Qstring` contain one byte per emitted base.
 `Result.Moves` contains one binary move per input block, with the first move
@@ -43,13 +46,19 @@ The supported external domain has these limits.
   1024, 4096, or 16384.
 - Beam width is 1 through 256. Beam cut is zero or at least one.
   Zero disables the initial logarithmic cut but retains beam-width pruning.
-- Tensors and options contain finite values. Posterior entries are in `[0,1]`.
+- Logical tensor cells and options contain finite values. Posterior entries are in `[0,1]`.
   Posterior row sums are unrestricted, including zero. The algorithm clamps
   the sum of relevant posterior states before its quality transform.
 - Quality scale is positive. Native zero scale can compute infinity times zero,
   followed by an undefined conversion of NaN into a quality byte.
+- With `M=2^27`, the resolved score stride satisfies `C <= R <= M`.
+  The score slice has exactly `(T-1)*R+C` elements, at most `M`.
+  There is no trailing row padding. For `T=1`, only `C` scores are required,
+  even at `R=M`. Validation checks division before multiplying the span.
+- Score gaps may contain arbitrary bits, including NaN and infinity. Validation
+  and search access only logical cells. Gap changes do not change the result.
 - Each input tensor and the persistent beam has at most `2^27` elements.
-  Scores, guides, and blank score have absolute value at most
+  Logical scores, guides, and blank score have absolute value at most
   `MaxFloat32 / (16*(T+1))` to prevent accumulation overflow.
 
 These checks reject malformed or unsafe inputs before the search allocates its
@@ -116,6 +125,20 @@ scalar cutoff counter and prevents fused multiply-add changes. The receipt
 records compiler identity, arguments, source hash, extracted-slice hash, driver
 hash, timestamps, and exit status.
 
+New differential streams start with `nanopore-decode-oracle/v2`. Each input
+record contains `T S beam R span cut_bits blank_bits shift_bits scale_bits`,
+then the physical score span, packed guides, and packed posts as float bits.
+`R` is resolved and nonzero. The output starts with the same marker and prefixes
+each existing result record with `R span`. Both formats call the same original
+scalar beam routine. The driver rejects unknown or mixed framing, incomplete
+records, invalid strides, and mismatched spans. A v2 stream needs at least one
+complete record.
+
+The legacy numeric packed stream remains available for `verification/replaymoves`.
+Its input and output have no marker or stride fields. Its truncated float input
+diagnostic remains exactly `truncated float bits`. Historical packed receipts
+retain their original format and cannot qualify the stride extension.
+
 With cgo enabled, the native tests have two entry points, `TestPinnedNativeDecode` and
 `TestNativeSourceMutationRejected`. Without `DORADO_SOURCE`, both explicitly
 skip. The commands are:
@@ -135,7 +158,45 @@ outputs, case descriptions, native stderr, and run receipt. Use a fresh director
 for each attempt because filenames within one directory are fixed. Failed native
 runs preserve their output and exit receipt before the test reports failure.
 
-## Recorded qualification
+## Stride qualification status
+
+The stride extension has no fresh native numerical qualification yet.
+The implementation worker runs only these focused checks, with
+`DORADO_SOURCE` and `NANOPORE_TENSOR_BACKEND` unset:
+
+```sh
+env -u DORADO_SOURCE -u NANOPORE_TENSOR_BACKEND \
+  GOMAXPROCS=2 GOMEMLIMIT=3GiB GOPROXY=off GOSUMDB=off CGO_ENABLED=1 \
+  go test -p=2 -count=1 ./internal/decode ./verification/decode
+env -u DORADO_SOURCE -u NANOPORE_TENSOR_BACKEND \
+  GOMAXPROCS=2 GOMEMLIMIT=3GiB GOPROXY=off GOSUMDB=off CGO_ENABLED=0 \
+  go test -p=2 -count=1 ./internal/decode ./verification/decode
+```
+
+`TestScoreStride` checks 113 packed/view pairs. The matrix uses `S=4,16,256`,
+`T=1,2,9`, and `R=C,2*C,3*C,4*C,5*C,C+3`, with distinct finite gaps and
+nonfinite gap bits. It includes lane subslices, ties, stay preferences, both
+retained quality midpoint regressions, and `T=1,R=M`. Comparisons include every
+`FinalScore` and `QualData` bit. Unit checks also cover input bit preservation,
+result ownership, invalid strides, exact spans, logical nonfinite scores, and
+oversized metadata without large allocations.
+
+`TestPinnedNativeDecode` retains all 1465 contiguous fixtures and adds both
+members of each pair plus three sensitivity fixtures, for 1694 records.
+Its new v2 receipt requires native packed/view equality, a changed native result
+for deliberately contiguous addressing of a strided buffer, and a changed
+native result for a selected logical-score mutation. Separate protocol attempts
+under `controls/` retain raw inputs, outputs, stderr, clocks, exit status, and
+hashes. They check legacy/v2 bridge equality and malformed framing rejection.
+The whole-file source-mutation rejection remains in place.
+
+The controller must run fresh maintained native CPU acceptance and repository
+acceptance under its host lock and resource caps. Use a new
+`DECODE_ARTIFACT_DIR`, such as `artifacts/decode/stride-v2-attempt-01`.
+No native, full-repository, tensor, model, GPU, biological, or performance
+qualification follows from the focused checks.
+
+## Historical packed qualification
 
 The local 2026-10-22 run passed the commands above. The native run used
 `/home/jake/Projects/nanopore_basecaller/software/dorado-src` and retained

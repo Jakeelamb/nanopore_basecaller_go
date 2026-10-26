@@ -3,6 +3,7 @@
 package decode
 
 import (
+	"fmt"
 	"math"
 	"math/rand"
 	"reflect"
@@ -112,7 +113,10 @@ func TestDecodeSimple(t *testing.T) {
 
 func TestDecodeInvariantsAndOwnership(t *testing.T) {
 	for i, c := range differentialFixtures() {
-		inCopy := Input{c.in.Blocks, c.in.States, append([]float32(nil), c.in.Scores...), append([]float32(nil), c.in.BackGuides...), append([]float32(nil), c.in.Posts...)}
+		inCopy := c.in
+		inCopy.Scores = append([]float32(nil), c.in.Scores...)
+		inCopy.BackGuides = append([]float32(nil), c.in.BackGuides...)
+		inCopy.Posts = append([]float32(nil), c.in.Posts...)
 		result, err := Decode(c.in, c.opt)
 		if err != nil {
 			t.Fatalf("case %d %s: %v", i, c.name, err)
@@ -265,4 +269,156 @@ func qualityThresholdFixtures(base fixture) []fixture {
 		}
 	}
 	return cases
+}
+
+// stridedFixture models a selected lane as a subslice. Only the minimal span is
+// borrowed; gap values model unrelated lanes and may contain arbitrary bits.
+func stridedFixture(packed fixture, stride, salt int) fixture {
+	c := packed
+	c.name = fmt.Sprintf("%s/stride=%d/gaps=%d", packed.name, stride, salt)
+	channels := 4 * c.in.States
+	span := (c.in.Blocks-1)*stride + channels
+	offset := 0
+	if c.in.Blocks > 1 {
+		offset = (salt % (stride / channels)) * channels
+	}
+	storage := make([]float32, offset+span)
+	for i := range storage {
+		bits := math.Float32bits(float32(80 + (i+salt*7)%31))
+		if salt == 1 {
+			bits = []uint32{0x7fc12345, 0x7f800000, 0xff800000, 0x80000000}[i%4]
+		}
+		storage[i] = math.Float32frombits(bits)
+	}
+	c.in.Scores = storage[offset:]
+	c.in.ScoreStride = stride
+	for row := 0; row < c.in.Blocks; row++ {
+		copy(c.in.Scores[row*stride:row*stride+channels], packed.in.Scores[row*channels:(row+1)*channels])
+	}
+	return c
+}
+
+type stridePair struct{ packed, view fixture }
+
+func strideFixtures() []stridePair {
+	var pairs []stridePair
+	for _, states := range []int{4, 16, 256} {
+		channels := 4 * states
+		for _, blocks := range []int{1, 2, 9} {
+			base := constantFixture("stride-pattern", blocks, states, 7, 0, -1)
+			for i := range base.in.Scores {
+				base.in.Scores[i] = float32((i*7+i/channels*3)%19-9) / 4
+			}
+			for i := range base.in.BackGuides {
+				base.in.BackGuides[i] = float32(i%11-5) / 8
+			}
+			for _, stride := range []int{channels, 2 * channels, 3 * channels, 4 * channels, 5 * channels, channels + 3} {
+				for salt := 0; salt < 2; salt++ {
+					pairs = append(pairs, stridePair{base, stridedFixture(base, stride, salt)})
+				}
+			}
+		}
+	}
+	for _, base := range []fixture{
+		constantFixture("stride-ties", 9, 16, 7, 0, 0),
+		constantFixture("stride-stays", 9, 16, 13, -4, 2),
+		constantFixture("stride-cap-one-row", 1, 4, 1, 0, 0),
+	} {
+		stride := 4*base.in.States + 3
+		if base.in.Blocks == 1 {
+			stride = maxElements
+		}
+		pairs = append(pairs, stridePair{base, stridedFixture(base, stride, 1)})
+	}
+	base := differentialFixtures()[130]
+	for _, opt := range []Options{
+		{base.opt.BeamWidth, 100, base.opt.BlankScore, 0.7775435, 1},
+		{base.opt.BeamWidth, 100, base.opt.BlankScore, 0.27545434, 10},
+	} {
+		base.opt = opt
+		base.name = "stride-quality-midpoint"
+		pairs = append(pairs, stridePair{base, stridedFixture(base, 3*4*base.in.States, 1)})
+	}
+	return pairs
+}
+
+func floatBits(values []float32) []uint32 {
+	bits := make([]uint32, len(values))
+	for i, v := range values {
+		bits[i] = math.Float32bits(v)
+	}
+	return bits
+}
+
+func resultsExact(a, b Result) bool {
+	return a.Sequence == b.Sequence && a.Qstring == b.Qstring &&
+		reflect.DeepEqual(a.Moves, b.Moves) && reflect.DeepEqual(a.States, b.States) &&
+		math.Float32bits(a.FinalScore) == math.Float32bits(b.FinalScore) &&
+		reflect.DeepEqual(floatBits(a.QualData), floatBits(b.QualData))
+}
+
+func TestScoreStride(t *testing.T) {
+	for i, pair := range strideFixtures() {
+		t.Run(fmt.Sprintf("%d/%s", i, pair.view.name), func(t *testing.T) {
+			in := pair.view.in
+			before := [][]uint32{floatBits(in.Scores), floatBits(in.BackGuides), floatBits(in.Posts)}
+			want, err := Decode(pair.packed.in, pair.packed.opt)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := Decode(in, pair.view.opt)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !resultsExact(got, want) {
+				t.Fatal("packed and strided results differ, including float bits")
+			}
+			if in.ScoreStride != pair.view.in.ScoreStride {
+				t.Fatal("mutated input stride")
+			}
+			got.Moves[0] ^= 1
+			got.States[0] ^= 1
+			got.QualData[0] = -1
+			again, err := Decode(in, pair.view.opt)
+			if err != nil || !resultsExact(again, want) {
+				t.Fatalf("result storage aliases input or later result: %v", err)
+			}
+			after := [][]uint32{floatBits(in.Scores), floatBits(in.BackGuides), floatBits(in.Posts)}
+			if !reflect.DeepEqual(before, after) {
+				t.Fatal("input bits changed")
+			}
+		})
+	}
+	// Default stride normalization must not change caller metadata.
+	c := constantFixture("default", 2, 4, 1, 0, 0)
+	if _, err := Decode(c.in, c.opt); err != nil || c.in.ScoreStride != 0 {
+		t.Fatalf("default normalization: %v", err)
+	}
+}
+
+func TestRejectScoreStride(t *testing.T) {
+	mutations := map[string]func(*fixture){
+		"negative":         func(c *fixture) { c.in.ScoreStride = -1 },
+		"overlap":          func(c *fixture) { c.in.ScoreStride = 63 },
+		"stride-cap":       func(c *fixture) { c.in.ScoreStride = maxElements + 1 },
+		"stride-max-int":   func(c *fixture) { c.in.ScoreStride = int(^uint(0) >> 1) },
+		"span-cap":         func(c *fixture) { c.in.ScoreStride = maxElements },
+		"span-crosses-cap": func(c *fixture) { c.in.ScoreStride = maxElements / 2 },
+		"blocks-cap":       func(c *fixture) { c.in.Blocks = maxElements },
+		"workspace":        func(c *fixture) { c.in.Blocks = maxElements / 64; c.opt.BeamWidth = 256 },
+		"short-span":       func(c *fixture) { c.in.Scores = c.in.Scores[:len(c.in.Scores)-1] },
+		"long-span":        func(c *fixture) { c.in.Scores = append(c.in.Scores, 0) },
+		"logical-nan":      func(c *fixture) { c.in.Scores[c.in.ScoreStride] = math.Float32frombits(0x7fc12345) },
+		"logical-inf":      func(c *fixture) { c.in.Scores[len(c.in.Scores)-1] = float32(math.Inf(-1)) },
+		"logical-unsafe":   func(c *fixture) { c.in.Scores[c.in.ScoreStride+1] = math.MaxFloat32 },
+	}
+	for name, mutate := range mutations {
+		t.Run(name, func(t *testing.T) {
+			c := stridedFixture(constantFixture(name, 3, 16, 4, 0, 0), 67, 1)
+			mutate(&c)
+			if _, err := Decode(c.in, c.opt); err == nil {
+				t.Fatal("invalid stride input accepted")
+			}
+		})
+	}
 }
