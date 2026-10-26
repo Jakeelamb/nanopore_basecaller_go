@@ -29,6 +29,13 @@ type RetainedFixture struct {
 // builds or executes an oracle, including when a pin or dependency is missing.
 func Replay(source, library, root string) ([]RetainedFixture, map[string]string, error) {
 	pins := map[string]string{}
+	backendPins, err := VerifyBackend(library)
+	if err != nil {
+		return nil, nil, err
+	}
+	for path, want := range backendPins {
+		pins[path] = want
+	}
 	read := func(path, want string) ([]byte, error) {
 		data, err := readPinned(path, want)
 		if err == nil {
@@ -130,13 +137,6 @@ func Replay(source, library, root string) ([]RetainedFixture, map[string]string,
 			}
 			out[i].Expected[stage] = values
 		}
-	}
-	backendPins, err := VerifyBackend(library)
-	if err != nil {
-		return nil, nil, err
-	}
-	for path, want := range backendPins {
-		pins[path] = want
 	}
 	return out, pins, nil
 }

@@ -173,3 +173,23 @@ this unit.
 The historical N=1 acceptance above remains separate. General batched scan
 parity, direct CPUDecoder multi-chunk wrapper parity, N>4, CPU caller batching,
 GPU execution, full reads, biological accuracy, and performance remain open.
+
+## Source checkpoint
+
+The source checkpoint `d7e14b421b8e71d2e7e82229943aab64cc446f3c` passed the
+ordinary suite with 363 root passes and 62 opt-in root skips. The maintained CPU
+core gate passed 46 root tests without skips; its package list excludes CRF.
+A separate CGO-disabled retained-data run passed three root tests and 12 subtests
+without skips. The combined receipt SHA256 is
+`95455b485be079b282089942b7322f4682d4c0c7887f3d573502b572837f5986`.
+Raw evidence remains under ignored `artifacts/herdr-crf-source-001/`.
+
+Two independent Sol XHigh processes requested backend authentication before
+expected-stage access. The correction moves the existing verification block
+before all retained-data reads. Its ordering regression fails on the original
+source and passes after the move. Focused retained controls then pass four root
+tests and 12 subtests without skips. The red and green attempts remain preserved
+in task `t-bb36dd`; no native producer or backend load ran in those controls.
+This is evidence for source behavior and retained-byte checks. The numerical
+and lifetime acceptance limits above remain open. Same-family review provides
+no cross-model validation.

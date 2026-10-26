@@ -41,6 +41,23 @@ func TestParseRetainedInputRejections(t *testing.T) {
 	}
 }
 
+func TestReplayAuthenticatesBackendBeforeRetainedData(t *testing.T) {
+	root := t.TempDir()
+	manifest := filepath.Join(root, "manifest.json")
+	if err := os.WriteFile(manifest, []byte("{}"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	fixtures, pins, err := Replay(filepath.Join(root, "missing-source"), filepath.Join(root, "libnanopore_tensor.so"), filepath.Join(root, "missing-retained"))
+	if fixtures != nil || pins != nil {
+		t.Fatal("backend rejection returned partial results or pins")
+	}
+	want := "hash pin mismatch: " + manifest
+	if err == nil || err.Error() != want {
+		t.Fatalf("want backend manifest rejection %q before retained data access, got %v", want, err)
+	}
+	t.Logf("rejected before retained data access: %v", err)
+}
+
 func copyFile(t *testing.T, from, to string) {
 	t.Helper()
 	data, err := os.ReadFile(from)
