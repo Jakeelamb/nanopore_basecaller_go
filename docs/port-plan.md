@@ -52,7 +52,7 @@ about zero padding does not describe the consuming implementation.
 | HAC inference | 55 source-oracle fixtures and one genuine-weight score capture | Other inputs and device paths |
 | SUP inference | 12 source-oracle fixtures, 287 stages, 15,228,786 exact float32 values and genuine 18-layer weights | Other inputs and device paths |
 | SUP GPU weight preparation on host | QKV interleave, FP16 tiling and rounding match three full source fixtures and all 65,536 half patterns; int8 source/input preparation reviewed | Int8 arithmetic captures and Go implementation, FP8 preparation, other caches, device upload and graph integration |
-| CRF decoding | CPU N=1 scans, posteriors, beam diagnostics and quality bits | Batched scans and GPU kernels |
+| CRF decoding | CPU N=1 scans, posteriors, beam diagnostics and quality bits; N=1..4 lane composition implemented, replay pending compatible backend | General batched scans, direct CPUDecoder multi-chunk parity, caller batching and GPU kernels |
 | Stitching | Source algorithm fixtures including partial strides | Integration with variable chunk paths |
 | Split and trim | Source-linked MUX trim, pore-split decisions, child metadata, adapter/primer detection, interval trim and filtering; two genuine default FASTQ controls | Positive biological split/MUX controls, other kits and modes |
 | Scheduling | Selected reads, CPU batch one, cancellation, ownership, immutable captures and replay; owned CUDA streams at primitive boundary | Batching, GPU model scheduling, complete input accounting |
