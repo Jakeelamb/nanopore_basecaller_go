@@ -44,7 +44,7 @@ static rec table[256]; static uint64_t next_id=1;
 static size_t dsize(uint32_t t){switch(t){case 1:return 2;case 2:case 3:case 6:return 1;case 4:case 5:return 4;}return 0;}
 static rec* find(uint64_t e,uint64_t id){for(int i=0;i<256;i++)if(table[i].id==id){if(table[i].engine!=e)return NULL;return &table[i];}return NULL;}
 static uint64_t fresh(void){return next_id++;}
-uint32_t nt_version(void){return 4;}
+uint32_t nt_version(void){return 5;}
 int nt_open(uint64_t*out,char*e,size_t c){(void)e;(void)c;*out=1;return 0;}
 int nt_close(uint64_t id,char*e,size_t c){(void)id;(void)e;(void)c;return 0;}
 int nt_cuda_device_open(uint64_t e,int32_t o,uint64_t*out,nt_cuda_detail*d,char*er,size_t c){(void)e;(void)d;(void)er;(void)c;if(o<0)return 3;*out=100;return 0;}
@@ -172,6 +172,76 @@ int nt_cuda_linear_f16(uint64_t e,uint64_t stream,uint64_t in,uint64_t w,uint64_
  if(ro->strides[0]!=os0||ro->strides[1]!=os1||ro->strides[2]!=1)return 7;
  if(act<1||act>3)return 8;
  *res=0;return 0;}
+int nt_cuda_factorised_lstm(uint64_t e,uint64_t stream,const uint64_t*ids,
+ int32_t n,int32_t t,int32_t direction,int32_t parity,nt_cuda_detail*d,char*er,size_t cap){
+ (void)stream;(void)d;(void)er;(void)cap;
+ if(!ids||n<=0||n%64||t<=0||(direction!=-1&&direction!=1)||(parity!=0&&parity!=1))return 3;
+ for(int i=0;i<11;i++)if(!find(e,ids[i]))return 2;
+ rec*out=find(e,ids[0]);for(int i=0;i<11;i++)out->data[out->offset+i]=(uint8_t)ids[i];
+ out->data[out->offset+11]=(uint8_t)n;out->data[out->offset+12]=(uint8_t)t;
+ out->data[out->offset+13]=(uint8_t)direction;out->data[out->offset+14]=(uint8_t)parity;
+ return 0;}
+
+int nt_cuda_factorised_linear(uint64_t e,uint64_t stream,uint64_t input,uint64_t dw,uint64_t ds,uint64_t down,uint64_t up,uint64_t output,int64_t n,int64_t t,int32_t parity,float scale,nt_cuda_detail*d,char*er,size_t cap){
+ (void)stream;(void)d;(void)er;(void)cap;
+ uint64_t ids[]={input,dw,ds,down,up,output};for(int i=0;i<6;i++)if(!find(e,ids[i]))return 2;
+ if(n<=0||t<=0||n%64||t%32||parity!=1||scale!=5)return 3;
+ rec*r=find(e,output);for(int i=0;i<6;i++)r->data[r->offset+i]=(uint8_t)ids[i];
+ memcpy(r->data+r->offset+8,&n,8);memcpy(r->data+r->offset+16,&t,8);
+ memcpy(r->data+r->offset+24,&parity,4);memcpy(r->data+r->offset+28,&scale,4);return 0;}
+
+int nt_cuda_decoder_beam_program(uint64_t e,uint64_t device,uint8_t*bytes,size_t cap,size_t*written,nt_cuda_detail*d,char*er,size_t error_cap){
+ *written=4;if(bytes){if(cap!=4)return 1;memcpy(bytes,"beam",4);}return 0;
+}
+/* Deliberate host-only argument projection, not PTX arithmetic. */
+int nt_cuda_decoder_beam_numbers(uint64_t e,uint64_t stream,uint32_t operation,uint64_t ai,uint64_t bi,uint64_t ci,uint64_t oi,float clamp,float blank,nt_cuda_detail*d,char*er,size_t cap){
+ rec*a=find(e,ai),*o=find(e,oi);if(!a||!o)return 2;
+ if(operation<1||operation>6)return 3;
+ float*av=(float*)a->data+a->offset;float*ov=(float*)o->data+o->offset;
+ if(av[0]==-12345.0f)return 0;
+ if(operation==2){rec*b=find(e,bi),*c=find(e,ci);if(!b||!c)return 2;
+  for(int i=0;i<a->shape[0];i++){ov[6*i]=2;ov[6*i+1]=av[i];ov[6*i+2]=(float)((uint16_t*)b->data)[b->offset+4*i];ov[6*i+3]=((float*)c->data)[c->offset+5*i];ov[6*i+4]=clamp;ov[6*i+5]=blank;}
+ }else{for(int i=0;i<a->shape[0];i++)ov[i]=operation==1?av[i]+1:av[2*i]+av[2*i+1]+(float)operation;}
+ return 0;
+}
+/* Host-only argument projection. No PTX numerical claim follows. */
+int nt_cuda_decoder_post_numbers(uint64_t e,uint64_t stream,uint32_t op,uint64_t ai,uint64_t bi,uint64_t oi,uint64_t xi,float first,float second,nt_cuda_detail*d,char*er,size_t cap){
+ rec*a=find(e,ai),*b=find(e,bi),*o=find(e,oi),*x=xi?find(e,xi):NULL;if(!a||!b||!o||(xi&&!x))return 2;
+ if(op<1||op>5)return 3;
+ if(op==1){uint16_t*av=(uint16_t*)a->data+a->offset;float*bv=(float*)b->data+b->offset;float*ov=(float*)o->data+o->offset;
+  if(av[0]==0x3555)return 0;
+  for(int n=0;n<a->shape[0];n++)for(int s=0;s<b->shape[1];s++)ov[n*o->strides[0]+s]=bv[n*b->strides[0]+s]+1;
+  if(av[0]==0x3400){ov[0]=first;ov[1]=second;ov[2]=(float)av[0];ov[3]=bv[0];}return 0;
+ }
+ if(op==2){float*av=(float*)a->data+a->offset,*bv=(float*)b->data+b->offset;uint16_t*ov=(uint16_t*)o->data+o->offset;
+  if(bv[0]==-12345)return 0;
+  for(int n=0;n<a->shape[0];n++)for(int s=0;s<a->shape[1];s++)ov[n*o->strides[0]+s]=h16(av[n*a->strides[0]+s]/16+bv[n*b->strides[0]+s]/32);return 0;
+ }
+ float*ov=(float*)o->data+o->offset;int32_t*bv=(int32_t*)b->data+b->offset;uint8_t*xv=x?x->data+x->offset:NULL;
+ if(op==3){uint16_t*av=(uint16_t*)a->data+a->offset;if(av[8]==0x3555)return 0;
+  for(int i=0;i<a->shape[0];i++){int count=bv[i];if(count<0||count>8)return 3;_Float16 c,f=0,l=0;memcpy(&c,av+9*i+8,2);if(count){memcpy(&f,av+9*i,2);memcpy(&l,av+9*i+count-1,2);}ov[i]=(float)c/4+(float)f/8+(float)l/16+(float)count/64;}return 0;
+ }
+ float*av=(float*)a->data+a->offset;if(av[0]==-12345||(op==4&&first==-12345))return 0;
+ for(int i=0;i<a->shape[0];i++){int width=a->shape[1];float f=av[i*width],l=av[i*width+width-1];
+  if(op==4){if(bv[i]!=width)return 3;ov[i]=f+2*l+4*first+8*second;xv[i]=(uint8_t)(34+width%50);}
+  else{ov[3*i]=f+2*l;ov[3*i+1]=(float)bv[2*i]+4*(float)bv[2*i+1];if(bv[2*i+1])ov[3*i+2]=f-l;else{uint32_t inf=0x7f800000;memcpy(ov+3*i+2,&inf,4);}xv[i]=1;}
+ }return 0;
+}
+int nt_cuda_decoder_guide_program(uint64_t e,uint64_t device,uint8_t*bytes,size_t cap,size_t*written,nt_cuda_detail*d,char*er,size_t error_cap){
+ *written=4;if(bytes){if(cap!=4)return 1;memcpy(bytes,"fake",4);}return 0;
+}
+int nt_cuda_decoder_guide_frame(uint64_t e,uint64_t stream,uint64_t scores,uint64_t next,uint64_t out,float clamp,float blank,nt_cuda_detail*d,char*er,size_t cap){
+ rec*a=find(e,scores),*b=find(e,next),*c=find(e,out);if(!a||!b||!c)return 2;
+ float*dst=(float*)c->data+c->offset;dst[0]=clamp;dst[1]=blank;
+ dst[2]=(float)((uint16_t*)a->data)[a->offset];dst[3]=((float*)b->data)[b->offset];return 0;
+}
+int nt_cuda_storage_gemm_f16(uint64_t e,uint64_t stream,uint64_t a,uint64_t b,uint64_t out,nt_cuda_detail*d,char*er,size_t cap){
+ (void)stream;(void)d;(void)er;(void)cap;rec*ra=find(e,a),*rb=find(e,b),*ro=find(e,out);
+ if(!ra||!rb||!ro)return 2;uint64_t ids[]={a,b};memcpy(ro->data+ro->offset*2,ids,sizeof(ids));return 0;}
+int nt_cuda_lstm_step_f16(uint64_t e,uint64_t stream,uint64_t bias,uint64_t gates,uint64_t cell,uint64_t out,int32_t n,nt_cuda_detail*d,char*er,size_t cap){
+ (void)stream;(void)d;(void)er;(void)cap;uint64_t ids[]={bias,gates,cell};for(int i=0;i<3;i++)if(!find(e,ids[i]))return 2;
+ rec*ro=find(e,out);if(!ro)return 2;memcpy(ro->data+ro->offset*2,ids,sizeof(ids));memcpy(ro->data+ro->offset*2+24,&n,4);return 0;}
+
 `
 
 // The loader resolves every ABI symbol at open, so the host-memory backend also
@@ -185,7 +255,7 @@ func fakeStorageEngine(t *testing.T) *Engine {
 	t.Helper()
 	dir := t.TempDir()
 	source := filepath.Join(dir, "fake-storage.c")
-	body := fakeStorageTypes + fakeStorageBackend
+	body := fakeStorageTypes + fakeStorageBackend + fakeSUPBackend
 	for _, name := range fakeStorageStubs {
 		body += "void " + name + "(void){}\n"
 	}
@@ -194,7 +264,7 @@ func fakeStorageEngine(t *testing.T) *Engine {
 	}
 	lib := filepath.Join(dir, "fake-storage.so")
 	cmd := exec.Command("cc", "-shared", "-fPIC", "-I", "../../internal/tensor", source, "-o", lib)
-	if out, err := cmd.CombinedOutput(); err != nil {
+	if out, err := runDecoderPostFakeCC(t, cmd); err != nil {
 		t.Fatalf("fake storage backend: %s: %v", out, err)
 	}
 	e, err := Open(lib)

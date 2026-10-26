@@ -1,0 +1,15 @@
+{
+  "schema": "hac-vcs-aux-helper-baseline/v1",
+  "canonical_root": "/home/jake/Projects/nanopore_basecaller_go",
+  "files": {
+    "verification/tensor/closedbuild/proof.go": "b9cab51936e23eeb54825de6f9b9155a40882d35abe6ab89d5255ae8125522f3",
+    "verification/nativeproof/README.md": "1eafb3a4fee608a68ea26c752fa07f0fec7f11b7dd91bffe886d960fadb617e5",
+    "verification/nativeproof/dynamic.go": "14a147bd8b2e06f7e92e3377094077943c4760101d75e31c915d7528a25fddfc",
+    "verification/nativeproof/dynamic_test.go": "a53675e164d8fe629db5f427e40acbbc777ec1686ea0dd88626e1e208b2c4d97",
+    "verification/nativeproof/elf.go": "b6c87bb2e4d18aebfe56ebb7550529e12d37e949284b679a5329969d2811876e",
+    "verification/nativeproof/elf_test.go": "87bb812f144d053a0f32dc4bdbac67835ce6e580342822b368bdf807c6d045fe",
+    "verification/nativeproof/mapping_test.go": "a8737b1ee23f20cae84139ccb464a484fdd31fbd43969b57976890971d473e28",
+    "verification/nativeproof/sha256.inc": "be02733b7155407528ac7b98e0721dfe0673da90a3bc110b2577042286eca669"
+  },
+  "policy": "Exact unmodified helper snapshots. Excluded from owned patch. Canonical integration uses its maintained packages."
+}

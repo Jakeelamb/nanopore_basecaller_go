@@ -527,15 +527,13 @@ func (u *GPUMemoryUse) bind(geometry GPUStorageGeometry, orientation GPUOrientat
 	// WorkingMemory.cpp:42-44 rejects a live pair larger than the reservation.
 	// With the alternating-end placement below this is exactly the condition
 	// that the new extent does not intersect the live current extent.
-	if u.currentDefined {
-		pair, err := gpuAdd(u.currentBytes, geometry.Bytes)
-		if err != nil {
-			return GPUView{}, err
-		}
-		if pair > u.reservation.Bytes {
-			return GPUView{}, fmt.Errorf("%w: step %d needs %d live bytes, reservation is %d",
-				ErrGPUPlanOverlap, u.step, pair, u.reservation.Bytes)
-		}
+	pair, err := gpuAdd(u.currentBytes, geometry.Bytes)
+	if err != nil {
+		return GPUView{}, err
+	}
+	if pair > u.reservation.Bytes {
+		return GPUView{}, fmt.Errorf("%w: step %d needs %d reserved bytes, reservation is %d",
+			ErrGPUPlanOverlap, u.step, pair, u.reservation.Bytes)
 	}
 
 	offset := int64(0)
@@ -563,7 +561,7 @@ func (u *GPUMemoryUse) bind(geometry GPUStorageGeometry, orientation GPUOrientat
 		}
 	}
 
-	pair, err := gpuAdd(u.currentLive, geometry.LiveBytes)
+	pair, err = gpuAdd(u.currentLive, geometry.LiveBytes)
 	if err != nil {
 		return GPUView{}, err
 	}

@@ -2,6 +2,7 @@ package model
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 
 	"github.com/Jakeelamb/nanopore_basecaller_go/internal/signal"
@@ -296,11 +297,15 @@ func NewHACSmallConv(d *tensor.Device, s *tensor.Stream, p SmallConvParams, weig
 	}
 	b, err := d.NewStorage(s, tensor.DTypeF16, []int64{p.COut},
 		[]tensor.KoiTag{tensor.TagC}, HalfBytes(packedBias))
+	cache := &HACSmallConv{Params: p, device: d, Weights: w, Bias: b}
 	if err != nil {
-		_ = w.Close()
-		return nil, err
+		cleanup := cache.Close()
+		if cleanup == nil {
+			cache = nil
+		}
+		return cache, errors.Join(err, cleanup)
 	}
-	return &HACSmallConv{Params: p, device: d, Weights: w, Bias: b}, nil
+	return cache, nil
 }
 
 // Close releases the device weight cache.
@@ -309,12 +314,13 @@ func (c *HACSmallConv) Close() error {
 		return nil
 	}
 	var err error
-	if c.Bias != nil {
-		err = c.Bias.Close()
-	}
-	if c.Weights != nil {
-		if e := c.Weights.Close(); e != nil {
-			err = e
+	for _, slot := range []**tensor.Storage{&c.Bias, &c.Weights} {
+		if *slot != nil {
+			if e := (*slot).Close(); e != nil {
+				err = errors.Join(err, e)
+			} else {
+				*slot = nil
+			}
 		}
 	}
 	return err

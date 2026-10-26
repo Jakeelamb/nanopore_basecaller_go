@@ -89,6 +89,24 @@ var hacWeightManifest []byte
 //go:embed sup_weights.json
 var supWeightManifest []byte
 
+// WeightManifest returns independent metadata for the admitted model archives.
+func WeightManifest(architecture Architecture) ([]WeightReceipt, error) {
+	var raw []byte
+	switch architecture {
+	case HAC:
+		raw = hacWeightManifest
+	case SUP:
+		raw = supWeightManifest
+	default:
+		return nil, fmt.Errorf("%w: weight architecture %q", ErrUnsupported, architecture)
+	}
+	var manifest []WeightReceipt
+	if err := json.Unmarshal(raw, &manifest); err != nil {
+		return nil, err
+	}
+	return manifest, nil
+}
+
 // Model borrows its Engine. Close and Forward serialize; Close never closes the
 // Engine or caller input/output handles.
 type Model struct {
@@ -110,12 +128,8 @@ func Open(engine *tensor.Engine, directory string) (*Model, error) {
 		return nil, err
 	}
 	m := &Model{engine: engine, spec: spec}
-	manifestBytes := hacWeightManifest
-	if spec.Architecture == SUP {
-		manifestBytes = supWeightManifest
-	}
-	var manifest []WeightReceipt
-	if err := json.Unmarshal(manifestBytes, &manifest); err != nil {
+	manifest, err := WeightManifest(spec.Architecture)
+	if err != nil {
 		return nil, err
 	}
 	var loadErr error

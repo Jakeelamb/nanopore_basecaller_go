@@ -1,0 +1,2 @@
+#pragma once
+constexpr unsigned CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel=307,CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel_ptsz=442,CUPTI_DRIVER_TRACE_CBID_cuLaunchKernelEx=652,CUPTI_DRIVER_TRACE_CBID_cuLaunchKernelEx_ptsz=653;

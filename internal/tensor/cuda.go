@@ -29,6 +29,21 @@ type HalfLayout struct {
 	OffsetElements, StorageElements uint64
 }
 type cudaRequest struct {
+	supAlpha                                float32
+	sup                                     [8]uint64
+	supGeometry                             uint32
+	supOp                                   uint32
+	supSelector                             int32
+	beamOp                                  uint32
+	beam                                    [3]uint64
+	decoderPostAux                          uint64
+	decoderPostOp                           uint32
+	guideClamp, guideBlank                  float32
+	output                                  [6]uint64
+	outputN, outputT                        int64
+	outputScale                             float32
+	flstm                                   [11]uint64
+	direction, parity                       int32
 	op                                      string
 	device, stream, half, a, b, out, offset uint64
 	storage, src, scale                     uint64
@@ -48,6 +63,7 @@ type cudaRequest struct {
 	bytes                                   []byte
 }
 type cudaResult struct {
+	count     int
 	id        uint64
 	layout    HalfLayout
 	meta      StorageMeta

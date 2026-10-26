@@ -1,0 +1,168 @@
+{
+  "Schema": "hac-vcs-aux-recompile-plan/v1",
+  "PriorRelink": {
+    "Path": "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/artifacts/hac-vcs-aux/build-003/build.json",
+    "SHA256": "2e19a4351fbc10a507e2913245513530889e1c533188d68b960f6637288be803"
+  },
+  "PriorBuild": {
+    "Path": "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/artifacts/hac-vcs-aux/build-002/build.json",
+    "SHA256": "274f5459c25ac2cfe9176b6e324703a99da0e8949c8d37f38f1af845b2151316"
+  },
+  "PriorClosure": {
+    "Path": "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/artifacts/hac-vcs-aux/build-002/before-compile.json",
+    "SHA256": "0363a351ef35433361d4aa86762603b84cf2825888c3e880fb6a4c55e4ac25cf"
+  },
+  "OriginalRecipe": {
+    "Path": "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/verification/hacvcsaux/oracle-plan.json",
+    "SHA256": "bf60a098af27bd82c9113c62a60569521d1d562c5b626b9166661ff8eae9b0c7"
+  },
+  "PriorRelinkRecipe": {
+    "Path": "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/verification/hacvcsaux/relink-plan.json",
+    "SHA256": "f1df0dbeba0dac4075d47089e2faf5156284f8da14352a2c341dc756c68cd1b1"
+  },
+  "CompilerBaseline": {
+    "Path": "/home/jake/Projects/nanopore_basecaller_go/artifacts/tensor/backend-closed-plan-005/plan.json",
+    "SHA256": "b2d33b287e9135d85fc3ac6191de33c7aa9e70eda5a029f3a02b89a460b76d7a"
+  },
+  "Checker": {
+    "Path": "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/artifacts/hac-vcs-aux/host-003/hacvcsaux",
+    "SHA256": "695b5a60c24df7fad992a04fbf54f8ad4a8bd675912ca2f0841003d4d19e391f"
+  },
+  "SourceCorrection": {
+    "Before": {
+      "Path": "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/verification/hacvcsaux/native/oracle.cpp",
+      "SHA256": "2e43d14955ac9cae3f324736ed36f4c0c57c9624f1904d2f171bf54d0d87c793"
+    },
+    "PreservedBefore": {
+      "Path": "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/artifacts/hac-vcs-aux/source-001/oracle.cpp",
+      "SHA256": "2e43d14955ac9cae3f324736ed36f4c0c57c9624f1904d2f171bf54d0d87c793"
+    },
+    "After": {
+      "Path": "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/verification/hacvcsaux/native/oracle.cpp",
+      "SHA256": "9e05015ef94769e9d90c5b175659ddd0b55e781e94d1b5b130c4801e688da88f"
+    },
+    "OnlyRemovedBytes": "#include \"koi.h\"\n"
+  },
+  "RetainedObjects": {
+    "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/artifacts/hac-vcs-aux/build-002/oracle.o": "dcf1c351ad89ef6c94992ef06eaf615ea572751bfee82e07abd986eebdb48539",
+    "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/artifacts/hac-vcs-aux/build-002/transport.o": "bb5e5a34b5e945f3f07f29e9542bd5f2cea17399692e2ef976b0a63961d2f5d3"
+  },
+  "WrongObject": {
+    "Path": "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/artifacts/hac-vcs-aux/build-002/oracle.o",
+    "SHA256": "dcf1c351ad89ef6c94992ef06eaf615ea572751bfee82e07abd986eebdb48539"
+  },
+  "TransportObject": {
+    "Path": "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/artifacts/hac-vcs-aux/build-002/transport.o",
+    "SHA256": "bb5e5a34b5e945f3f07f29e9542bd5f2cea17399692e2ef976b0a63961d2f5d3"
+  },
+  "PreservedRelinkLogs": {
+    "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/artifacts/hac-vcs-aux/build-003/link-compiler-before-receipt.json": "4114204d4ac81eb38499e8c5e29737587daf3348704b75d57e243184c14ab773",
+    "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/artifacts/hac-vcs-aux/build-003/link-compiler-before.stdout": "b20131eab091810ca5833d36398d42a6d0821eed779a9cc275e3c43265fb0baf",
+    "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/artifacts/hac-vcs-aux/build-003/link-compiler-before.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/artifacts/hac-vcs-aux/build-003/link-receipt.json": "c16d7e5c4f4772f3fe021cc1f1bc26204269ef482a64ad7e8111e84d91a4acfe",
+    "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/artifacts/hac-vcs-aux/build-003/link.stdout": "60d59c9b7ca5dc0762ac2590fd7659cdd6669a8e38189e4dc4c6d6bd5f49f544",
+    "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/artifacts/hac-vcs-aux/build-003/link.stderr": "dfa2804fcf35a829f0f78d6a7c1e8cf9dfd8152c4021d5bd8ae85c2a52cbe8f2",
+    "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/artifacts/hac-vcs-aux/build-003/link-compiler-after-receipt.json": "568c7c2cdcd24ef579d578dcb6838ab9d273485b5a71ee66e3df033585af1553",
+    "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/artifacts/hac-vcs-aux/build-003/link-compiler-after.stdout": "b20131eab091810ca5833d36398d42a6d0821eed779a9cc275e3c43265fb0baf",
+    "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/artifacts/hac-vcs-aux/build-003/link-compiler-after.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/artifacts/hac-vcs-aux/build-003/oracle.map": "84c64fb50f1c27452daf68b025f5375b5f41fef99dbbf84f4e62a07b1c7fc5cd"
+  },
+  "PublicHeader": {
+    "Path": "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/dependencies/libkoi-0.7.5-Linux-x86_64-cuda-13.0/libkoi-0.7.5-Linux-x86_64-cuda-13.0/include/koi.h",
+    "SHA256": "8b4115c2e92ebf1acf1db2aa76bdc9b3a22768cb595b92363f88e44ff92d3b88"
+  },
+  "OfficialWrapperHeader": {
+    "Path": "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/dependencies/libkoi-0.7.5-Linux-x86_64-cuda-13.0/libkoi-0.7.5-Linux-x86_64-cuda-13.0/include/koi_thread_pool.h",
+    "SHA256": "65da8f3cd7cd0e0fe3c1ba713c92ecc952dfdbd948b7f87968f261bcc5622619"
+  },
+  "StockExports": {
+    "Path": "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/artifacts/hac-vcs-aux/closure-001/pool-members.stdout",
+    "SHA256": "5b7f66fdb2f0b378ab2283f461749bc2f528e9b062938f44055f00abd9e7b485"
+  },
+  "StockExportsReceipt": {
+    "Path": "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/artifacts/hac-vcs-aux/closure-001/pool-members-receipt.json",
+    "SHA256": "91b42c388334dc38c3fa93532626dc578fa9745bdf1d90922d0bab3f7d06a2c1"
+  },
+  "NM": {
+    "Path": "/usr/bin/nm",
+    "SHA256": "b16707aadd1c1953f51fa32d462b2d463a54031f7a743d63e8333c6bf3985abd"
+  },
+  "Compile": [
+    "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/bin/g++-15",
+    "-std=c++17",
+    "-O1",
+    "-fno-fast-math",
+    "-ffp-contract=off",
+    "-pthread",
+    "-I",
+    "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/dependencies/libkoi-0.7.5-Linux-x86_64-cuda-13.0/libkoi-0.7.5-Linux-x86_64-cuda-13.0/include",
+    "-I",
+    "/opt/cuda/include",
+    "-MD",
+    "-MF",
+    "{OUT}/oracle.d",
+    "-MT",
+    "oracle-dependencies",
+    "-c",
+    "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/verification/hacvcsaux/native/oracle.cpp",
+    "-o",
+    "{OUT}/oracle.o"
+  ],
+  "WrongABI": [
+    "/usr/bin/nm",
+    "--undefined-only",
+    "--no-demangle",
+    "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/artifacts/hac-vcs-aux/build-002/oracle.o"
+  ],
+  "CorrectedABI": [
+    "/usr/bin/nm",
+    "--undefined-only",
+    "--no-demangle",
+    "{OUT}/oracle.o"
+  ],
+  "Link": [
+    "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/bin/g++-15",
+    "-pthread",
+    "-nodefaultlibs",
+    "-Wl,-z,defs",
+    "-Wl,-t",
+    "-Wl,-Map,{OUT}/oracle.map",
+    "-Wl,-rpath,/usr/lib",
+    "{OUT}/oracle.o",
+    "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/artifacts/hac-vcs-aux/build-002/transport.o",
+    "/home/jake/Projects/nanopore_basecaller_go/artifacts/parity-resume-review-20261024/hac-vcs-native-boundary/body-001/utils_lstm.cpp.o",
+    "/home/jake/Projects/nanopore_basecaller_go/artifacts/parity-resume-review-20261024/hac-vcs-native-boundary/body-001/utils_lstm.cu.o",
+    "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/artifacts/hac-vcs-aux/frontier-001/thread_pool.cpp.o",
+    "-Wl,--start-group",
+    "/usr/lib/libstdc++.so.6.0.36",
+    "/usr/lib/libm.so.6",
+    "/usr/lib/libgcc_s.so.1",
+    "/usr/lib/libc.so.6",
+    "/usr/lib/libc_nonshared.a",
+    "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/lib/gcc/x86_64-pc-linux-gnu/15.3.0/libgcc.a",
+    "/usr/lib/libpthread.a",
+    "/usr/lib/ld-linux-x86-64.so.2",
+    "-Wl,--end-group",
+    "-o",
+    "{OUT}/oracle"
+  ],
+  "RequiredUndefinedPublicSymbols": [
+    "host_lstm_preprocess",
+    "koi_create_thread_pool",
+    "koi_destroy_thread_pool"
+  ],
+  "OriginalDefinedPublicSymbols": [
+    "host_lstm_preprocess",
+    "koi_create_thread_pool",
+    "koi_destroy_thread_pool"
+  ],
+  "NativeCommands": [
+    "old-object nm negative control",
+    "one oracle.cpp MD compile",
+    "new-object nm public C ABI gate",
+    "explicit CPU-only link"
+  ],
+  "RuntimeHeld": true,
+  "OracleRunsHeld": true,
+  "Correction": "Only remove direct koi.h inclusion; official koi_thread_pool.h supplies public C linkage. Retain transport.o, all shared compiler queries, unchanged header closure and original CPU loader link."
+}

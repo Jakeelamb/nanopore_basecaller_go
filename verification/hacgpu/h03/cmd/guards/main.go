@@ -149,8 +149,8 @@ func run() error {
 	defer f16Out.Close()
 
 	// The overlap guard needs the input and the output to be views of one
-	// allocation with intersecting intervals. The output span (2098176 bytes at
-	// 131072) sits inside the parent, so the mutant's write stays in bounds.
+	// allocation with intersecting byte intervals. The 2097152-byte I8 output
+	// starts at byte 65536 and fits inside the parent.
 	overlapRoot := storage(tensor.DTypeI8, []int64{3000000}, []tensor.KoiTag{tensor.TagN})
 	defer overlapRoot.Close()
 	overlapF16, err := overlapRoot.Reinterpret(tensor.DTypeF16, 0, []int64{1500000}, []int64{1}, []tensor.KoiTag{tensor.TagN})
@@ -168,6 +168,14 @@ func run() error {
 		return err
 	}
 	defer overlapOut.Close()
+	// The old element-endpoint comparison accepted this offset because 215040
+	// F16 elements precede 262144 I8 elements. Their byte intervals overlap by
+	// 167936 bytes. Both dispatch paths must reject it before enqueueing.
+	shiftedOverlapOut, err := overlapRoot.View(262144, []int64{n, tOut, cOut}, []int64{outNStride, outTStride, 1}, nct)
+	if err != nil {
+		return err
+	}
+	defer shiftedOverlapOut.Close()
 
 	// A contiguous allocation too short for the fallback's last window.
 	tinyIn := storage(tensor.DTypeF16, []int64{n, 20, cIn}, nct)
@@ -213,7 +221,9 @@ func run() error {
 		{"output-type", false, in, w, b, f16Out, base},
 		{"accumulation", false, in, w, b, out, accumCase},
 		{"overlap", false, overlapIn, w, b, overlapOut, base},
+		{"shifted-overlap", false, overlapIn, w, b, shiftedOverlapOut, base},
 		{"fallback-valid", true, in, w, b, out, base},
+		{"fallback-shifted-overlap", true, overlapIn, w, b, shiftedOverlapOut, base},
 		{"fallback-weight-shape", true, in, shortW, b, out, base},
 		{"fallback-window", true, tinyIn, w, b, out, linearWindowCase},
 	}

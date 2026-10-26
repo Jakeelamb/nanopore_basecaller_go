@@ -1,0 +1,12 @@
+package tensor_test
+
+import (
+	"os"
+	"testing"
+
+	"github.com/Jakeelamb/nanopore_basecaller_go/verification/hacgpu/h08"
+)
+
+func TestMain(m *testing.M) {
+	os.Exit(h08.CPU13TestMain(m.Run))
+}

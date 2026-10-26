@@ -1,0 +1,39 @@
+{
+  "schema": "nanopore-hac-vcs-aux-fixtures/v1",
+  "dorado_head": "8b8fc5d36a9c0baab262a743cb175b5878e38ca6",
+  "subbatch_size": 32,
+  "input_stride": 6,
+  "workspace_fills": [324508639, 610839776],
+  "destination_fills": [1431655765, -1431655766],
+  "thread_pool_workers": [1, 2],
+  "cases": [
+    {"id":"first", "batch_size":64, "full_chunk_size_out":2048, "sizes_out":[128,256,2048], "repeat":1},
+    {"id":"full", "batch_size":64, "full_chunk_size_out":2048, "sizes_out":[2048], "repeat":64},
+    {"id":"edge31", "batch_size":64, "full_chunk_size_out":128, "sizes_out":[64], "repeat":31},
+    {"id":"edge32", "batch_size":64, "full_chunk_size_out":128, "sizes_out":[64], "repeat":32},
+    {"id":"edge33", "batch_size":64, "full_chunk_size_out":128, "sizes_out":[64], "repeat":33},
+    {"id":"edge63", "batch_size":64, "full_chunk_size_out":128, "sizes_out":[64], "repeat":63},
+    {"id":"edge64", "batch_size":64, "full_chunk_size_out":128, "sizes_out":[64], "repeat":64},
+    {"id":"edge65", "batch_size":64, "full_chunk_size_out":128, "sizes_out":[64], "repeat":65},
+    {"id":"perm012", "batch_size":64, "full_chunk_size_out":2048, "sizes_out":[128,256,2048], "repeat":1},
+    {"id":"perm021", "batch_size":64, "full_chunk_size_out":2048, "sizes_out":[128,2048,256], "repeat":1},
+    {"id":"perm102", "batch_size":64, "full_chunk_size_out":2048, "sizes_out":[256,128,2048], "repeat":1},
+    {"id":"perm120", "batch_size":64, "full_chunk_size_out":2048, "sizes_out":[256,2048,128], "repeat":1},
+    {"id":"perm201", "batch_size":64, "full_chunk_size_out":2048, "sizes_out":[2048,128,256], "repeat":1},
+    {"id":"perm210", "batch_size":64, "full_chunk_size_out":2048, "sizes_out":[2048,256,128], "repeat":1},
+    {"id":"ties", "batch_size":64, "full_chunk_size_out":128, "sizes_out":[64,128,64,32,128,32,1,1], "repeat":8},
+    {"id":"reverse-ties", "batch_size":64, "full_chunk_size_out":128, "sizes_out":[1,1,32,128,32,64,128,64], "repeat":8},
+    {"id":"odd-out", "batch_size":64, "full_chunk_size_out":127, "sizes_out":[1,63,127], "repeat":8},
+    {"id":"even-out", "batch_size":64, "full_chunk_size_out":128, "sizes_out":[1,64,128], "repeat":8},
+    {"id":"single", "batch_size":64, "full_chunk_size_out":1, "sizes_out":[1], "repeat":1},
+    {"id":"single-full", "batch_size":64, "full_chunk_size_out":1, "sizes_out":[1], "repeat":64},
+    {"id":"signed-id", "batch_size":32832, "full_chunk_size_out":1, "sizes_out":[1], "repeat":32832}
+  ],
+  "go_rejections": [
+    "empty", "zero-size", "negative-size", "size-above-full", "non-granular-input",
+    "over-raw-capacity", "over-sentinel-capacity", "wrong-lane", "fixed-batch",
+    "overflow-coordinate", "overflow-encoding", "changed-input-pin", "changed-output-word"
+  ],
+  "comparison": "all four captured initialized int32 spans, exact signed words",
+  "excluded_data": "unwritten OutLayout destination tail; no native values normalized or masked after observation"
+}

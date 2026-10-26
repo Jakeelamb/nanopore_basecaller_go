@@ -183,8 +183,10 @@ func (w *Writer) Close() error {
 	if err := w.flush(); err != nil {
 		return w.fail(err)
 	}
-	if _, err := w.w.Write(bgzfEOF); err != nil {
+	if n, err := w.w.Write(bgzfEOF); err != nil {
 		return w.fail(err)
+	} else if n != len(bgzfEOF) {
+		return w.fail(io.ErrShortWrite)
 	}
 	return w.err
 }

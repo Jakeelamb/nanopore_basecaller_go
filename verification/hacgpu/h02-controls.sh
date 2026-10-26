@@ -9,17 +9,19 @@
 # A control passes when the mutated build changes the observed outcome in the
 # direction the mutation predicts. The source is restored after every attempt and
 # every failed attempt is preserved under artifacts/tensor.
-set -u
+set -euo pipefail
 cd "$(dirname "$0")/../.." || exit 1
 ROOT=$(pwd)
 T=/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/dependencies/torch-2.9.0.0-ont-CUDA-13.0-linux-x64-cxx11-abi/libtorch
 A=/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/archives/torch-2.9.0.0-ont-CUDA-13.0-linux-x64-cxx11-abi.zip
 K=/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/dependencies/libkoi-0.7.5-Linux-x86_64-cuda-13.0/libkoi-0.7.5-Linux-x86_64-cuda-13.0
 SRC=verification/tensor/hac_smallconv.inc
-BACKUP=/tmp/opencode/h02-hac_smallconv.inc.orig
 OUT=${OUT:-artifacts/tensor/h02-controls}
 ONLY=${1:-}
-mkdir -p /tmp/opencode "$OUT"
+case "$ONLY" in ""|omitted-input-padding|wrong-output-stride|unknown-activation|non-multiple-stride|non-f16-storage) ;; *) echo "unknown control: $ONLY" >&2; exit 2 ;; esac
+mkdir -p "$(dirname "$OUT")"
+mkdir "$OUT" || { echo "attempt already exists: $OUT" >&2; exit 1; }
+BACKUP=$OUT/source-original.inc
 [ -f "$SRC" ] || { echo "missing $SRC (wrong working directory?)"; exit 1; }
 cp "$SRC" "$BACKUP" || exit 1
 : >"$OUT/transcript.txt"
@@ -29,10 +31,10 @@ trap restore EXIT
 
 build() {
   local dir=$1
-  rm -rf "$dir"
+  [ ! -e "$dir" ] || { echo "attempt already exists: $dir" >&2; return 1; }
   go run ./verification/tensor/build -torch "$T" -archive "$A" \
     -dorado-source external/dorado-source -koi "$K" \
-    -cuda-family 13.0 -cuda-root /opt/cuda -out "$dir" >/tmp/opencode/h02-build.log 2>&1
+    -cuda-family 13.0 -cuda-root /opt/cuda -out "$dir" >"$dir.build.log" 2>&1
 }
 
 probe() {
@@ -62,11 +64,11 @@ control() {
   if [ -n "${ONLY:-}" ] && [ "$ONLY" != "$name" ]; then
     return
   fi
-  mutate "$name" "$pattern" "$replacement" || { echo "$name: MUTATION ABSENT" | tee -a "$OUT/transcript.txt"; return; }
+  mutate "$name" "$pattern" "$replacement" || { echo "$name: MUTATION ABSENT" | tee -a "$OUT/transcript.txt"; return 1; }
   local dir=$OUT/build-$name
   if ! build "$dir"; then
-    echo "$name: BUILD FAILED (see /tmp/opencode/h02-build.log)" | tee -a "$OUT/transcript.txt"
-    return
+    echo "$name: BUILD FAILED (see immutable build log under $OUT)" | tee -a "$OUT/transcript.txt"
+    return 1
   fi
   local log=$OUT/probe-$name.txt
   probe "$dir/libnanopore_tensor.so" "$log"
@@ -78,13 +80,13 @@ control() {
   echo "$name: $observed" | tee -a "$OUT/transcript.txt"
   case "$observed" in
     *"$want"*) echo "  -> control held: $name produced the predicted outcome" | tee -a "$OUT/transcript.txt" ;;
-    *) echo "  -> CONTROL FAILED: expected to contain '$want'" | tee -a "$OUT/transcript.txt" ;;
+    *) echo "  -> CONTROL FAILED: expected to contain '$want'" | tee -a "$OUT/transcript.txt"; return 1 ;;
   esac
 }
 
 restore
 if [ -z "$ONLY" ] && ! build "$OUT/build-baseline"; then
-  echo "baseline: BUILD FAILED (see /tmp/opencode/h02-build.log)"
+  echo "baseline: BUILD FAILED (see immutable build log under $OUT)"
   exit 1
 fi
 if [ -z "$ONLY" ]; then
