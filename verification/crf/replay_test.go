@@ -28,7 +28,6 @@ func TestReadPinned(t *testing.T) {
 	if _, err := readPinned(path, digest(data)); err == nil {
 		t.Fatal("corruption accepted")
 	}
-	// Runtime dependencies use the same streaming hash check as backend binaries.
 	if err := verifyPin(path, digest(data), map[string]string{}); err == nil {
 		t.Fatal("corrupted dependency accepted")
 	}
@@ -103,7 +102,6 @@ func TestRetainedReplayControls(t *testing.T) {
 	if len(fixtures) != 66 || fixtures[65].Name != "captured_stock_hac_n1_l96" {
 		t.Fatal("retained fixture coverage changed")
 	}
-	// Copy only files actually verified by replay, leaving genuine artifacts read-only.
 	copied := t.TempDir()
 	for path := range pins {
 		rel, err := filepath.Rel(root, path)
@@ -115,8 +113,6 @@ func TestRetainedReplayControls(t *testing.T) {
 		}
 		copyFile(t, path, filepath.Join(copied, rel))
 	}
-	// The copied executable is non-executable and PATH has no compilers. Replay
-	// must still pass, with no native build or run and no writes in the copy.
 	t.Setenv("PATH", t.TempDir())
 	if _, _, err := Replay(source, library, copied); err != nil {
 		t.Fatal(err)

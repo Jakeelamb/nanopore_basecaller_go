@@ -328,8 +328,6 @@ func TestNativeValidationAndCancellation(t *testing.T) {
 	}
 }
 
-// TestRetainedBatchParity compares lane composition with previously captured
-// original-source N=1 outputs. No new native batch capture occurs here.
 func TestRetainedBatchParity(t *testing.T) {
 	if os.Getenv("CRF_ORACLE_MODE") != "replay" {
 		t.Skip("retained replay requires CRF_ORACLE_MODE=replay")

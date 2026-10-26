@@ -17,7 +17,6 @@ func batchDimensions(shape []int64) (blocks, lanes, states int, err error) {
 		return 0, 0, 0, err
 	}
 	lanes = int(shape[1])
-	// Divide the budget before multiplication, including all retained lane arrays.
 	if blocks > (maxElements/lanes-3*states)/(7*states) {
 		return 0, 0, 0, fmt.Errorf("CRF batch result exceeds %d float32 elements", maxElements)
 	}

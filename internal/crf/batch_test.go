@@ -122,7 +122,6 @@ func TestNativeBatchComposition(t *testing.T) {
 			if err := x.Close(); err != nil {
 				t.Fatal(err)
 			}
-			// Results survive input release and own each stage independently.
 			for lane := range got {
 				assertResultBits(t, got[lane], want[lane])
 				stages := [][]float32{got[lane].Scores, got[lane].Forward, got[lane].Backward, got[lane].Posts}
@@ -139,7 +138,6 @@ func TestNativeBatchComposition(t *testing.T) {
 					}
 				}
 			}
-			// A later call cannot reuse or mutate the earlier owned arrays.
 			again, err := ComputeBatch(context.Background(), e, p, .25)
 			if err != nil {
 				t.Fatal(err)
@@ -152,8 +150,6 @@ func TestNativeBatchComposition(t *testing.T) {
 	}
 }
 
-// Count the checks made by one complete Compute to cancel at the next lane
-// boundary without timers or racing a synchronous native operation.
 type countedContext struct {
 	context.Context
 	checks int64
@@ -205,15 +201,16 @@ func TestNativeBatchValidationAndCancellation(t *testing.T) {
 		t.Fatalf("nil engine: %v %v", got, err)
 	}
 	single := inputTensor(t, e, []int64{2, 1, 16}, make([]float32, 32))
-	count := &countedContext{Context: context.Background()}
-	if _, err := Compute(count, e, single, 2); err != nil {
-		t.Fatal(err)
+	singleLaneChecks := &countedContext{Context: context.Background()}
+	if got, err := ComputeBatch(singleLaneChecks, e, single, 2); err != nil || len(got) != 1 {
+		t.Fatalf("single-lane batch: %v %v", got, err)
 	}
+	twoLanes := inputTensor(t, e, []int64{2, 2, 16}, make([]float32, 64))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	mid := &cancelAfter{Context: ctx, cancel: cancel}
-	mid.remaining.Store(count.checks + 3)
-	if got, err := ComputeBatch(mid, e, valid, 2); !errors.Is(err, context.Canceled) || got != nil {
+	betweenLanes := &cancelAfter{Context: ctx, cancel: cancel}
+	betweenLanes.remaining.Store(singleLaneChecks.checks)
+	if got, err := ComputeBatch(betweenLanes, e, twoLanes, 2); !errors.Is(err, context.Canceled) || got != nil {
 		t.Fatalf("between-lane cancellation: %v %v", got, err)
 	}
 	ctx2, cancel2 := context.WithCancel(context.Background())

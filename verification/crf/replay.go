@@ -13,7 +13,6 @@ import (
 	"strings"
 )
 
-// These receipts pin the accepted check-002 capture, independently of its path.
 const retainedBuildSHA = "a394f8cdbe256cefbe3e904808c6e5e46ebd52e0d9191961689994394f20f7b9"
 const retainedRunSHA = "1975918d15e4b60e75371d5fee580c0e74acd991b2fb17e96d6cf1ac67dfb3dc"
 const backendManifestSHA = "578be0cfb718a9c46b9c290299c5268c437217fd2150938fa6e77977f25c112c"
