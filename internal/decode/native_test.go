@@ -296,8 +296,6 @@ func TestNativeSourceMutationRejected(t *testing.T) {
 	}
 }
 
-// All oracle execution stays under TestPinnedNativeDecode. Each protocol attempt
-// retains input, output, stderr, clocks and exit status before any assertion.
 func runOracleControl(t *testing.T, executable, output, name, input string) ([]byte, string, int) {
 	t.Helper()
 	dir := filepath.Join(output, "controls", name)
@@ -369,7 +367,6 @@ func testOracleFraming(t *testing.T, executable, output string, c fixture) {
 	if !bytes.Equal(legacyOutput, expected.Bytes()) {
 		t.Fatal("legacy bridge differs from packed Go result")
 	}
-	// Byte equality includes all score and quality bits and the legacy formatting.
 	tokens := strings.Fields(legacy)
 	rejections := map[string]string{
 		"unknown-version":         "nanopore-decode-oracle/v3\n",

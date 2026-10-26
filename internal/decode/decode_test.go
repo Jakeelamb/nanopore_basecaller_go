@@ -271,8 +271,6 @@ func qualityThresholdFixtures(base fixture) []fixture {
 	return cases
 }
 
-// stridedFixture models a selected lane as a subslice. Only the minimal span is
-// borrowed; gap values model unrelated lanes and may contain arbitrary bits.
 func stridedFixture(packed fixture, stride, salt int) fixture {
 	c := packed
 	c.name = fmt.Sprintf("%s/stride=%d/gaps=%d", packed.name, stride, salt)
@@ -389,7 +387,6 @@ func TestScoreStride(t *testing.T) {
 			}
 		})
 	}
-	// Default stride normalization must not change caller metadata.
 	c := constantFixture("default", 2, 4, 1, 0, 0)
 	if _, err := Decode(c.in, c.opt); err != nil || c.in.ScoreStride != 0 {
 		t.Fatalf("default normalization: %v", err)

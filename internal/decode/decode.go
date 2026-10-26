@@ -58,7 +58,6 @@ func validate(in *Input, opt Options) error {
 	if in.ScoreStride < channels || in.ScoreStride > maxElements {
 		return fmt.Errorf("score stride must be in [%d,%d]", channels, maxElements)
 	}
-	// Divide before multiplying. A single row never uses its stride.
 	if in.Blocks-1 > (maxElements-channels)/in.ScoreStride {
 		return fmt.Errorf("score span exceeds %d elements", maxElements)
 	}

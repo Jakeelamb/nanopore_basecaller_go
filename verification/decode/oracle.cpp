@@ -50,7 +50,7 @@ int main() {
         constexpr size_t max_elements = size_t(1) << 27;
         constexpr auto marker = "nanopore-decode-oracle/v2";
         std::string token;
-        if (!(std::cin >> token)) return 0;  // Legacy empty stream.
+        if (!(std::cin >> token)) return 0;
         const bool v2 = token == marker;
         if (v2) {
             if (!(std::cin >> token)) throw std::runtime_error("incomplete v2 stream");
