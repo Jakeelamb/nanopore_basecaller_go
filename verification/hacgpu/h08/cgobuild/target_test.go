@@ -13,6 +13,28 @@ import (
 
 func targetFixture(t *testing.T) Plan {
 	t.Helper()
+	goRoot := t.TempDir()
+	for name, body := range map[string]string{
+		"os/os.go":                          "package os\n",
+		"reflect/reflect.go":                "package reflect\n",
+		"testing/testing.go":                "package testing\n",
+		"testing/internal/testdeps/deps.go": "package testdeps\n",
+		"embed/embed.go":                    "package embed\n",
+		"cmd/go/internal/load/test.go":      fixtureGeneratorSource,
+	} {
+		path := filepath.Join(goRoot, "src", name)
+		if e := os.MkdirAll(filepath.Dir(path), 0700); e != nil {
+			t.Fatal(e)
+		}
+		if e := os.WriteFile(path, []byte(body), 0600); e != nil {
+			t.Fatal(e)
+		}
+	}
+	return targetFixtureWithGoRoot(t, goRoot)
+}
+
+func targetFixtureWithGoRoot(t *testing.T, goRoot string) Plan {
+	t.Helper()
 	root := t.TempDir()
 	files := map[string]string{
 		"go.mod":                          "module " + Module + "\n\ngo 1.24.0\n",
@@ -36,12 +58,12 @@ func targetFixture(t *testing.T) Plan {
 			t.Fatal(e)
 		}
 	}
-	p := Plan{Schema: "nanopore-h08-cgo-build-plan/v2", Role: CPU13Tests, Options: Options{Role: CPU13Tests, Root: root, GoRoot: runtime.GOROOT(), WorkRoot: filepath.Join(root, "work")}}
-	p.Packages, p.Inputs, e = selectSources(root, runtime.GOROOT(), CPU13Tests)
+	p := Plan{Schema: "nanopore-h08-cgo-build-plan/v2", Role: CPU13Tests, Options: Options{Role: CPU13Tests, Root: root, GoRoot: goRoot, WorkRoot: filepath.Join(root, "work")}}
+	p.Packages, p.Inputs, e = selectSources(root, goRoot, CPU13Tests)
 	if e != nil {
 		t.Fatal(e)
 	}
-	if _, e = pinned(filepath.Join(runtime.GOROOT(), "src/cmd/go/internal/load/test.go"), p.Inputs); e != nil {
+	if _, e = pinned(filepath.Join(goRoot, "src/cmd/go/internal/load/test.go"), p.Inputs); e != nil {
 		t.Fatal(e)
 	}
 	p.CPU13, e = cpu13Profile(p)
@@ -146,8 +168,21 @@ func TestCPU13StaticClosureKeepsMaintainedTestsAndGoGenerator(t *testing.T) {
 	}
 }
 
-func TestGeneratedTestmainMatchesRealGo0GeneratorAndRejectsByteChanges(t *testing.T) {
-	p := targetFixture(t)
+func TestQualifiedGo1273GeneratedTestmainMatchesRealGo0Generator(t *testing.T) {
+	if os.Getenv("NANOPORE_QUALIFIED_HOST_TESTS") != "1" {
+		t.Skip("qualified Go generator audit requires NANOPORE_QUALIFIED_HOST_TESTS=1 and Go1.27.3")
+	}
+	goRoot := runtime.GOROOT()
+	version, e := os.ReadFile(filepath.Join(goRoot, "VERSION"))
+	if e != nil || !strings.HasPrefix(string(version), "go1.27.3\n") {
+		t.Fatalf("qualified Go generator audit requires pinned Go1.27.3 at %s: VERSION=%q error=%v", goRoot, version, e)
+	}
+	for _, name := range []string{"bin/go", "src/cmd/go/internal/load/test.go", "src/cmd/go/internal/load/pkg.go", "src/cmd/go/internal/test/test.go", "src/cmd/go/internal/list/list.go"} {
+		if _, e := closedPin(filepath.Join(goRoot, name)); e != nil {
+			t.Fatalf("qualified Go1.27.3 generator layout differs: %s: %v", name, e)
+		}
+	}
+	p := targetFixtureWithGoRoot(t, goRoot)
 	for _, dir := range []string{p.Options.WorkRoot, filepath.Join(p.Options.WorkRoot, "cache"), filepath.Join(p.Options.WorkRoot, "tmp"), filepath.Join(p.Options.WorkRoot, "logs")} {
 		if e := os.MkdirAll(dir, 0700); e != nil {
 			t.Fatal(e)
@@ -197,6 +232,9 @@ func TestGeneratedTestmainMatchesRealGo0GeneratorAndRejectsByteChanges(t *testin
 		}
 	}
 	q, e := closedPin(generated)
+	if e != nil {
+		t.Fatal(e)
+	}
 	if e := os.WriteFile(filepath.Join(logDir, "expected-testmain.txt"), []byte(p.CPU13.MainSource), 0400); e != nil {
 		t.Fatal(e)
 	}
@@ -214,6 +252,11 @@ func TestGeneratedTestmainMatchesRealGo0GeneratorAndRejectsByteChanges(t *testin
 		t.Fatalf("actual CGO0 fake-module test graph differs from prospective fixed profile: %v", e)
 	}
 	mainBoundaryControls(t, p, actual)
+	selectionBoundaryControls(t, p, stdout)
+}
+
+func selectionBoundaryControls(t *testing.T, p Plan, stdout []byte) {
+	t.Helper()
 	for _, mutation := range []string{"missing external file", "foreign external file", "foreign external import"} {
 		t.Run(mutation, func(t *testing.T) {
 			decoder := json.NewDecoder(strings.NewReader(string(stdout)))
