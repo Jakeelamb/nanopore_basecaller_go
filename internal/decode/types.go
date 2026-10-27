@@ -7,11 +7,15 @@ import "errors"
 // ErrCGORequired means this build cannot provide native float libm semantics.
 var ErrCGORequired = errors.New("decode requires CGO_ENABLED=1 and native float libm; no pure-Go numerical fallback is provided")
 
-// Input holds contiguous row-major tensors. Scores is [Blocks,4*States];
-// BackGuides and Posts are [Blocks+1,States]. Posts contains probabilities.
+// Input holds float32 tensors. Scores has logical shape [Blocks,4*States].
+// ScoreStride is the row stride in elements; zero means 4*States. Scores must
+// span exactly (Blocks-1)*resolvedStride+4*States elements, without trailing padding.
+// Gaps between logical score rows are ignored, including nonfinite values.
+// BackGuides and Posts are contiguous [Blocks+1,States]. Posts contains probabilities.
 // Slices are borrowed for the call and never modified.
 type Input struct {
 	Blocks, States            int
+	ScoreStride               int
 	Scores, BackGuides, Posts []float32
 }
 

@@ -27,7 +27,7 @@ const maxElements = 1 << 27
 // Decode returns sequence, quality and moves for one score tensor. Input and
 // workspace lengths are bounded to 2^27 elements each before allocating.
 func Decode(in Input, opt Options) (Result, error) {
-	if err := validate(in, opt); err != nil {
+	if err := validate(&in, opt); err != nil {
 		return Result{}, err
 	}
 	result := search(in, opt)
@@ -37,7 +37,7 @@ func Decode(in Input, opt Options) (Result, error) {
 
 func finite(v float32) bool { return !math.IsNaN(float64(v)) && !math.IsInf(float64(v), 0) }
 
-func validate(in Input, opt Options) error {
+func validate(in *Input, opt Options) error {
 	if in.Blocks < 1 || in.Blocks > maxElements {
 		return fmt.Errorf("blocks must be in [1,%d]", maxElements)
 	}
@@ -51,6 +51,17 @@ func validate(in Input, opt Options) error {
 	if bits%2 != 0 {
 		return fmt.Errorf("states must be a power of four")
 	}
+	channels := 4 * in.States
+	if in.ScoreStride == 0 {
+		in.ScoreStride = channels
+	}
+	if in.ScoreStride < channels || in.ScoreStride > maxElements {
+		return fmt.Errorf("score stride must be in [%d,%d]", channels, maxElements)
+	}
+	if in.Blocks-1 > (maxElements-channels)/in.ScoreStride {
+		return fmt.Errorf("score span exceeds %d elements", maxElements)
+	}
+	span := (in.Blocks-1)*in.ScoreStride + channels
 	if opt.BeamWidth < 1 || opt.BeamWidth > 256 {
 		return fmt.Errorf("beam width must be in [1,256]")
 	}
@@ -79,7 +90,7 @@ func validate(in Input, opt Options) error {
 		data []float32
 		size int
 	}{
-		{"scores", in.Scores, in.Blocks * 4 * in.States},
+		{"scores", in.Scores, span},
 		{"back guides", in.BackGuides, (in.Blocks + 1) * in.States},
 		{"posts", in.Posts, (in.Blocks + 1) * in.States},
 	}
@@ -87,7 +98,16 @@ func validate(in Input, opt Options) error {
 		if len(c.data) != c.size {
 			return fmt.Errorf("%s length %d, want %d", c.name, len(c.data), c.size)
 		}
-		for i, v := range c.data {
+		count := c.size
+		if c.name == "scores" {
+			count = in.Blocks * channels
+		}
+		for logical := 0; logical < count; logical++ {
+			i := logical
+			if c.name == "scores" {
+				i = (logical/channels)*in.ScoreStride + logical%channels
+			}
+			v := c.data[i]
 			if !finite(v) {
 				return fmt.Errorf("%s[%d] must be finite", c.name, i)
 			}
@@ -160,7 +180,8 @@ func search(in Input, opt Options) Result {
 		logCut = floatLog(opt.BeamCut)
 	}
 	for block := 0; block < in.Blocks; block++ {
-		scores := in.Scores[block*4*in.States : (block+1)*4*in.States]
+		start := block * in.ScoreStride
+		scores := in.Scores[start : start+4*in.States]
 		back := in.BackGuides[(block+1)*in.States : (block+2)*in.States]
 		maxScore := float32(lowest)
 		var hashPresent [4096]bool
