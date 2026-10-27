@@ -75,8 +75,31 @@ void cuda_drain(const std::shared_ptr<CUDAStreamRecord>& s,nt_cuda_detail* d) {
 }
 void close_device_cuda(uint64_t e,const std::shared_ptr<CUDADeviceRecord>& dev,nt_cuda_detail* d) {
  c10::cuda::CUDAGuard guard(dev->ordinal);auto& r=engines.at(e);
+ dev->poisoned=true;
  release_after_drain([&]{for(auto& item:r.streams)if(item.second->device==dev && item.second->stream)cuda_drain(item.second,d);},[&]{
  for(auto& item:r.streams)if(item.second->device==dev && item.second->stream){d->stage=NT_CUDA_DESTROY;auto status=cudaStreamDestroy(item.second->stream);d->native_code=status;cuda_require(status==cudaSuccess,NT_CUDA_RUNTIME,"stream destroy failed; owners retained");item.second->stream=nullptr;}
+ if(dev->guide && dev->guide->module) {
+  d->stage=NT_CUDA_DESTROY;auto rc=cuModuleUnload(dev->guide->module);d->native_code=rc;
+  cuda_require(rc==CUDA_SUCCESS,NT_CUDA_RUNTIME,"decoder guide module unload failed; owner retained");
+  dev->guide->module=nullptr;dev->guide->ready=false;
+ }
+ if(dev->guide && dev->guide->linker) {
+  d->stage=NT_CUDA_DESTROY;auto rc=cuLinkDestroy(dev->guide->linker);d->native_code=rc;
+  cuda_require(rc==CUDA_SUCCESS,NT_CUDA_RUNTIME,"decoder guide linker close failed; owner retained");
+  dev->guide->linker=nullptr;
+ }
+ dev->guide.reset();
+ if(dev->beam && dev->beam->module) {
+  d->stage=NT_CUDA_DESTROY;auto rc=cuModuleUnload(dev->beam->module);d->native_code=rc;
+  cuda_require(rc==CUDA_SUCCESS,NT_CUDA_RUNTIME,"decoder beam module unload failed; owner retained");
+  dev->beam->module=nullptr;dev->beam->ready=false;
+ }
+ if(dev->beam && dev->beam->linker) {
+  d->stage=NT_CUDA_DESTROY;auto rc=cuLinkDestroy(dev->beam->linker);d->native_code=rc;
+  cuda_require(rc==CUDA_SUCCESS,NT_CUDA_RUNTIME,"decoder beam linker close failed; owner retained");
+  dev->beam->linker=nullptr;
+ }
+ dev->beam.reset();
  for(auto i=r.halves.begin();i!=r.halves.end();)if(i->second->device==dev)i=r.halves.erase(i);else ++i;
  for(auto i=r.storages.begin();i!=r.storages.end();)if(i->second->device==dev)i=r.storages.erase(i);else ++i;
  for(auto i=r.streams.begin();i!=r.streams.end();)if(i->second->device==dev)i=r.streams.erase(i);else ++i;
@@ -108,6 +131,27 @@ void close_engine_cuda(uint64_t e) {
 void close_engine_cuda(uint64_t) {}
 #endif
 }
+
+#ifdef NT_ENABLE_CUDA
+namespace {
+template<class Record>
+void source_half_gemm(const std::shared_ptr<CUDAStreamRecord>& s,
+                      const std::shared_ptr<Record>& a,const std::shared_ptr<Record>& b,
+                      const std::shared_ptr<Record>& out,nt_cuda_detail* d) {
+ auto M=a->tensor.size(0),K=a->tensor.size(1),N=b->tensor.size(1);
+ c10::cuda::CUDAStreamGuard guard(c10::cuda::getStreamFromExternal(s->stream,s->device->ordinal));CUDAWork work{s,d,{a->tensor,b->tensor,out->tensor},{}};
+ work.run([&]{d->stage=NT_CUDA_ENQUEUE;auto handle=at::cuda::getCurrentCUDABlasHandle();
+ if(std::getenv("NANOPORE_TENSOR_CUDA_DIAGNOSTICS")){
+  cudaStream_t actual=nullptr;cublasPointerMode_t pointer;cublasMath_t math;cublasAtomicsMode_t atomics;
+  for(auto status:{cublasGetStream(handle,&actual),cublasGetPointerMode(handle,&pointer),cublasGetMathMode(handle,&math),cublasGetAtomicsMode(handle,&atomics)}){d->native_code=status;cuda_require(status==CUBLAS_STATUS_SUCCESS,NT_CUDA_CUBLAS,"cuBLAS diagnostics failed");}
+  int driver=0,runtime=0,version=0;cudaDeviceProp props{};cuda_runtime(cudaDriverGetVersion(&driver),d,"CUDA driver identity failed");cuda_runtime(cudaRuntimeGetVersion(&runtime),d,"CUDA runtime identity failed");cuda_runtime(cudaGetDeviceProperties(&props,s->device->ordinal),d,"CUDA device identity failed");auto status=cublasGetVersion(handle,&version);d->native_code=status;cuda_require(status==CUBLAS_STATUS_SUCCESS,NT_CUDA_CUBLAS,"cuBLAS version identity failed");
+  char uuid[33];const char* digits="0123456789abcdef";for(size_t i=0;i<16;i++){auto value=static_cast<unsigned char>(props.uuid.bytes[i]);uuid[i*2]=digits[value>>4];uuid[i*2+1]=digits[value&15];}uuid[32]=0;
+  std::fprintf(stderr,"nt_cuda_gemm_f16 driver=%d runtime=%d cublas=%d ordinal=%d uuid=%s stream_matches=%d pointer_mode=%d math_mode=%d atomics_mode=%d\n",driver,runtime,version,s->device->ordinal,uuid,actual==s->stream,int(pointer),int(math),int(atomics));
+ }
+ const uint16_t zero=0,one=0x3c00;auto status=cublasGemmEx(handle,CUBLAS_OP_N,CUBLAS_OP_N,N,M,K,&one,b->tensor.data_ptr(),CUDA_R_16F,b->tensor.stride(0),a->tensor.data_ptr(),CUDA_R_16F,a->tensor.stride(0),&zero,out->tensor.data_ptr(),CUDA_R_16F,out->tensor.stride(0),CUDA_R_16F,CUBLAS_GEMM_DEFAULT_TENSOR_OP);d->native_code=status;cuda_require(status==CUBLAS_STATUS_SUCCESS,NT_CUDA_CUBLAS,"source half GEMM enqueue failed");cuda_runtime(cudaGetLastError(),d,"source half GEMM launch failed");});
+}
+}
+#endif
 extern "C" {
 int nt_cuda_device_open(uint64_t e,int32_t ordinal,uint64_t* out,nt_cuda_detail* d,char* err,size_t cap) {
  return cuda_boundary(d,err,cap,[&]{auto& r=cuda_engine(e,d);cuda_require(out,NT_CUDA_ARGUMENT,"null output");d->actual_ordinal=ordinal;cuda_require(ordinal>=0,NT_CUDA_DEVICE,"negative CUDA ordinal");
@@ -120,7 +164,7 @@ int nt_cuda_device_open(uint64_t e,int32_t ordinal,uint64_t* out,nt_cuda_detail*
  }
  auto dev=std::make_shared<CUDADeviceRecord>();dev->engine=e;dev->id=fresh();dev->ordinal=ordinal;r.devices.emplace(dev->id,dev);*out=dev->id;
 #else
- (void)r;throw CUDAFailure(NT_CUDA_UNSUPPORTED,"ABI4 backend built without CUDA");
+ (void)r;throw CUDAFailure(NT_CUDA_UNSUPPORTED,"ABI5 backend built without CUDA");
 #endif
  });
 }
@@ -160,7 +204,7 @@ int nt_cuda_half_new(uint64_t e,uint64_t dev_id,uint64_t stream_id,const int64_t
  auto host=std::make_shared<std::vector<uint16_t>>(bits,bits+count);CUDAWork work{s,d,{p->tensor},{host}};
  work.run([&]{d->stage=NT_CUDA_COPY;cuda_runtime(cudaMemcpyAsync(p->tensor.data_ptr(),host->data(),count*2,cudaMemcpyHostToDevice,s->stream),d,"half upload failed");});engines.at(e).halves.emplace(p->id,p);*out=p->id;
 #else
- (void)dev_id;(void)stream_id;throw CUDAFailure(NT_CUDA_UNSUPPORTED,"ABI4 backend built without CUDA");
+ (void)dev_id;(void)stream_id;throw CUDAFailure(NT_CUDA_UNSUPPORTED,"ABI5 backend built without CUDA");
 #endif
  });
 }
@@ -209,16 +253,7 @@ int nt_cuda_gemm_f16(uint64_t e,uint64_t stream_id,uint64_t a_id,uint64_t b_id,u
  auto s=cuda_stream(e,stream_id,d);auto a=cuda_half(e,a_id,d),b=cuda_half(e,b_id,d),out=cuda_half(e,out_id,d);for(auto p:{a,b,out}){d->handle=p->id;same_device(s->device,p->device,d);auto& t=p->tensor;cuda_require(t.dim()==2 && t.stride(1)==1 && t.stride(0)>=t.size(1) && t.stride(0)<=INT_MAX && t.size(0)<=INT_MAX && t.size(1)<=INT_MAX,NT_CUDA_LAYOUT,"GEMM requires rank two, unit final stride and int32 row-leading dimensions");}
  auto M=a->tensor.size(0),K=a->tensor.size(1),N=b->tensor.size(1);cuda_require(b->tensor.size(0)==K && out->tensor.size(0)==M && out->tensor.size(1)==N,NT_CUDA_LAYOUT,"GEMM dimensions differ");
  for(auto p:{a,b}){d->handle=p->id;cuda_require(p->allocation!=out->allocation || p->end<=out->offset || out->end<=p->offset,NT_CUDA_LAYOUT,"GEMM output overlaps an input interval");}
- c10::cuda::CUDAStreamGuard guard(c10::cuda::getStreamFromExternal(s->stream,s->device->ordinal));CUDAWork work{s,d,{a->tensor,b->tensor,out->tensor},{}};
- work.run([&]{d->stage=NT_CUDA_ENQUEUE;auto handle=at::cuda::getCurrentCUDABlasHandle();
- if(std::getenv("NANOPORE_TENSOR_CUDA_DIAGNOSTICS")){
-  cudaStream_t actual=nullptr;cublasPointerMode_t pointer;cublasMath_t math;cublasAtomicsMode_t atomics;
-  for(auto status:{cublasGetStream(handle,&actual),cublasGetPointerMode(handle,&pointer),cublasGetMathMode(handle,&math),cublasGetAtomicsMode(handle,&atomics)}){d->native_code=status;cuda_require(status==CUBLAS_STATUS_SUCCESS,NT_CUDA_CUBLAS,"cuBLAS diagnostics failed");}
-  int driver=0,runtime=0,version=0;cudaDeviceProp props{};cuda_runtime(cudaDriverGetVersion(&driver),d,"CUDA driver identity failed");cuda_runtime(cudaRuntimeGetVersion(&runtime),d,"CUDA runtime identity failed");cuda_runtime(cudaGetDeviceProperties(&props,s->device->ordinal),d,"CUDA device identity failed");auto status=cublasGetVersion(handle,&version);d->native_code=status;cuda_require(status==CUBLAS_STATUS_SUCCESS,NT_CUDA_CUBLAS,"cuBLAS version identity failed");
-  char uuid[33];const char* digits="0123456789abcdef";for(size_t i=0;i<16;i++){auto value=static_cast<unsigned char>(props.uuid.bytes[i]);uuid[i*2]=digits[value>>4];uuid[i*2+1]=digits[value&15];}uuid[32]=0;
-  std::fprintf(stderr,"nt_cuda_gemm_f16 driver=%d runtime=%d cublas=%d ordinal=%d uuid=%s stream_matches=%d pointer_mode=%d math_mode=%d atomics_mode=%d\n",driver,runtime,version,s->device->ordinal,uuid,actual==s->stream,int(pointer),int(math),int(atomics));
- }
- const uint16_t zero=0,one=0x3c00;auto status=cublasGemmEx(handle,CUBLAS_OP_N,CUBLAS_OP_N,N,M,K,&one,b->tensor.data_ptr(),CUDA_R_16F,b->tensor.stride(0),a->tensor.data_ptr(),CUDA_R_16F,a->tensor.stride(0),&zero,out->tensor.data_ptr(),CUDA_R_16F,out->tensor.stride(0),CUDA_R_16F,CUBLAS_GEMM_DEFAULT_TENSOR_OP);d->native_code=status;cuda_require(status==CUBLAS_STATUS_SUCCESS,NT_CUDA_CUBLAS,"source half GEMM enqueue failed");cuda_runtime(cudaGetLastError(),d,"source half GEMM launch failed");});
+ source_half_gemm(s,a,b,out,d);
 #else
  (void)stream_id;(void)b_id;(void)out_id;cuda_unknown(e,a_id,d);
 #endif

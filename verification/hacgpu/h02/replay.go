@@ -144,11 +144,13 @@ func replay(dir string, r *Receipt, plan *model.HACSmallConvPlan, convs []ConvSp
 	for i, l := range executed {
 		w := weights.Layers[i]
 		cache, cerr := model.NewHACSmallConv(d, s, l.Params, w.Weight, w.Bias)
+		if cache != nil {
+			defer cache.Close()
+		}
 		if cerr != nil {
 			return cerr
 		}
 		caches[i] = cache
-		defer cache.Close()
 	}
 
 	// conv0: unpadded, so the crop is the whole allocation.

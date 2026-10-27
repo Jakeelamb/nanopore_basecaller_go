@@ -138,10 +138,12 @@ func replay(r *Receipt, stack *model.HACSmallConvPlan, last *model.HACLastConvPl
 	for i, l := range chain {
 		w := weights.Layers[i]
 		cache, cerr := model.NewHACSmallConv(d, s, l.Params, w.Weight, w.Bias)
+		if cache != nil {
+			defer cache.Close()
+		}
 		if cerr != nil {
 			return cerr
 		}
-		defer cache.Close()
 		caches[i] = cache
 	}
 
@@ -185,7 +187,11 @@ func replay(r *Receipt, stack *model.HACSmallConvPlan, last *model.HACLastConvPl
 
 	// The source zeroes the two padding bands of the last convolution's input
 	// (ConvStack.cpp:265-266) after conv1 produced it.
-	if err = model.ZeroInputPadding(s, alloc[1], last.Input.N, last.Input.Rows, last.Input.C, last.Layer.Params.Padding()); err != nil {
+	failedPadding, err := model.ZeroInputPadding(s, alloc[1], last.Input.N, last.Input.Rows, last.Input.C, last.Layer.Params.Padding())
+	for _, owner := range failedPadding {
+		defer owner.Close()
+	}
+	if err != nil {
 		return err
 	}
 	if r.InputPadding, err = checkInputPadding(alloc[1], s, last); err != nil {
@@ -195,10 +201,12 @@ func replay(r *Receipt, stack *model.HACSmallConvPlan, last *model.HACLastConvPl
 	// The last convolution.
 	lastConv, err := model.NewHACLastConv(d, s, last.Layer.Params, dev,
 		weights.Layers[last.Layer.Index].Weight, weights.Layers[last.Layer.Index].Bias)
+	if lastConv != nil {
+		defer lastConv.Close()
+	}
 	if err != nil {
 		return err
 	}
-	defer lastConv.Close()
 	dispatch, err := lastConv.Run(s, alloc[1], outView, last)
 	if err != nil {
 		return fmt.Errorf("conv%d: %w", last.Layer.Index, err)

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/Jakeelamb/nanopore_basecaller_go/verification/tensor/closedbuild/recipe"
 	"github.com/Jakeelamb/nanopore_basecaller_go/verification/tensor/cudafixture"
 	"github.com/Jakeelamb/nanopore_basecaller_go/verification/tensor/runner"
 	"io"
@@ -80,6 +81,7 @@ func run() (ret error) {
 	cudaRoot := flag.String("cuda-root", "/opt/cuda", "CUDA13 toolkit for compile and link only")
 	koi := flag.String("koi", os.Getenv("LIBKOI_ROOT"), "read-only pinned libkoi prefix; required for a CUDA build because the HAC boundary calls host_convolution_f16")
 	dorado := flag.String("dorado-source", os.Getenv("DORADO_SOURCE"), "read-only pinned Dorado checkout for initialization and archive contracts")
+	planOnly := flag.Bool("plan-only", false, "print the declarative compiler recipe only; no filesystem outputs, compiler queries, or native execution")
 	flag.Parse()
 	if *family != "none" && *family != "13.0" {
 		return fmt.Errorf("unsupported CUDA family %q", *family)
@@ -111,12 +113,19 @@ func run() (ret error) {
 		}
 		*koi = p
 	}
+	compilerRecipe, err := recipe.New(recipe.Options{Compiler: *cxx, Torch: *torch, Archive: *archive, Dorado: *dorado, CUDA: *cudaRoot, Koi: *koi, Weight: *weight, Family: *family})
+	if err != nil {
+		return err
+	}
+	if *planOnly {
+		return json.NewEncoder(os.Stdout).Encode(compilerRecipe)
+	}
 	attempt, err := runner.NewAttempt(*out)
 	if err != nil {
 		return err
 	}
 	*out = attempt
-	m := manifest{ABI: 4, Qualification: "ABI4 CPU contracts; CUDA13 build tier compiles and links only, with no CUDA runtime qualification", Torch: *torch, Archive: *archive, Inputs: map[string]string{}, Runtime: map[string]string{}, ArchiveMatched: map[string]string{}, Status: "failed", Capability: *family}
+	m := manifest{ABI: 5, Qualification: "ABI5 candidate; compile/link evidence does not qualify CPU contracts, CUDA runtime, or decoder numerics", Torch: *torch, Archive: *archive, Inputs: map[string]string{}, Runtime: map[string]string{}, ArchiveMatched: map[string]string{}, Status: "failed", Capability: *family}
 	defer func() {
 		m.Finished = time.Now().UTC().Format(time.RFC3339Nano)
 		if ret != nil {
@@ -200,7 +209,7 @@ func run() (ret error) {
 	if m.ArchiveSHA != archivePin {
 		return fmt.Errorf("archive SHA256 mismatch: %s", m.ArchiveSHA)
 	}
-	inputs := []string{"verification/tensor/backend.cpp", "verification/tensor/cuda_records.h", "verification/tensor/cuda_backend.h", "verification/tensor/cuda_storage.inc", "verification/tensor/hac_smallconv.inc", "verification/tensor/hac_lastconv.inc", "verification/tensor/drain_ownership.h", "verification/tensor/cuda_failure_test.cpp", "verification/tensor/cuda_oracle.cpp", "verification/tensor/fixtures.cpp", "verification/tensor/runtime.h", "verification/tensor/source-pins.json", "verification/tensor/build/main.go", "internal/tensor/abi.h", filepath.Join(*torch, "build-version"), filepath.Join(*torch, "include/ATen/ATen.h"), filepath.Join(*torch, "include/torch/csrc/api/include/torch/serialize.h"), filepath.Join(*torch, "lib/libtorch_cpu.so"), filepath.Join(*torch, "lib/libc10.so")}
+	inputs := []string{"verification/tensor/backend.cpp", "verification/tensor/cuda_records.h", "verification/tensor/cuda_backend.h", "verification/tensor/cuda_storage.inc", "verification/tensor/hac_smallconv.inc", "verification/tensor/sup_primitive.inc", "verification/tensor/hac_lastconv.inc", "verification/tensor/hac_flstm.inc", "verification/tensor/hac_output.inc", "verification/tensor/hac_lstm_step.inc", "verification/tensor/decoder_guide.inc", "verification/tensor/decoder/guide_ptx.h", "verification/tensor/storage_byte_interval.h", "verification/tensor/drain_ownership.h", "verification/tensor/cuda_failure_test.cpp", "verification/tensor/cuda_oracle.cpp", "verification/tensor/fixtures.cpp", "verification/tensor/runtime.h", "verification/tensor/source-pins.json", "verification/tensor/build/main.go", "internal/tensor/abi.h", filepath.Join(*torch, "build-version"), filepath.Join(*torch, "include/ATen/ATen.h"), filepath.Join(*torch, "include/torch/csrc/api/include/torch/serialize.h"), filepath.Join(*torch, "lib/libtorch_cpu.so"), filepath.Join(*torch, "lib/libc10.so"), "verification/tensor/decoder_beam.inc", "verification/tensor/decoder/beam_ptx.h", "verification/tensor/decoder_posts.inc", "verification/tensor/decoder/forward_ptx.h", "verification/tensor/decoder/posterior_ptx.h", "verification/tensor/decoder/quality_ptx.h"}
 	if *weight != "" {
 		inputs = append(inputs, *weight)
 	}
@@ -244,8 +253,13 @@ func run() (ret error) {
 	if _, err = execute("compiler", compiler, "--version"); err != nil {
 		return err
 	}
+	compilerRecipe.Options.Compiler = compiler
 	failureProbe := filepath.Join(*out, "cuda-failure-test")
-	if _, err = execute("compile-failure-test", compiler, "-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror", "verification/tensor/cuda_failure_test.cpp", "-o", failureProbe); err != nil {
+	failureArgs, err := compilerRecipe.Combined("failure-test", *out, "")
+	if err != nil {
+		return err
+	}
+	if _, err = execute("compile-failure-test", failureArgs...); err != nil {
 		return err
 	}
 	m.Inputs[failureProbe], err = hash(failureProbe)
@@ -260,8 +274,6 @@ func run() (ret error) {
 		return err
 	}
 	libdir := filepath.Join(*torch, "lib")
-	common := []string{"-std=c++17", "-O1", "-g0", "-fPIC", "-pthread", "-D_GLIBCXX_USE_CXX11_ABI=1", "-Iinternal/tensor", "-I" + filepath.Join(*torch, "include"), "-I" + filepath.Join(*torch, "include/torch/csrc/api/include")}
-	link := []string{"-L" + libdir, "-Wl,-rpath," + libdir, "-ltorch_cpu", "-lc10"}
 	if *family == "13.0" {
 		header, err := os.ReadFile(filepath.Join(*cudaRoot, "include/cuda.h"))
 		if err != nil {
@@ -278,13 +290,12 @@ func run() (ret error) {
 		if m.ToolkitVersion/1000 != 13 {
 			return fmt.Errorf("CUDA toolkit must be major family 13; got %d", m.ToolkitVersion)
 		}
-		common = append(common, "-DNT_ENABLE_CUDA=1", "-I"+filepath.Join(*cudaRoot, "include"), "-I"+filepath.Join(*koi, "include"))
-		link = append(link, "-L"+filepath.Join(*cudaRoot, "lib64"), "-Wl,-rpath,"+filepath.Join(*cudaRoot, "lib64"), "-ltorch_cuda", "-lc10_cuda", "-lcudart", "-lcublas", filepath.Join(*koi, "lib/libkoi.a"))
 	}
 	m.Output = filepath.Join(*out, "libnanopore_tensor.so")
-	args := append([]string{compiler}, common...)
-	args = append(args, "-MMD", "-MF", filepath.Join(*out, "backend.d"), "-shared", "verification/tensor/backend.cpp", "-o", m.Output)
-	args = append(args, link...)
+	args, err := compilerRecipe.Combined("backend", *out, filepath.Join(*out, "backend.d"))
+	if err != nil {
+		return err
+	}
 	if _, err = execute("compile-backend", args...); err != nil {
 		return err
 	}
@@ -324,9 +335,10 @@ func run() (ret error) {
 			return err
 		}
 		oracle := filepath.Join(*out, "cuda-source-oracle")
-		oracleArgs := append([]string{compiler}, common...)
-		oracleArgs = append(oracleArgs, "-I"+*out, "-MMD", "-MF", filepath.Join(*out, "cuda-oracle.d"), "verification/tensor/cuda_oracle.cpp", "-o", oracle)
-		oracleArgs = append(oracleArgs, link...)
+		oracleArgs, err := compilerRecipe.Combined("cuda-oracle", *out, filepath.Join(*out, "cuda-oracle.d"))
+		if err != nil {
+			return err
+		}
 		if _, err = execute("compile-cuda-oracle", oracleArgs...); err != nil {
 			return err
 		}
@@ -355,9 +367,10 @@ func run() (ret error) {
 		}
 	}
 	fixtures := filepath.Join(*out, "create-fixtures")
-	args = append([]string{compiler}, common...)
-	args = append(args, "-MMD", "-MF", filepath.Join(*out, "fixtures.d"), "verification/tensor/fixtures.cpp", "-o", fixtures)
-	args = append(args, "-L"+libdir, "-Wl,-rpath,"+libdir, "-ltorch_cpu", "-lc10")
+	args, err = compilerRecipe.Combined("fixtures", *out, filepath.Join(*out, "fixtures.d"))
+	if err != nil {
+		return err
+	}
 	if _, err = execute("compile-fixtures", args...); err != nil {
 		return err
 	}

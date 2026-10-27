@@ -5,6 +5,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 struct nt_library {
+ int (*cuda_sup_primitive)(uint64_t,uint64_t,uint32_t,uint32_t,int32_t,const uint64_t*,size_t,float,nt_cuda_detail*,char*,size_t);
+ int (*cuda_decoder_beam_program)(uint64_t,uint64_t,uint8_t*,size_t,size_t*,nt_cuda_detail*,char*,size_t);
+ int (*cuda_decoder_beam_numbers)(uint64_t,uint64_t,uint32_t,uint64_t,uint64_t,uint64_t,uint64_t,float,float,nt_cuda_detail*,char*,size_t);
+ int (*cuda_decoder_guide_program)(uint64_t,uint64_t,uint8_t*,size_t,size_t*,nt_cuda_detail*,char*,size_t);
+ int (*cuda_decoder_guide_frame)(uint64_t,uint64_t,uint64_t,uint64_t,uint64_t,float,float,nt_cuda_detail*,char*,size_t);
+ int (*cuda_decoder_post_numbers)(uint64_t,uint64_t,uint32_t,uint64_t,uint64_t,uint64_t,uint64_t,float,float,nt_cuda_detail*,char*,size_t);
+ int (*cuda_storage_gemm_f16)(uint64_t engine, uint64_t stream, uint64_t a, uint64_t b, uint64_t out, nt_cuda_detail *detail, char *error, size_t error_cap);
+ int (*cuda_lstm_step_f16)(uint64_t engine, uint64_t stream, uint64_t bias, uint64_t gates, uint64_t cell, uint64_t out, int32_t n, nt_cuda_detail *detail, char *error, size_t error_cap);
+ int (*cuda_factorised_linear)(uint64_t,uint64_t,uint64_t,uint64_t,uint64_t,uint64_t,uint64_t,uint64_t,int64_t,int64_t,int32_t,float,nt_cuda_detail*,char*,size_t);
+ int (*cuda_factorised_lstm)(uint64_t engine, uint64_t stream, const uint64_t *operands, int32_t n, int32_t t, int32_t direction, int32_t parity, nt_cuda_detail *detail, char *error, size_t error_cap);
  void* dl;
  uint32_t (*version)(void);
  int (*open)(uint64_t*,char*,size_t);
@@ -80,6 +90,16 @@ nt_library* nt_library_open(const char* path,char* err,size_t cap) {
  LOAD(cuda_weights_permute_cast_f16,"nt_cuda_weights_permute_cast_f16");
  LOAD(cuda_conv_koi_f16,"nt_cuda_conv_koi_f16");
  LOAD(cuda_linear_f16,"nt_cuda_linear_f16");
+ LOAD(cuda_factorised_lstm,"nt_cuda_factorised_lstm");
+ LOAD(cuda_factorised_linear,"nt_cuda_factorised_linear");
+ LOAD(cuda_storage_gemm_f16,"nt_cuda_storage_gemm_f16");
+ LOAD(cuda_lstm_step_f16,"nt_cuda_lstm_step_f16");
+ LOAD(cuda_sup_primitive,"nt_cuda_sup_primitive");
+ LOAD(cuda_decoder_beam_program,"nt_cuda_decoder_beam_program");
+ LOAD(cuda_decoder_beam_numbers,"nt_cuda_decoder_beam_numbers");
+ LOAD(cuda_decoder_guide_program,"nt_cuda_decoder_guide_program");
+ LOAD(cuda_decoder_guide_frame,"nt_cuda_decoder_guide_frame");
+ LOAD(cuda_decoder_post_numbers,"nt_cuda_decoder_post_numbers");
  #undef LOAD
  return l;
 }
@@ -143,3 +163,19 @@ int nt_call_cuda_weights_permute_cast_f16(nt_library *library, uint64_t engine, 
 int nt_call_cuda_conv_koi_f16(nt_library *library, uint64_t engine, uint64_t stream, uint64_t in, uint64_t weights, uint64_t bias, uint64_t out, int32_t n, int32_t t_in, int32_t c_in, int32_t c_out, int32_t window, int32_t stride, int32_t padding, int32_t in_n_stride, int32_t out_n_stride, int32_t out_t_stride, uint32_t activation, uint32_t in_type, uint32_t out_type, uint32_t accum_type, int32_t *koi_result, nt_cuda_detail *detail, char *error, size_t error_cap) { return library->cuda_conv_koi_f16(engine,stream,in,weights,bias,out,n,t_in,c_in,c_out,window,stride,padding,in_n_stride,out_n_stride,out_t_stride,activation,in_type,out_type,accum_type,koi_result,detail,error,error_cap); }
 
 int nt_call_cuda_linear_f16(nt_library *library, uint64_t engine, uint64_t stream, uint64_t in, uint64_t weights, uint64_t bias, uint64_t out, int32_t size0, int32_t size1, int32_t k, int32_t c_out, int32_t in_stride0, int32_t in_stride1, int32_t out_stride0, int32_t out_stride1, uint32_t activation, uint32_t in_type, uint32_t out_type, int32_t *koi_result, nt_cuda_detail *detail, char *error, size_t error_cap) { return library->cuda_linear_f16(engine,stream,in,weights,bias,out,size0,size1,k,c_out,in_stride0,in_stride1,out_stride0,out_stride1,activation,in_type,out_type,koi_result,detail,error,error_cap); }
+
+int nt_call_cuda_factorised_lstm(nt_library *library, uint64_t engine, uint64_t stream, const uint64_t *operands, int32_t n, int32_t t, int32_t direction, int32_t parity, nt_cuda_detail *detail, char *error, size_t error_cap) { return library->cuda_factorised_lstm(engine,stream,operands,n,t,direction,parity,detail,error,error_cap); }
+
+int nt_call_cuda_factorised_linear(nt_library *library, uint64_t engine, uint64_t stream, uint64_t input, uint64_t down_weight, uint64_t down_scale, uint64_t down, uint64_t up_weight, uint64_t output, int64_t n, int64_t t, int32_t parity, float scale, nt_cuda_detail *detail, char *error, size_t error_cap) { return library->cuda_factorised_linear(engine,stream,input,down_weight,down_scale,down,up_weight,output,n,t,parity,scale,detail,error,error_cap); }
+
+int nt_call_cuda_storage_gemm_f16(nt_library *library, uint64_t engine, uint64_t stream, uint64_t a, uint64_t b, uint64_t out, nt_cuda_detail *detail, char *error, size_t error_cap) { return library->cuda_storage_gemm_f16(engine,stream,a,b,out,detail,error,error_cap); }
+
+int nt_call_cuda_lstm_step_f16(nt_library *library, uint64_t engine, uint64_t stream, uint64_t bias, uint64_t gates, uint64_t cell, uint64_t out, int32_t n, nt_cuda_detail *detail, char *error, size_t error_cap) { return library->cuda_lstm_step_f16(engine,stream,bias,gates,cell,out,n,detail,error,error_cap); }
+
+int nt_call_cuda_decoder_guide_program(nt_library *library, uint64_t engine, uint64_t device, uint8_t *bytes, size_t capacity, size_t *written, nt_cuda_detail *detail, char *error, size_t error_cap) { return library->cuda_decoder_guide_program(engine,device,bytes,capacity,written,detail,error,error_cap); }
+int nt_call_cuda_decoder_guide_frame(nt_library *library, uint64_t engine, uint64_t stream, uint64_t scores, uint64_t next, uint64_t out, float clamp, float blank, nt_cuda_detail *detail, char *error, size_t error_cap) { return library->cuda_decoder_guide_frame(engine,stream,scores,next,out,clamp,blank,detail,error,error_cap); }
+
+int nt_call_cuda_sup_primitive(nt_library *l,uint64_t e,uint64_t s,uint32_t geometry,uint32_t op,int32_t selector,const uint64_t *ids,size_t count,float alpha,nt_cuda_detail *d,char *err,size_t cap){return l->cuda_sup_primitive(e,s,geometry,op,selector,ids,count,alpha,d,err,cap);}
+int nt_call_cuda_decoder_beam_program(nt_library *library, uint64_t engine, uint64_t device, uint8_t *bytes, size_t capacity, size_t *written, nt_cuda_detail *detail, char *error, size_t error_cap) { return library->cuda_decoder_beam_program(engine,device,bytes,capacity,written,detail,error,error_cap); }
+int nt_call_cuda_decoder_beam_numbers(nt_library *library, uint64_t engine, uint64_t stream, uint32_t operation, uint64_t a, uint64_t b, uint64_t c, uint64_t out, float clamp, float blank, nt_cuda_detail *detail, char *error, size_t error_cap) { return library->cuda_decoder_beam_numbers(engine,stream,operation,a,b,c,out,clamp,blank,detail,error,error_cap); }
+int nt_call_cuda_decoder_post_numbers(nt_library *library,uint64_t engine,uint64_t stream,uint32_t op,uint64_t a,uint64_t b,uint64_t out,uint64_t aux,float clamp,float blank,nt_cuda_detail *detail,char *error,size_t cap){return library->cuda_decoder_post_numbers(engine,stream,op,a,b,out,aux,clamp,blank,detail,error,cap);}

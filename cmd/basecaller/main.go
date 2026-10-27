@@ -10,6 +10,8 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"syscall"
 
 	"github.com/Jakeelamb/nanopore_basecaller_go/internal/caller"
@@ -40,6 +42,10 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) (err erro
 	fs := flag.NewFlagSet("basecaller", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	var modelDir, pod5Path, tensorLib, pod5Lib, device, capture, replay, processing string
+	var nativeBundle, chunking, format string
+	var batchSize, liveParents, pendingChunks int
+	var liveSamples, maxReadSamples uint64
+	var emitMoves bool
 	var size, overlap uint64
 	var all, noTrim, noSplit bool
 	var ids idsFlag
@@ -47,7 +53,16 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) (err erro
 	fs.StringVar(&pod5Path, "pod5", "", "one POD5 input file")
 	fs.StringVar(&tensorLib, "tensor-library", "", "CPU tensor ABI library")
 	fs.StringVar(&pod5Lib, "pod5-library", "", "POD5 0.3.39 library")
-	fs.StringVar(&device, "device", "cpu", "supported device is cpu")
+	fs.StringVar(&device, "device", "cpu", "cpu or qualified cuda:0")
+	fs.StringVar(&nativeBundle, "native-bundle", "", "independently qualified GPU native installation")
+	fs.StringVar(&chunking, "chunking", "variable", "GPU source chunk policy: variable or fixed")
+	fs.StringVar(&format, "format", "fastq", "GPU output: fastq or bam")
+	fs.IntVar(&batchSize, "batchsize", 64, "explicit GPU batch capacity; HAC 64, SUP 32")
+	fs.IntVar(&liveParents, "live-parents", 64, "maximum retained GPU parents")
+	fs.IntVar(&pendingChunks, "pending-chunks", 256, "maximum queued GPU chunks across profiles")
+	fs.Uint64Var(&liveSamples, "live-samples", 6000000, "maximum retained normalized GPU samples")
+	fs.Uint64Var(&maxReadSamples, "max-read-samples", 3000000, "maximum decoded samples in one GPU input parent")
+	fs.BoolVar(&emitMoves, "emit-moves", false, "emit GPU BAM move tables")
 	fs.StringVar(&capture, "capture", "", "new immutable capture directory")
 	fs.StringVar(&replay, "replay", "", "replay one captured manifest without model or POD5 libraries")
 	fs.StringVar(&replay, "manifest", "", "manifest for the replay subcommand")
@@ -74,18 +89,23 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) (err erro
 		return errors.New("--postprocess supports only default")
 	}
 	policyFlags := false
+	gpuFlags := false
 	fs.Visit(func(f *flag.Flag) {
 		if f.Name == "no-trim" || f.Name == "disable-read-splitting" {
 			policyFlags = true
 		}
+		switch f.Name {
+		case "native-bundle", "chunking", "format", "batchsize", "live-parents", "pending-chunks", "live-samples", "max-read-samples", "emit-moves":
+			gpuFlags = true
+		}
 	})
-	out := bufio.NewWriter(stdout)
-	defer func() { err = errors.Join(err, out.Flush()) }()
 	if replay != "" || replayCommand {
+		out := bufio.NewWriter(stdout)
+		defer func() { err = errors.Join(err, out.Flush()) }()
 		if replay == "" {
 			return errors.New("replay requires --manifest PATH")
 		}
-		if modelDir != "" || pod5Path != "" || tensorLib != "" || pod5Lib != "" || all || len(ids) > 0 || device != "cpu" {
+		if modelDir != "" || pod5Path != "" || tensorLib != "" || pod5Lib != "" || all || len(ids) > 0 || device != "cpu" || gpuFlags {
 			return errors.New("replay accepts no model, input, library or selection flags and requires cpu")
 		}
 		if processing == "" && (capture != "" || policyFlags) {
@@ -120,8 +140,56 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) (err erro
 		_, err = fmt.Fprintf(stderr, "replayed input_reads=1 output_reads=%d\n", len(reads))
 		return err
 	}
+	if device == "cuda:0" {
+		if processing != "" || capture != "" || tensorLib != "" || pod5Lib != "" {
+			return errors.New("GPU input uses --native-bundle and does not support replay processing, capture, or separate library overrides")
+		}
+		if all == (len(ids) > 0) {
+			return errors.New("choose explicit --read-id values or --all")
+		}
+		mode := caller.VariableChunks
+		switch chunking {
+		case "variable":
+		case "fixed":
+			mode = caller.FixedChunks
+		default:
+			return errors.New("--chunking must be variable or fixed")
+		}
+		outputFormat := caller.FASTQ
+		switch format {
+		case "fastq":
+		case "bam":
+			outputFormat = caller.BAM
+		default:
+			return errors.New("--format must be fastq or bam")
+		}
+		var selection []pod5.ID
+		if !all {
+			selection = []pod5.ID(ids)
+		}
+		quoted := make([]string, len(args)+1)
+		quoted[0] = "basecaller"
+		for i, arg := range args {
+			quoted[i+1] = strconv.Quote(arg)
+		}
+		report, runErr := caller.RunGPU(ctx, caller.GPUConfig{
+			NativeBundleDir: nativeBundle, ModelDir: modelDir, POD5Path: pod5Path,
+			ReadIDs: selection, BatchSize: batchSize, ChunkSize: size, Overlap: overlap,
+			Chunking: mode, Format: outputFormat, Policy: policy, EmitMoves: emitMoves,
+			Limits:      caller.GPULimits{LiveParents: liveParents, PendingChunks: pendingChunks, LiveSamples: liveSamples, MaxReadSamples: maxReadSamples},
+			CommandLine: strings.Join(quoted, " "),
+		}, stdout)
+		if runErr != nil {
+			return runErr
+		}
+		_, err = fmt.Fprintf(stderr, "processed input_reads=%d output_reads=%d original_samples=%d\n", report.InputParents, report.OutputRecords, report.OriginalSamples)
+		return err
+	}
 	if device != "cpu" {
 		return fmt.Errorf("device %q is unsupported; use cpu", device)
+	}
+	if gpuFlags {
+		return errors.New("GPU options require --device cuda:0")
 	}
 	if processing != "" {
 		return errors.New("--postprocess is only for an original core replay")
@@ -132,6 +200,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) (err erro
 	if all == (len(ids) > 0) {
 		return errors.New("choose explicit --read-id values or --all")
 	}
+	out := bufio.NewWriter(stdout)
+	defer func() { err = errors.Join(err, out.Flush()) }()
 	reader, err := pod5.OpenContext(ctx, pod5Lib, pod5Path)
 	if err != nil {
 		return err

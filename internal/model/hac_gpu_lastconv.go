@@ -1,6 +1,7 @@
 package model
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/Jakeelamb/nanopore_basecaller_go/internal/signal"
@@ -204,30 +205,32 @@ func PackLastConvWeights(weight []float32, cOut, cIn, win int64) ([]uint16, erro
 //
 // Only one batch's rows are contiguous in an NTC allocation, so each band is
 // zeroed through its own contiguous [padding, C] view rather than one strided
-// view. Nothing else in the allocation is touched.
-func ZeroInputPadding(s *tensor.Stream, alloc *tensor.Storage, batch, rows, c, padding int64) error {
+// view. Nothing else in the allocation is touched. Failed temporary owners
+// are returned to the caller for cleanup retry.
+func ZeroInputPadding(s *tensor.Stream, alloc *tensor.Storage, batch, rows, c, padding int64) (failed []*tensor.Storage, err error) {
 	if padding <= 0 {
-		return nil
+		return nil, nil
 	}
 	if batch < 1 || rows < 2*padding || c < 1 {
-		return fmt.Errorf("%w: padding %d does not fit %d rows", ErrGPUPlanLayout, padding, rows)
+		return nil, fmt.Errorf("%w: padding %d does not fit %d rows", ErrGPUPlanLayout, padding, rows)
 	}
 	zero := []byte{0, 0}
 	for _, band := range inputPaddingBands(batch, rows, c, padding) {
 		v, err := alloc.View(band[0], []int64{padding, c}, []int64{c, 1},
 			[]tensor.KoiTag{tensor.TagT, tensor.TagC})
 		if err != nil {
-			return err
+			return nil, err
 		}
-		if err = v.Fill(s, zero); err != nil {
-			_ = v.Close()
-			return err
+		workErr := v.Fill(s, zero)
+		cleanup := v.Close()
+		if cleanup != nil {
+			failed = append(failed, v)
 		}
-		if err = v.Close(); err != nil {
-			return err
+		if err = errors.Join(workErr, cleanup); err != nil {
+			return failed, err
 		}
 	}
-	return nil
+	return nil, nil
 }
 
 // inputPaddingBands returns the element offset and element count of each
@@ -275,11 +278,15 @@ func NewHACLastConv(d *tensor.Device, s *tensor.Stream, p SmallConvParams, dev L
 	}
 	b, err := d.NewStorage(s, tensor.DTypeF16, []int64{p.COut},
 		[]tensor.KoiTag{tensor.TagC}, HalfBytes(packedBias))
+	cache := &HACLastConv{Params: p, Dev: dev, device: d, Weights: w, Bias: b}
 	if err != nil {
-		_ = w.Close()
-		return nil, err
+		cleanup := cache.Close()
+		if cleanup == nil {
+			cache = nil
+		}
+		return cache, errors.Join(err, cleanup)
 	}
-	return &HACLastConv{Params: p, Dev: dev, device: d, Weights: w, Bias: b}, nil
+	return cache, nil
 }
 
 // Close releases the device weight cache.
@@ -288,12 +295,13 @@ func (c *HACLastConv) Close() error {
 		return nil
 	}
 	var err error
-	if c.Bias != nil {
-		err = c.Bias.Close()
-	}
-	if c.Weights != nil {
-		if e := c.Weights.Close(); e != nil {
-			err = e
+	for _, slot := range []**tensor.Storage{&c.Bias, &c.Weights} {
+		if *slot != nil {
+			if e := (*slot).Close(); e != nil {
+				err = errors.Join(err, e)
+			} else {
+				*slot = nil
+			}
 		}
 	}
 	return err

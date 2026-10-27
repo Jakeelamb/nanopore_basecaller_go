@@ -54,6 +54,25 @@ func nativeEngine(t *testing.T) *Engine {
 	})
 	return e
 }
+
+func nativeFixtureDirectory() string {
+	if path := os.Getenv("NANOPORE_TENSOR_FIXTURES"); path != "" {
+		return path
+	}
+	return filepath.Dir(os.Getenv("NANOPORE_TENSOR_BACKEND"))
+}
+
+func TestNativeFixtureDirectorySelection(t *testing.T) {
+	t.Setenv("NANOPORE_TENSOR_BACKEND", "/qualified/backend.so")
+	t.Setenv("NANOPORE_TENSOR_FIXTURES", "")
+	if nativeFixtureDirectory() != "/qualified" {
+		t.Fatal("fixture default differs")
+	}
+	t.Setenv("NANOPORE_TENSOR_FIXTURES", "/independent/fixtures")
+	if nativeFixtureDirectory() != "/independent/fixtures" || os.Getenv("NANOPORE_TENSOR_BACKEND") != "/qualified/backend.so" {
+		t.Fatal("fixture selection changed backend identity")
+	}
+}
 func newTensor(t *testing.T, e *Engine, shape []int64, data []float32) *Tensor {
 	t.Helper()
 	x, err := e.NewFloat32(shape, data)
@@ -238,7 +257,7 @@ func TestNativeMalformedInputs(t *testing.T) {
 }
 func TestNativeLoadWeight(t *testing.T) {
 	e := nativeEngine(t)
-	dir := filepath.Dir(os.Getenv("NANOPORE_TENSOR_BACKEND"))
+	dir := nativeFixtureDirectory()
 	x, err := e.LoadWeight(filepath.Join(dir, "float32.tensor"))
 	assertTensor(t, result(t, x, err), []int64{2, 3}, []float32{0, 1, 2, 3, 4, 5})
 	for _, name := range []string{"int64.tensor", "multiple.tensor", "empty.tensor", "missing.tensor"} {
@@ -340,14 +359,15 @@ func TestNativeLoaderABIRejections(t *testing.T) {
 	}
 	cases := []struct{ name, source, want string }{
 		{"version", "unsigned int nt_version(void) { return 99; }", "unsupported tensor ABI version 99"},
-		{"symbol", "unsigned int nt_version(void) { return 4; }", "missing ABI symbol nt_open"},
-		{"attention symbol", "unsigned int nt_version(void) { return 4; }\n" +
+		{"legacy ABI4", "unsigned int nt_version(void) { return 4; }", "unsupported tensor ABI version 4"},
+		{"symbol", "unsigned int nt_version(void) { return 5; }", "missing ABI symbol nt_open"},
+		{"attention symbol", "unsigned int nt_version(void) { return 5; }\n" +
 			"void nt_open(void){} void nt_close(void){} void nt_new(void){} void nt_load(void){} void nt_release(void){}\n" +
 			"void nt_shape(void){} void nt_data(void){} void nt_run(void){} void nt_new_int64(void){} void nt_data_int64(void){}\n", "missing ABI symbol nt_sdpa"},
 	}
-	symbols := []string{"nt_open", "nt_close", "nt_new", "nt_load", "nt_release", "nt_shape", "nt_data", "nt_run", "nt_new_int64", "nt_data_int64", "nt_sdpa", "nt_cuda_device_open", "nt_cuda_device_close", "nt_cuda_stream_open", "nt_cuda_stream_close", "nt_cuda_half_new", "nt_cuda_half_view", "nt_cuda_half_meta", "nt_cuda_half_bits", "nt_cuda_half_release", "nt_cuda_gemm_f16", "nt_cuda_storage_new", "nt_cuda_storage_view", "nt_cuda_storage_meta", "nt_cuda_storage_upload", "nt_cuda_storage_download", "nt_cuda_storage_copy", "nt_cuda_storage_fill", "nt_cuda_storage_scale", "nt_cuda_storage_release", "nt_cuda_conv_small_f16", "nt_cuda_weights_permute_cast_f16", "nt_cuda_conv_koi_f16", "nt_cuda_linear_f16", "nt_cuda_storage_reinterpret"}
+	symbols := []string{"nt_open", "nt_close", "nt_new", "nt_load", "nt_release", "nt_shape", "nt_data", "nt_run", "nt_new_int64", "nt_data_int64", "nt_sdpa", "nt_cuda_device_open", "nt_cuda_device_close", "nt_cuda_stream_open", "nt_cuda_stream_close", "nt_cuda_half_new", "nt_cuda_half_view", "nt_cuda_half_meta", "nt_cuda_half_bits", "nt_cuda_half_release", "nt_cuda_gemm_f16", "nt_cuda_storage_new", "nt_cuda_storage_view", "nt_cuda_storage_meta", "nt_cuda_storage_upload", "nt_cuda_storage_download", "nt_cuda_storage_copy", "nt_cuda_storage_fill", "nt_cuda_storage_scale", "nt_cuda_storage_release", "nt_cuda_conv_small_f16", "nt_cuda_weights_permute_cast_f16", "nt_cuda_conv_koi_f16", "nt_cuda_linear_f16", "nt_cuda_storage_reinterpret", "nt_cuda_factorised_lstm", "nt_cuda_factorised_linear", "nt_cuda_storage_gemm_f16", "nt_cuda_lstm_step_f16", "nt_cuda_decoder_guide_program", "nt_cuda_decoder_guide_frame", "nt_cuda_sup_primitive", "nt_cuda_decoder_beam_program", "nt_cuda_decoder_beam_numbers", "nt_cuda_decoder_post_numbers"}
 	for _, missing := range symbols[11:] {
-		source := "unsigned int nt_version(void){return 4;}\n"
+		source := "unsigned int nt_version(void){return 5;}\n"
 		for _, symbol := range symbols {
 			if symbol != missing {
 				source += "void " + symbol + "(void){}\n"

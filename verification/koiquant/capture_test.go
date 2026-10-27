@@ -221,7 +221,7 @@ func TestCapturedRawRejection(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, spec := range StageSpecs() {
-		if err := os.Link(filepath.Join(source, spec.Name+".bin"), filepath.Join(target, spec.Name+".bin")); err != nil {
+		if err := copyFile(filepath.Join(source, spec.Name+".bin"), filepath.Join(target, spec.Name+".bin")); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -238,12 +238,19 @@ func TestCapturedRawRejection(t *testing.T) {
 		}
 		device, ordinal = raw.Device, raw.Ordinal
 	}
+	observedDevice := device
+	if device == "cuda" {
+		observedDevice = fmt.Sprintf("cuda:%d", ordinal)
+	}
 	for _, mutant := range []string{
 		strings.Replace(string(metadata), "hscale\tbinary16", "hscale\tfloat64", 1),
 		strings.Replace(string(metadata), "hscale\t", "missing-stage\t", 1),
 		string(metadata) + strings.Split(string(metadata), "\n")[0] + "\n",
-		strings.Replace(string(metadata), "\tcpu\t", "\tcuda:99\t", 1),
+		strings.Replace(string(metadata), "\t"+observedDevice+"\t", "\tforeign-device\t", 1),
 	} {
+		if mutant == string(metadata) {
+			t.Fatal("metadata rejection control did not change its input")
+		}
 		if err = os.WriteFile(path, []byte(mutant), 0644); err != nil {
 			t.Fatal(err)
 		}
