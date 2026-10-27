@@ -12,6 +12,9 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/Jakeelamb/nanopore_basecaller_go/internal/tensor"
+	crforacle "github.com/Jakeelamb/nanopore_basecaller_go/verification/crf"
 )
 
 type command struct {
@@ -26,6 +29,8 @@ type command struct {
 type receipt struct {
 	Head, Status, Error string
 	Commands            []command
+	Mode                string
+	Pins                map[string]string
 }
 
 func main() {
@@ -35,14 +40,30 @@ func main() {
 	}
 }
 func run() (ret error) {
+	mode := flag.String("mode", "replay", "replay or native-produce; replay never builds or runs an oracle")
+	retained := flag.String("retained", "", "accepted check-002 native attempt directory for replay")
+	preflight := flag.Bool("preflight-only", false, "verify retained pins and backend loading, then stop")
 	backend := flag.String("backend", "", "qualified ABI2 CPU tensor library")
 	source := flag.String("source", os.Getenv("DORADO_SOURCE"), "read-only pinned Dorado checkout")
 	out := flag.String("out", filepath.Join("artifacts", "crf", time.Now().UTC().Format("check-20060102T150405.000000000Z")), "new receipt directory")
 	flag.Parse()
-	if *backend == "" || *source == "" {
-		return fmt.Errorf("-backend and -source required; the source-linked native gate cannot skip")
+	if *mode != "replay" && *mode != "native-produce" {
+		return fmt.Errorf("invalid -mode %q", *mode)
 	}
-	for _, p := range []*string{backend, source, out} {
+	if *mode == "replay" && *retained == "" {
+		return fmt.Errorf("-retained required for producer-free replay")
+	}
+	if *preflight && *mode != "replay" {
+		return fmt.Errorf("-preflight-only requires replay mode")
+	}
+	if *backend == "" || *source == "" {
+		return fmt.Errorf("-backend and -source required; the CRF gate cannot skip")
+	}
+	paths := []*string{backend, source, out}
+	if *retained != "" {
+		paths = append(paths, retained)
+	}
+	for _, p := range paths {
 		v, err := filepath.Abs(*p)
 		if err != nil {
 			return err
@@ -55,7 +76,7 @@ func run() (ret error) {
 	if err := os.Mkdir(*out, 0755); err != nil {
 		return err
 	}
-	m := receipt{Status: "failed"}
+	m := receipt{Status: "failed", Mode: *mode}
 	defer func() {
 		if ret != nil {
 			m.Error = ret.Error()
@@ -105,22 +126,55 @@ func run() (ret error) {
 		fmt.Printf("%s passed\n", label)
 		return nil
 	}
-	clear := []string{"NANOPORE_TENSOR_BACKEND=", "DORADO_SOURCE=", "CRF_ARTIFACT_DIR="}
+	if *mode == "replay" {
+		r := command{Args: []string{"in-process", "crforacle.Replay", *source, *backend, *retained}, Started: time.Now().UTC().Format(time.RFC3339Nano), Exit: 1, Log: filepath.Join(*out, "preflight.log")}
+		_, pins, preflightErr := crforacle.Replay(*source, *backend, *retained)
+		if preflightErr == nil {
+			m.Pins = pins
+			var e *tensor.Engine
+			e, preflightErr = tensor.Open(*backend)
+			if preflightErr == nil {
+				preflightErr = e.Close()
+			}
+		}
+		data := []byte("retained pins and backend load passed; no native producer invoked\n")
+		if preflightErr != nil {
+			data = []byte(preflightErr.Error() + "\n")
+		} else {
+			r.Exit = 0
+		}
+		r.Finished = time.Now().UTC().Format(time.RFC3339Nano)
+		sum := sha256.Sum256(data)
+		r.LogSHA = hex.EncodeToString(sum[:])
+		if err := os.WriteFile(r.Log, data, 0644); err != nil {
+			return err
+		}
+		m.Commands = append(m.Commands, r)
+		if preflightErr != nil {
+			return preflightErr
+		}
+		fmt.Println("retained pins and backend load passed")
+		if *preflight {
+			m.Status = "passed"
+			return nil
+		}
+	}
+	clear := []string{"NANOPORE_TENSOR_BACKEND=", "DORADO_SOURCE=", "CRF_ARTIFACT_DIR=", "CRF_ORACLE_MODE=", "CRF_RETAINED_ATTEMPT="}
 	if err := execute("go-version", nil, "go", "version"); err != nil {
 		return err
 	}
-	if err := execute("ordinary", clear, "go", "test", "-count=1", "-v", "./internal/crf", "./verification/crf/..."); err != nil {
+	if err := execute("ordinary", clear, "go", "test", "-p=2", "-timeout=5m", "-count=1", "-v", "./internal/crf", "./verification/crf/..."); err != nil {
 		return err
 	}
 	noCGO := append(append([]string{}, clear...), "CGO_ENABLED=0")
-	if err := execute("nocgo", noCGO, "go", "test", "-count=1", "./internal/crf", "./verification/crf/..."); err != nil {
+	if err := execute("nocgo", noCGO, "go", "test", "-p=2", "-timeout=5m", "-count=1", "./internal/crf", "./verification/crf/..."); err != nil {
 		return err
 	}
-	env := []string{"CGO_ENABLED=1", "NANOPORE_TENSOR_BACKEND=" + *backend, "DORADO_SOURCE=" + *source, "CRF_ARTIFACT_DIR=" + filepath.Join(*out, "native-attempts"), "OMP_NUM_THREADS=1", "MKL_NUM_THREADS=1"}
-	if err := execute("native", env, "go", "test", "-count=1", "-v", "./internal/crf"); err != nil {
+	env := []string{"CGO_ENABLED=1", "NANOPORE_TENSOR_BACKEND=" + *backend, "DORADO_SOURCE=" + *source, "CRF_ARTIFACT_DIR=" + filepath.Join(*out, "native-attempts"), "CRF_ORACLE_MODE=" + *mode, "CRF_RETAINED_ATTEMPT=" + *retained, "OMP_NUM_THREADS=1", "MKL_NUM_THREADS=1"}
+	if err := execute(*mode, env, "go", "test", "-p=2", "-timeout=5m", "-count=1", "-v", "./internal/crf", "./verification/crf"); err != nil {
 		return err
 	}
-	if err := execute("race", env, "go", "test", "-count=1", "-race", "-run", "TestNativeValidationAndCancellation|TestCanceledBeforeNative", "./internal/crf"); err != nil {
+	if err := execute("race", env, "go", "test", "-p=2", "-timeout=5m", "-count=1", "-race", "-run", "TestNativeValidationAndCancellation|TestNativeBatch|Test.*CanceledBeforeNative", "./internal/crf"); err != nil {
 		return err
 	}
 	if err := execute("vet", nil, "go", "vet", "./internal/crf", "./verification/crf/..."); err != nil {

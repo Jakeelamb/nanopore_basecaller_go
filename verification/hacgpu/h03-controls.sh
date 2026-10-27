@@ -18,19 +18,21 @@
 #       - i8-corrupt: one converted output byte is replaced after the primitive.
 #
 # The source is restored after every attempt and every failed attempt is kept.
-set -u
+set -euo pipefail
 cd "$(dirname "$0")/../.." || exit 1
 ROOT=$(pwd)
 T=/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/dependencies/torch-2.9.0.0-ont-CUDA-13.0-linux-x64-cxx11-abi/libtorch
 A=/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/archives/torch-2.9.0.0-ont-CUDA-13.0-linux-x64-cxx11-abi.zip
 K=/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/dependencies/libkoi-0.7.5-Linux-x86_64-cuda-13.0/libkoi-0.7.5-Linux-x86_64-cuda-13.0
 SRC=verification/tensor/hac_lastconv.inc
-BACKUP=/tmp/opencode/h03-hac_lastconv.inc.orig
 OUT=${OUT:-artifacts/tensor/h03-controls}
 CAPTURE=${CAPTURE:-/home/jake/.local/share/opencode/worktree/e3db79/H01/artifacts/tensor/hacgpu-capture-008/stages}
 MODEL=${MODEL:-/home/jake/Projects/nanopore_basecaller/models/dna_r10.4.1_e8.2_400bps_hac@v6.0.0}
 ONLY=${1:-}
-mkdir -p /tmp/opencode "$OUT"
+case "$ONLY" in ""|padding|input-rows|input-strides|output-strides|weight-shape|output-type|activation|accumulation|overlap|forced-fallback|f32-accum|i8-corrupt) ;; *) echo "unknown control: $ONLY" >&2; exit 2 ;; esac
+mkdir -p "$(dirname "$OUT")"
+mkdir "$OUT" || { echo "attempt already exists: $OUT" >&2; exit 1; }
+BACKUP=$OUT/source-original.inc
 [ -f "$SRC" ] || { echo "missing $SRC (wrong working directory?)"; exit 1; }
 cp "$SRC" "$BACKUP" || exit 1
 : >"$OUT/transcript.txt"
@@ -40,10 +42,10 @@ trap restore EXIT
 
 build() {
   local dir=$1
-  rm -rf "$dir"
+  [ ! -e "$dir" ] || { echo "attempt already exists: $dir" >&2; return 1; }
   go run ./verification/tensor/build -torch "$T" -archive "$A" \
     -dorado-source external/dorado-source -koi "$K" \
-    -cuda-family 13.0 -cuda-root /opt/cuda -out "$dir" >/tmp/opencode/h03-build.log 2>&1
+    -cuda-family 13.0 -cuda-root /opt/cuda -out "$dir" >"$dir.build.log" 2>&1
 }
 
 probe() {
@@ -100,12 +102,12 @@ control() {
   fi
   if ! disable_guard "$anchor"; then
     echo "$name: MUTATION ABSENT ($anchor)" | tee -a "$OUT/transcript.txt"
-    return
+    return 1
   fi
   local dir=$OUT/build-$name
   if ! build "$dir"; then
-    echo "$name: BUILD FAILED (see /tmp/opencode/h03-build.log)" | tee -a "$OUT/transcript.txt"
-    return
+    echo "$name: BUILD FAILED (see immutable build log under $OUT)" | tee -a "$OUT/transcript.txt"
+    return 1
   fi
   local log=$OUT/probe-$name.txt
   probe "$dir/libnanopore_tensor.so" "$log"
@@ -120,12 +122,13 @@ control() {
   if [ -n "$want" ]; then
     case "$observed" in
       *"$want"*) echo "  -> control held: $name produced the predicted outcome" | tee -a "$OUT/transcript.txt" ;;
-      *) echo "  -> CONTROL FAILED: expected to contain '$want'" | tee -a "$OUT/transcript.txt" ;;
+      *) echo "  -> CONTROL FAILED: expected to contain '$want'" | tee -a "$OUT/transcript.txt"; return 1 ;;
     esac
     return
   fi
   if [ "$observed" = "$baseline" ]; then
     echo "  -> CONTROL FAILED: removing the guard changed nothing" | tee -a "$OUT/transcript.txt"
+    return 1
   else
     echo "  -> control held: removing the guard changed the observed outcome" | tee -a "$OUT/transcript.txt"
   fi
@@ -140,12 +143,12 @@ control_replace() {
   fi
   if ! replace_once "$pattern" "$replacement"; then
     echo "$name: MUTATION ABSENT ($pattern)" | tee -a "$OUT/transcript.txt"
-    return
+    return 1
   fi
   local dir=$OUT/build-$name
   if ! build "$dir"; then
-    echo "$name: BUILD FAILED (see /tmp/opencode/h03-build.log)" | tee -a "$OUT/transcript.txt"
-    return
+    echo "$name: BUILD FAILED (see immutable build log under $OUT)" | tee -a "$OUT/transcript.txt"
+    return 1
   fi
   local log=$OUT/probe-$name.txt
   probe "$dir/libnanopore_tensor.so" "$log"
@@ -160,12 +163,13 @@ control_replace() {
   if [ -n "$want" ]; then
     case "$observed" in
       *"$want"*) echo "  -> control held: $name produced the predicted outcome" | tee -a "$OUT/transcript.txt" ;;
-      *) echo "  -> CONTROL FAILED: expected to contain '$want'" | tee -a "$OUT/transcript.txt" ;;
+      *) echo "  -> CONTROL FAILED: expected to contain '$want'" | tee -a "$OUT/transcript.txt"; return 1 ;;
     esac
     return
   fi
   if [ "$observed" = "$baseline" ]; then
     echo "  -> CONTROL FAILED: removing the guard changed nothing" | tee -a "$OUT/transcript.txt"
+    return 1
   else
     echo "  -> control held: removing the guard changed the observed outcome" | tee -a "$OUT/transcript.txt"
   fi
@@ -180,17 +184,17 @@ replay_control() {
     return
   fi
   local dir=$OUT/replay-$name log=$OUT/replay-$name.txt
-  rm -rf "$dir"
+  [ ! -e "$dir" ] || { echo "attempt already exists: $dir" >&2; return 1; }
   if replay "$BACKEND" "$dir" "$log" "$@"; then
     echo "$name: replay PASSED (control did not fire)" | tee -a "$OUT/transcript.txt"
-    return
+    return 1
   fi
   local error
   error=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['error'])" "$dir/receipt.json" 2>/dev/null)
   echo "$name: ${error:-no receipt (see $log)}" | tee -a "$OUT/transcript.txt"
   case "$error" in
     *"$want"*) echo "  -> control held: $name made the comparison fail" | tee -a "$OUT/transcript.txt" ;;
-    *) echo "  -> CONTROL FAILED: expected the error to contain '$want'" | tee -a "$OUT/transcript.txt" ;;
+    *) echo "  -> CONTROL FAILED: expected the error to contain '$want'" | tee -a "$OUT/transcript.txt"; return 1 ;;
   esac
   [ -f "$dir/receipt.json" ] || return
   python3 - "$dir/receipt.json" <<'PY' | tee -a "$OUT/transcript.txt"
@@ -204,7 +208,7 @@ PY
 
 restore
 if ! build "$OUT/build-baseline"; then
-  echo "baseline: BUILD FAILED (see /tmp/opencode/h03-build.log)"
+  echo "baseline: BUILD FAILED (see immutable build log under $OUT)"
   exit 1
 fi
 BACKEND=$OUT/build-baseline/libnanopore_tensor.so
@@ -217,6 +221,7 @@ if [ -z "${ONLY:-}" ]; then
   else
     echo "baseline replay: FAILED" | tee -a "$OUT/transcript.txt"
     cat "$OUT/replay-baseline.txt" | tee -a "$OUT/transcript.txt"
+    exit 1
   fi
 fi
 
@@ -261,7 +266,9 @@ control accumulation accumulation 'last convolution accumulation must be F16 or 
 
 # 9. The output view must not overlap the input. Removing the guard lets the
 #    kernel write over the input it is reading.
-control overlap overlap 'last convolution output overlaps an input interval'
+control_replace overlap overlap \
+  'storage_overlap(p, out, d, "last convolution output overlaps an input interval");' \
+  'if (false) storage_overlap(p, out, d, "last convolution output overlaps an input interval");'
 
 # Replay mutants run against the unmutated baseline backend.
 restore
@@ -284,7 +291,8 @@ if [ -z "${ONLY:-}" ] || [ "$ONLY" = "i8-corrupt" ]; then
     BACKEND=$OUT/build-i8-corrupt/libnanopore_tensor.so
     replay_control i8-corrupt 'differs from the capture'
   else
-    echo "i8-corrupt: BUILD FAILED (see /tmp/opencode/h03-build.log)" | tee -a "$OUT/transcript.txt"
+    echo "i8-corrupt: BUILD FAILED (see immutable build log under $OUT)" | tee -a "$OUT/transcript.txt"
+    return 1
   fi
 fi
 

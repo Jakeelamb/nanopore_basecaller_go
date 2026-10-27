@@ -1,6 +1,8 @@
 # H03: execute the final HAC convolution and the source dispatch
 
-Status is **device-verified on the admitted host**. H03 completes the HAC
+The retained backend is **device-verified on the admitted host**. The corrected
+source below still needs a fresh backend build and admitted native receipt.
+H03 completes the HAC
 convolution stack: the Go caller plans the final width-19 stride-6 tanh
 convolution, zeroes the two input padding bands, packs its weight tensor into the
 CUTLASS `[C_out, W*C_in]` form, runs the source's `host_convolution`-then-
@@ -68,7 +70,7 @@ source then zeroes the two nine-row padding bands
 (`ConvStack.cpp:265-266`) one batch at a time through the contiguous
 `[padding, C]` view; 36864 bytes were re-read and every one is zero.
 
-The output view starts 65536 elements (131072 bytes) into the I8 allocation and
+The output view starts 65536 elements (65536 bytes) into the I8 allocation and
 has shape `[64, 32, 1024]` with strides `[1024, 65536, 1]`.
 
 ## Allocation aliasing
@@ -160,8 +162,43 @@ executed the request.
 | `f32-accum` | — (`koi_conv_f32=true`) | — | conv2 differs; `path: host_convolution` |
 | `i8-corrupt` | — (one output byte replaced) | — | conv2 differs |
 
-The baseline build prints `valid: ok`, `fallback-valid: ok`, and rejects the
+The retained baseline build prints `valid: ok`, `fallback-valid: ok`, and rejects the
 twelve negative probe cases with the boundary's own messages.
+
+The current probe adds `shifted-overlap` and `fallback-shifted-overlap` for the
+corrected source. The F16 input occupies `[0,430080)` bytes. The I8 output
+occupies `[262144,2359296)` bytes in the same allocation. The old native guard
+compared their element endpoints and accepted 167936 overlapping bytes.
+Every typed native overlap guard now uses `storage_overlap`, which converts
+endpoints to bytes through `storage_byte_interval.h` and rejects conversion
+overflow before comparing the intervals.
+Reinterpretation uses the same checked byte interval and bounds its relative
+offset before multiplication or addition. It rejects unaligned offsets and
+endpoints that cannot fit the signed tensor-storage offset.
+
+The standalone failure probe includes the actual shared helper. It checks this
+shifted case, the one-byte overlap at 430079, exact adjacency at 430080, F32
+intervals, empty intervals, invalid or overflowing endpoints, and huge
+reinterpret offsets. The bounded
+host checks are retained under `artifacts/native-overlap-fix-20261024-001` and
+`artifacts/native-overlap-fix-20261024-003`, with
+source hashes, exact command arguments, clocks, exit statuses, and raw logs.
+The original source-expression reproduction exits 1. The corrected failure
+probe compiles and exits 0. These host checks establish helper behavior and
+preserve the existing owner-retention checks. They do not establish native
+CUDA execution or parity of the corrected backend.
+
+After a fresh ABI4 CUDA13 backend build and explicit runtime admission, the
+remaining native guard command is:
+
+```sh
+go run ./verification/hacgpu/h03/cmd/guards -backend "$NEW_BACKEND" -ordinal 0 -runtime-admitted
+```
+
+Both shifted cases must report native overlap rejection. The fresh backend also
+needs the maintained H03 differential replay and rejection controls before the
+corrected source can inherit device qualification. Existing receipts identify
+the old backend and remain evidence only for that artifact.
 
 Two of the mutants are honest about what they show. Removing the activation
 guard or the accumulation guard lets a request the primitive will not serve reach

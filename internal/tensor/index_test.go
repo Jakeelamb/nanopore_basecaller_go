@@ -59,7 +59,7 @@ func TestNativeDecoderPrimitives(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	orderRaw, err := os.ReadFile(filepath.Join(filepath.Dir(os.Getenv("NANOPORE_TENSOR_BACKEND")), "argsort-reference.json"))
+	orderRaw, err := os.ReadFile(filepath.Join(nativeFixtureDirectory(), "argsort-reference.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestNativeDecoderPrimitives(t *testing.T) {
 	}
 	a := newTensor(t, e, []int64{2, 3}, []float32{0, 1, 2, 3, 4, 5})
 	stable := newTensor(t, e, []int64{2, 3}, []float32{1000, 1001, 999, -1000, -1000, -1000})
-	raw, err := os.ReadFile(filepath.Join(filepath.Dir(os.Getenv("NANOPORE_TENSOR_BACKEND")), "primitive-reference.json"))
+	raw, err := os.ReadFile(filepath.Join(nativeFixtureDirectory(), "primitive-reference.json"))
 	if err != nil {
 		t.Fatal(err)
 	}

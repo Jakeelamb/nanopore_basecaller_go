@@ -6,15 +6,36 @@
 #include <c10/cuda/CUDAGuard.h>
 #include <c10/cuda/CUDAStream.h>
 #include <cuda_runtime_api.h>
+#include <cuda.h>
 #include <cublas_v2.h>
 #endif
 struct CUDAWorkResources {
  std::vector<at::Tensor> tensors;
  std::vector<std::shared_ptr<std::vector<uint16_t>>> staging;
 };
+#ifdef NT_ENABLE_CUDA
+struct DecoderBeamProgram {
+ CUmodule module=nullptr;
+ CUfunction numbers=nullptr;
+ CUlinkState linker=nullptr;
+ bool ready=false;
+ std::vector<unsigned char> cubin;
+};
+struct DecoderGuideProgram {
+ CUmodule module=nullptr;
+ CUfunction frame=nullptr,forward=nullptr,posterior=nullptr,quality=nullptr;
+ CUlinkState linker=nullptr;
+ bool ready=false;
+ std::vector<unsigned char> cubin;
+};
+#endif
 struct CUDADeviceRecord {
  uint64_t engine=0,id=0; int32_t ordinal=0; bool poisoned=false;
  std::shared_ptr<CUDAWorkResources> pending;
+#ifdef NT_ENABLE_CUDA
+ std::unique_ptr<DecoderGuideProgram> guide;
+ std::unique_ptr<DecoderBeamProgram> beam;
+#endif
 };
 struct CUDAStreamRecord {
  std::shared_ptr<CUDADeviceRecord> device; uint64_t id=0;

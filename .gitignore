@@ -5,3 +5,11 @@
 *.test
 *.prof
 /.tmp_pod5_v3_v4_migration_*/
+
+# Riptide artifacts (cloud-synced)
+.humanlayer/tasks/
+
+# Riptide artifacts (cloud-synced)
+.humanlayer/tasks/
+__pycache__/
+*.pyc

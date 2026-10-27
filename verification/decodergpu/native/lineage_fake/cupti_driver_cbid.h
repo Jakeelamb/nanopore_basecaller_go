@@ -1,0 +1,2 @@
+#pragma once
+constexpr int CUPTI_DRIVER_TRACE_CBID_cuModuleLoadDataEx=20,CUPTI_DRIVER_TRACE_CBID_cuModuleGetFunction=23,CUPTI_DRIVER_TRACE_CBID_cuModuleUnload=22;

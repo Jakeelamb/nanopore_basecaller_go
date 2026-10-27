@@ -1,0 +1,439 @@
+{
+  "Schema": "hac-vcs-aux-oracle-plan/v1",
+  "Status": "prepared_no_native_execution",
+  "CompilerBaseline": {
+    "Path": "/home/jake/Projects/nanopore_basecaller_go/artifacts/tensor/backend-closed-plan-005/plan.json",
+    "SHA256": "b2d33b287e9135d85fc3ac6191de33c7aa9e70eda5a029f3a02b89a460b76d7a"
+  },
+  "LinkBaseline": {
+    "Path": "/home/jake/Projects/nanopore_basecaller_go/artifacts/supgpu/host-controls-010/build/plan.json",
+    "SHA256": "f60c9f79cad2a957c65eb892ba6efb9978e1f45a4286602f00d4115edfb9aebf"
+  },
+  "Driver": {
+    "Path": "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/bin/g++-15",
+    "SHA256": "7c1ff2182981fb185022a8cdd699abaab64b8ea0965e30855754dd95a6c09d15"
+  },
+  "Queries": [
+    {
+      "Argv": [
+        "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/bin/g++-15",
+        "-print-prog-name=cc1plus"
+      ],
+      "Expected": {
+        "Path": "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/lib/gcc/x86_64-pc-linux-gnu/15.3.0/cc1plus",
+        "SHA256": "0db6eff7050e7c1d164562fc9fc430ad7f8208232594cbffb44a3ae4208f2e46"
+      },
+      "Kind": "program"
+    },
+    {
+      "Argv": [
+        "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/bin/g++-15",
+        "-print-prog-name=collect2"
+      ],
+      "Expected": {
+        "Path": "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/lib/gcc/x86_64-pc-linux-gnu/15.3.0/collect2",
+        "SHA256": "bd5e76856375601d6e2b6dda13f1fd269f1cb807917bcecf723bef70413b1ad2"
+      },
+      "Kind": "program"
+    },
+    {
+      "Argv": [
+        "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/bin/g++-15",
+        "-print-prog-name=as"
+      ],
+      "Expected": {
+        "Path": "/usr/bin/as",
+        "SHA256": "3dfdf6007545ea36176c350eef201d1ece55c347a182697bb5f9bac815a1f34b"
+      },
+      "Kind": "program"
+    },
+    {
+      "Argv": [
+        "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/bin/g++-15",
+        "-print-prog-name=ld"
+      ],
+      "Expected": {
+        "Path": "/usr/bin/ld",
+        "SHA256": "4d83828f709f0eade25bcae2f4a2508c47db2f01b58daaca5c1c4cefce897847"
+      },
+      "Kind": "program"
+    },
+    {
+      "Argv": [
+        "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/bin/g++-15",
+        "-print-prog-name=nm"
+      ],
+      "Expected": {
+        "Path": "/usr/bin/nm",
+        "SHA256": "b16707aadd1c1953f51fa32d462b2d463a54031f7a743d63e8333c6bf3985abd"
+      },
+      "Kind": "program"
+    },
+    {
+      "Argv": [
+        "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/bin/g++-15",
+        "-print-prog-name=lto-wrapper"
+      ],
+      "Expected": {
+        "Path": "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/lib/gcc/x86_64-pc-linux-gnu/15.3.0/lto-wrapper",
+        "SHA256": "c391ea04d0dfadc56ed80d36c38e8dcd985d0f76866fb724189497b8244af9b9"
+      },
+      "Kind": "program"
+    },
+    {
+      "Argv": [
+        "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/bin/g++-15",
+        "-print-prog-name=lto1"
+      ],
+      "Expected": {
+        "Path": "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/lib/gcc/x86_64-pc-linux-gnu/15.3.0/lto1",
+        "SHA256": "478cd3b33248225733e9376967101818dc12907ca767873524228588a87ef117"
+      },
+      "Kind": "program"
+    },
+    {
+      "Argv": [
+        "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/bin/g++-15",
+        "-print-prog-name=cc1"
+      ],
+      "Expected": {
+        "Path": "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/lib/gcc/x86_64-pc-linux-gnu/15.3.0/cc1",
+        "SHA256": "2c22ea9f2b7a6c24478adcefe67085551bec76ee6dd85957da66b6dbe0bc1afe"
+      },
+      "Kind": "program"
+    },
+    {
+      "Argv": [
+        "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/bin/g++-15",
+        "-print-file-name=liblto_plugin.so"
+      ],
+      "Expected": {
+        "Path": "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/lib/gcc/x86_64-pc-linux-gnu/15.3.0/liblto_plugin.so",
+        "SHA256": "f6d35bee2348c658d083596ebb380b46928b728931db9ea02ef5d676919eea6f"
+      },
+      "Kind": "file"
+    },
+    {
+      "Argv": [
+        "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/bin/g++-15",
+        "-print-file-name=Scrt1.o"
+      ],
+      "Expected": {
+        "Path": "/usr/lib/Scrt1.o",
+        "SHA256": "98d76691c6d97233c9e1a062f32ea2d7a89f047632156d1bf7b811727fb19921"
+      },
+      "Kind": "file"
+    },
+    {
+      "Argv": [
+        "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/bin/g++-15",
+        "-print-file-name=crti.o"
+      ],
+      "Expected": {
+        "Path": "/usr/lib/crti.o",
+        "SHA256": "caf7f0c99019735e97e9bfabf52c376e86e1ef92d1b53a63c36a5bc2688e8fcc"
+      },
+      "Kind": "file"
+    },
+    {
+      "Argv": [
+        "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/bin/g++-15",
+        "-print-file-name=crtn.o"
+      ],
+      "Expected": {
+        "Path": "/usr/lib/crtn.o",
+        "SHA256": "71236f0a232a3686adf2319f3ae172831e8fd8166b9f0764ed184bc4df11be3c"
+      },
+      "Kind": "file"
+    },
+    {
+      "Argv": [
+        "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/bin/g++-15",
+        "-print-file-name=crtbeginS.o"
+      ],
+      "Expected": {
+        "Path": "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/lib/gcc/x86_64-pc-linux-gnu/15.3.0/crtbeginS.o",
+        "SHA256": "9da301f5baeb19a3cbea8792aaeab0a66ef37b858a709b81afc402096453bb21"
+      },
+      "Kind": "file"
+    },
+    {
+      "Argv": [
+        "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/bin/g++-15",
+        "-print-file-name=crtendS.o"
+      ],
+      "Expected": {
+        "Path": "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/lib/gcc/x86_64-pc-linux-gnu/15.3.0/crtendS.o",
+        "SHA256": "e1363f0fd255361209c67e04521b1acd352a81784ae2f4e3868c7eff1124bfcd"
+      },
+      "Kind": "file"
+    },
+    {
+      "Argv": [
+        "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/bin/g++-15",
+        "-print-file-name=libgcc.a"
+      ],
+      "Expected": {
+        "Path": "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/lib/gcc/x86_64-pc-linux-gnu/15.3.0/libgcc.a",
+        "SHA256": "2dbbe59c9c7ebea59293f0b25b6824bc8b8d27c16315988c1356399be5fc6e38"
+      },
+      "Kind": "file"
+    },
+    {
+      "Argv": [
+        "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/bin/g++-15",
+        "-print-file-name=libpthread.a"
+      ],
+      "Expected": {
+        "Path": "/usr/lib/libpthread.a",
+        "SHA256": "f0a17a43c74d2fe5474fa2fd29c8f14799e777d7d75a2cc4d11c20a6e7b161c5"
+      },
+      "Kind": "file"
+    }
+  ],
+  "OriginalObjects": {
+    "utils_lstm.cpp.o": {
+      "Path": "/home/jake/Projects/nanopore_basecaller_go/artifacts/parity-resume-review-20261024/hac-vcs-native-boundary/body-001/utils_lstm.cpp.o",
+      "SHA256": "7598a9c75f9b4d3f3936e3871a31155a8e4b63c417017b7f5b2132db96051243"
+    },
+    "utils_lstm.cu.o": {
+      "Path": "/home/jake/Projects/nanopore_basecaller_go/artifacts/parity-resume-review-20261024/hac-vcs-native-boundary/body-001/utils_lstm.cu.o",
+      "SHA256": "ce998c4411202c7c1c1d6240bad5677dfb8c1d69118355bf9affef6170045117"
+    },
+    "thread_pool.cpp.o": {
+      "Path": "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/artifacts/hac-vcs-aux/frontier-001/thread_pool.cpp.o",
+      "SHA256": "89cdf4ea0968f38e557787203b8a8b180dcac74c6df077bf89bf18d837b13f2d"
+    }
+  },
+  "SourcePins": {
+    "oracle.cpp": {
+      "Path": "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/verification/hacvcsaux/native/oracle.cpp",
+      "SHA256": "2e43d14955ac9cae3f324736ed36f4c0c57c9624f1904d2f171bf54d0d87c793"
+    },
+    "transport.cpp": {
+      "Path": "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/verification/hacvcsaux/native/transport.cpp",
+      "SHA256": "20fd53f4290006489705b703a2d982615d385d5e945c37d3f2dca94275487f56"
+    },
+    "capture.h": {
+      "Path": "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/verification/hacvcsaux/native/capture.h",
+      "SHA256": "6c84469f8462be9476054bed4e13d877c9fee0c770e8312d320deac27dd03e69"
+    }
+  },
+  "IncludeBindings": {
+    "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/dependencies/libkoi-0.7.5-Linux-x86_64-cuda-13.0/libkoi-0.7.5-Linux-x86_64-cuda-13.0/include": "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/dependencies/libkoi-0.7.5-Linux-x86_64-cuda-13.0/libkoi-0.7.5-Linux-x86_64-cuda-13.0/include",
+    "/opt/cuda/include": "/opt/cuda/targets/x86_64-linux/include"
+  },
+  "Units": [
+    {
+      "Name": "oracle",
+      "Source": {
+        "Path": "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/verification/hacvcsaux/native/oracle.cpp",
+        "SHA256": "2e43d14955ac9cae3f324736ed36f4c0c57c9624f1904d2f171bf54d0d87c793"
+      },
+      "Dependencies": [
+        "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/bin/g++-15",
+        "-std=c++17",
+        "-O1",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-pthread",
+        "-I",
+        "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/dependencies/libkoi-0.7.5-Linux-x86_64-cuda-13.0/libkoi-0.7.5-Linux-x86_64-cuda-13.0/include",
+        "-I",
+        "/opt/cuda/include",
+        "-M",
+        "-MT",
+        "oracle-dependencies",
+        "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/verification/hacvcsaux/native/oracle.cpp"
+      ],
+      "Compile": [
+        "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/bin/g++-15",
+        "-std=c++17",
+        "-O1",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-pthread",
+        "-I",
+        "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/dependencies/libkoi-0.7.5-Linux-x86_64-cuda-13.0/libkoi-0.7.5-Linux-x86_64-cuda-13.0/include",
+        "-I",
+        "/opt/cuda/include",
+        "-MD",
+        "-MF",
+        "{OUT}/oracle.d",
+        "-MT",
+        "oracle-dependencies",
+        "-c",
+        "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/verification/hacvcsaux/native/oracle.cpp",
+        "-o",
+        "{OUT}/oracle.o"
+      ]
+    },
+    {
+      "Name": "transport",
+      "Source": {
+        "Path": "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/verification/hacvcsaux/native/transport.cpp",
+        "SHA256": "20fd53f4290006489705b703a2d982615d385d5e945c37d3f2dca94275487f56"
+      },
+      "Dependencies": [
+        "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/bin/g++-15",
+        "-std=c++17",
+        "-O1",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-pthread",
+        "-I",
+        "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/dependencies/libkoi-0.7.5-Linux-x86_64-cuda-13.0/libkoi-0.7.5-Linux-x86_64-cuda-13.0/include",
+        "-I",
+        "/opt/cuda/include",
+        "-M",
+        "-MT",
+        "transport-dependencies",
+        "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/verification/hacvcsaux/native/transport.cpp"
+      ],
+      "Compile": [
+        "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/bin/g++-15",
+        "-std=c++17",
+        "-O1",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-pthread",
+        "-I",
+        "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/dependencies/libkoi-0.7.5-Linux-x86_64-cuda-13.0/libkoi-0.7.5-Linux-x86_64-cuda-13.0/include",
+        "-I",
+        "/opt/cuda/include",
+        "-MD",
+        "-MF",
+        "{OUT}/transport.d",
+        "-MT",
+        "transport-dependencies",
+        "-c",
+        "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/verification/hacvcsaux/native/transport.cpp",
+        "-o",
+        "{OUT}/transport.o"
+      ]
+    }
+  ],
+  "Link": [
+    "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/bin/g++-15",
+    "-pthread",
+    "-nodefaultlibs",
+    "-Wl,-z,defs",
+    "-Wl,-t",
+    "-Wl,-Map,{OUT}/oracle.map",
+    "-Wl,-rpath,/usr/lib",
+    "{OUT}/oracle.o",
+    "{OUT}/transport.o",
+    "/home/jake/Projects/nanopore_basecaller_go/artifacts/parity-resume-review-20261024/hac-vcs-native-boundary/body-001/utils_lstm.cpp.o",
+    "/home/jake/Projects/nanopore_basecaller_go/artifacts/parity-resume-review-20261024/hac-vcs-native-boundary/body-001/utils_lstm.cu.o",
+    "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/artifacts/hac-vcs-aux/frontier-001/thread_pool.cpp.o",
+    "-Wl,--start-group",
+    "/usr/lib/libstdc++.so.6.0.36",
+    "/usr/lib/libm.so.6",
+    "/usr/lib/libgcc_s.so.1",
+    "/usr/lib/libc.so.6",
+    "/usr/lib/libc_nonshared.a",
+    "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/lib/gcc/x86_64-pc-linux-gnu/15.3.0/libgcc.a",
+    "/usr/lib/libpthread.a",
+    "-Wl,--end-group",
+    "-o",
+    "{OUT}/oracle"
+  ],
+  "LinkFiles": [
+    {
+      "Path": "/usr/lib/libstdc++.so.6.0.36",
+      "SHA256": "f5fc7380f2ae46fa4053a64be04e7b98109f1066a4bbfff3c37042488aa0be0e"
+    },
+    {
+      "Path": "/usr/lib/libm.so.6",
+      "SHA256": "965106704753eefe8c31ae7da6daba3ead3d18c52b19b5fcc41178bcc4aa999d"
+    },
+    {
+      "Path": "/usr/lib/libgcc_s.so.1",
+      "SHA256": "e618cb9c90c2eb3a1dad1cfea5b6c1eebcf2e799ad805976f4ae47bdd61c716a"
+    },
+    {
+      "Path": "/usr/lib/libc.so.6",
+      "SHA256": "02c8c3d06180beee9c7d0392aa85736c7d19f274a81e7f8f0b3d9e28e0641524"
+    },
+    {
+      "Path": "/usr/lib/libc_nonshared.a",
+      "SHA256": "de2e822b005fc8ab5a2e6c99ad5067ff9e548f495f9e54c6a027506125507430"
+    },
+    {
+      "Path": "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/lib/gcc/x86_64-pc-linux-gnu/15.3.0/libgcc.a",
+      "SHA256": "2dbbe59c9c7ebea59293f0b25b6824bc8b8d27c16315988c1356399be5fc6e38"
+    },
+    {
+      "Path": "/usr/lib/libpthread.a",
+      "SHA256": "f0a17a43c74d2fe5474fa2fd29c8f14799e777d7d75a2cc4d11c20a6e7b161c5"
+    }
+  ],
+  "InitialInputs": {
+    "/home/jake/Projects/nanopore_basecaller_go/artifacts/parity-resume-review-20261024/hac-vcs-native-boundary/body-001/utils_lstm.cpp.o": "7598a9c75f9b4d3f3936e3871a31155a8e4b63c417017b7f5b2132db96051243",
+    "/home/jake/Projects/nanopore_basecaller_go/artifacts/parity-resume-review-20261024/hac-vcs-native-boundary/body-001/utils_lstm.cu.o": "ce998c4411202c7c1c1d6240bad5677dfb8c1d69118355bf9affef6170045117",
+    "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/artifacts/hac-vcs-aux/frontier-001/thread_pool.cpp.o": "89cdf4ea0968f38e557787203b8a8b180dcac74c6df077bf89bf18d837b13f2d",
+    "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/verification/hacvcsaux/native/oracle.cpp": "2e43d14955ac9cae3f324736ed36f4c0c57c9624f1904d2f171bf54d0d87c793",
+    "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/verification/hacvcsaux/native/transport.cpp": "20fd53f4290006489705b703a2d982615d385d5e945c37d3f2dca94275487f56",
+    "/home/jake/Projects/nanopore_basecaller_go_worktrees/hac-vcs-aux-20261025/verification/hacvcsaux/native/capture.h": "6c84469f8462be9476054bed4e13d877c9fee0c770e8312d320deac27dd03e69",
+    "/usr/lib/Scrt1.o": "98d76691c6d97233c9e1a062f32ea2d7a89f047632156d1bf7b811727fb19921",
+    "/usr/lib/crti.o": "caf7f0c99019735e97e9bfabf52c376e86e1ef92d1b53a63c36a5bc2688e8fcc",
+    "/usr/lib/crtn.o": "71236f0a232a3686adf2319f3ae172831e8fd8166b9f0764ed184bc4df11be3c",
+    "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/lib/gcc/x86_64-pc-linux-gnu/15.3.0/crtbeginS.o": "9da301f5baeb19a3cbea8792aaeab0a66ef37b858a709b81afc402096453bb21",
+    "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/lib/gcc/x86_64-pc-linux-gnu/15.3.0/crtendS.o": "e1363f0fd255361209c67e04521b1acd352a81784ae2f4e3868c7eff1124bfcd",
+    "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/lib/gcc/x86_64-pc-linux-gnu/15.3.0/libgcc.a": "2dbbe59c9c7ebea59293f0b25b6824bc8b8d27c16315988c1356399be5fc6e38",
+    "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/lib/gcc/x86_64-pc-linux-gnu/15.3.0/libgcc_s.so": "69a56a9993b7729b29b274e65016031c81f2397f176ed5ad44d59bd50425e0bd",
+    "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/lib/gcc/x86_64-pc-linux-gnu/15.3.0/libgcc_s.so.1": "0cf62504dfb262d72a1fb4fc0403e3536a259de46782965f5fbd0a8e64cd8aa7",
+    "/usr/lib/libstdc++.so.6.0.36": "f5fc7380f2ae46fa4053a64be04e7b98109f1066a4bbfff3c37042488aa0be0e",
+    "/usr/lib/libc.so": "362665345c2d0149815700776a1e3e1a7fff45ab16f32352dbe224c55d12c964",
+    "/usr/lib/libc_nonshared.a": "de2e822b005fc8ab5a2e6c99ad5067ff9e548f495f9e54c6a027506125507430",
+    "/usr/lib/libm.so": "258e8802b225f70a439bbe23d6ecd468a33ce8875a02a52846a7bb5d21ff34c3",
+    "/usr/lib/libpthread.a": "f0a17a43c74d2fe5474fa2fd29c8f14799e777d7d75a2cc4d11c20a6e7b161c5",
+    "/usr/lib/libm.so.6": "965106704753eefe8c31ae7da6daba3ead3d18c52b19b5fcc41178bcc4aa999d",
+    "/usr/lib/libgcc_s.so.1": "e618cb9c90c2eb3a1dad1cfea5b6c1eebcf2e799ad805976f4ae47bdd61c716a",
+    "/usr/lib/libc.so.6": "02c8c3d06180beee9c7d0392aa85736c7d19f274a81e7f8f0b3d9e28e0641524",
+    "/etc/ld.so.cache": "41f26675e24908ed55383ddc252de6a8229708a5b4aea03a59b8bdac5107c97e",
+    "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/bin/g++-15": "7c1ff2182981fb185022a8cdd699abaab64b8ea0965e30855754dd95a6c09d15",
+    "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/bin/gcc-15": "fe3eadc0649563d6c5f522af4a3e548a227c833268bc543bc44d548e3970584f",
+    "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/lib/gcc/x86_64-pc-linux-gnu/15.3.0/cc1": "2c22ea9f2b7a6c24478adcefe67085551bec76ee6dd85957da66b6dbe0bc1afe",
+    "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/lib/gcc/x86_64-pc-linux-gnu/15.3.0/cc1plus": "0db6eff7050e7c1d164562fc9fc430ad7f8208232594cbffb44a3ae4208f2e46",
+    "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/lib/gcc/x86_64-pc-linux-gnu/15.3.0/collect2": "bd5e76856375601d6e2b6dda13f1fd269f1cb807917bcecf723bef70413b1ad2",
+    "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/lib/gcc/x86_64-pc-linux-gnu/15.3.0/liblto_plugin.so": "f6d35bee2348c658d083596ebb380b46928b728931db9ea02ef5d676919eea6f",
+    "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/lib/gcc/x86_64-pc-linux-gnu/15.3.0/lto-wrapper": "c391ea04d0dfadc56ed80d36c38e8dcd985d0f76866fb724189497b8244af9b9",
+    "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/toolchain-gcc15/usr/lib/gcc/x86_64-pc-linux-gnu/15.3.0/lto1": "478cd3b33248225733e9376967101818dc12907ca767873524228588a87ef117",
+    "/usr/bin/as": "3dfdf6007545ea36176c350eef201d1ece55c347a182697bb5f9bac815a1f34b",
+    "/usr/bin/ld": "4d83828f709f0eade25bcae2f4a2508c47db2f01b58daaca5c1c4cefce897847",
+    "/usr/bin/nm": "b16707aadd1c1953f51fa32d462b2d463a54031f7a743d63e8333c6bf3985abd",
+    "/usr/lib/LLVMgold.so": "b625ec2dc537884fc291a6c599a36591bc42c416758cbdd70dfa7993afb0150c",
+    "/usr/lib/bfd-plugins/libdep.so": "ac84fd44d6c650a9de65ab606fdb83b194e2a9c301383610bd971439b0da6ba0",
+    "/usr/lib/gcc/x86_64-pc-linux-gnu/16/liblto_plugin.so": "e59750234603efdc5395849bf15ce45eff1fde35ee5adead588a5c1e723662fe",
+    "/usr/lib/ld-linux-x86-64.so.2": "f5e11cc62f8f2c24dff532982559f4303dba3b17e7450551372a88c8e7ea8757",
+    "/usr/lib/libLLVM.so.23.1": "6598f9f0d097dc813086f1db20322c1ddfd879e23409085fe2ec1123b15990a5",
+    "/usr/lib/libbfd-2.47.so": "730687d04c52164e1386a4e82c587e829747bc375f84fd06de79250655d159fa",
+    "/usr/lib/libctf.so.0.0.0": "efc76fbe2cf2c73101a77fdc2cb09cb81d72e64a40fb45f5f1d44076c13d0450",
+    "/usr/lib/libedit.so.0.0.78": "0bb14cee691695fd88a63c3cea14030ba4973c725239e15c1cd637c39d6a2007",
+    "/usr/lib/libffi.so.8.5.0": "b38bb3a55ba04dfbb5be68e881a72385d6c30010afffb1cf1dfc373b72c2278c",
+    "/usr/lib/libgmp.so.10.5.0": "0e263305fd34434c80b9af2ea34fc6131887418d8301e913b3220953dc9a6e49",
+    "/usr/lib/libicudata.so.78.3": "d72003b08760852bee4c80cff32c1e6248ae6b1fda5bd313482733a4d5e70dc9",
+    "/usr/lib/libicuuc.so.78.3": "c99f0dd0c797c07f9ab64413d36c595393cdded6fa04cc4edd6f6a521fd155ca",
+    "/usr/lib/libisl.so.23.5.0": "98f00d0ab8bbd3e41b7ad99596e06bb79b846c6e736613320d9705e2716013b4",
+    "/usr/lib/libjansson.so.4.15.1": "d8af5bd21fe80114ca9fa747c1d84998af122a49c6ca26276802f1f813f2995e",
+    "/usr/lib/libmpc.so.3.4.1": "2d704dc90ca7cf3ff5bfb43e26625752bcacf35fda71065fb33b9f9012ae3841",
+    "/usr/lib/libmpfr.so.6.2.2": "90043d803c6c205aa842f3e79a54f7c6151ef98ea4964729915d2f9fc584ea25",
+    "/usr/lib/libncursesw.so.6.6": "7498a0b0f75deb5417e109d1853679f1a6b201e52e03b247c914fec0a36e3a5b",
+    "/usr/lib/libsframe.so.3.0.0": "cdac88518dc3eb29fb5766463c4f9c3e6f8c8abb5223df759fc27e5d79b82d33",
+    "/usr/lib/libxml2.so.16.1.4": "5ff12cee1e6992555ba638190cce88a0aab40acad51d5c826f6487888a0160ab",
+    "/usr/lib/libz.so.1.3.2": "6c78c5e58c3bb49a1cd151a95cdf1a17fe07a91a57a59e0279b984c533075ca9",
+    "/usr/lib/libzstd.so.1.5.7": "f023d49e85fb22057bfdd21857263d2638b73356c06f3b342f678a75212379f8",
+    "/home/jake/Projects/nanopore_basecaller_go/artifacts/tensor/backend-closed-plan-005/plan.json": "b2d33b287e9135d85fc3ac6191de33c7aa9e70eda5a029f3a02b89a460b76d7a",
+    "/home/jake/Projects/nanopore_basecaller_go/artifacts/supgpu/host-controls-010/build/plan.json": "f60c9f79cad2a957c65eb892ba6efb9978e1f45a4286602f00d4115edfb9aebf",
+    "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/dependencies/libkoi-0.7.5-Linux-x86_64-cuda-13.0/libkoi-0.7.5-Linux-x86_64-cuda-13.0/include/koi.h": "8b4115c2e92ebf1acf1db2aa76bdc9b3a22768cb595b92363f88e44ff92d3b88",
+    "/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/dependencies/libkoi-0.7.5-Linux-x86_64-cuda-13.0/libkoi-0.7.5-Linux-x86_64-cuda-13.0/include/koi_thread_pool.h": "65da8f3cd7cd0e0fe3c1ba713c92ecc952dfdbd948b7f87968f261bcc5622619",
+    "/opt/cuda/targets/x86_64-linux/include/crt/host_runtime.h": "0db6fe73f95ae49dbd3f74d174d3f1a1bd1f1908805a2f335cd5a372a178b947",
+    "/opt/cuda/targets/x86_64-linux/include/crt/device_functions.h": "754c95d8c4ade837b779272c101848a4af994dea470ca91ba1910d17b6f1b18c",
+    "/opt/cuda/targets/x86_64-linux/include/cuda_runtime_api.h": "2c6732345e9662d91733f5e45fa9c76c955640ef02c4bf17ceb7f1bcc209d3de"
+  },
+  "OutputToken": "{OUT}",
+  "RuntimeHeld": true,
+  "OracleRunsHeld": true,
+  "Scope": "Two verification TUs and three original objects. No algorithm substitution. No CUDA DSO/driver library. Metadata queries, compilation and link only."
+}

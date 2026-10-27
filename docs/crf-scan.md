@@ -2,7 +2,7 @@
 
 `internal/crf` gives Go ownership of Dorado's forward and backward guide loops,
 transition index construction, reverse-time scheduling, and posterior scheduling.
-Native calls perform individual tensor operations through tensor ABI 2. There
+Native calls perform individual tensor operations through the maintained tensor ABI. There
 is no native production CRF scan or whole-decoder wrapper.
 
 ## Interface and storage
@@ -13,13 +13,22 @@ type Result struct {
 	Scores, Forward, Backward, Posts []float32
 }
 func Compute(context.Context, *tensor.Engine, *tensor.Tensor, float32) (Result, error)
+func ComputeBatch(context.Context, *tensor.Engine, *tensor.Tensor, float32) ([]Result, error)
 func (Result) DecodeInput() decode.Input
 ```
 
 `Compute` accepts CPU float32 scores in `[T,1,4*States]` order and a finite blank
-score. It currently supports exactly one batch. `States` is an exact integer
+score. It supports exactly one lane and continues to reject N>1. `States` is an exact integer
 power of four in `[4,16384]`. `T` is positive. Scores and all three guide result
 arrays together are bounded to `2^27` float32 elements before allocation.
+
+`ComputeBatch` accepts `[T,N,4*States]` with N=1..4 and one shared blank score.
+It narrows dimension 1 and calls `Compute` serially for each lane. The returned
+slice preserves lane order. Each result owns its N=1 scores, guides, and posteriors.
+No tensor view escapes. Any error or cancellation returns nil results, including
+a failure after an earlier lane completed. The aggregate bound is
+`N*(7*T+3)*States <= 2^27` float32 elements, checked before allocation with division.
+A synchronous tensor operation finishes before the next cancellation check.
 
 The returned `Scores` array is contiguous `[T,4*States]`. `Forward`, `Backward`,
 and `Posts` are contiguous `[T+1,States]`. All returned arrays own their storage.
@@ -63,6 +72,11 @@ Go stores completed rows in owned arrays and retains only the current guide
 row during a scan. The original source's unfilled `-1E38` rows are never read by
 this schedule. Posterior values come from `Softmax(Forward + Backward, -1)` with
 the same shapes and operation order as the original source.
+
+CPUDecoder.cpp lines 99 through 155 use `min(num_chunks,4)` workers. With two
+to four real chunks, each worker scans one N=1 lane and stores the result at its
+original chunk index. This justifies composing independent N=1 scans for N<=4.
+It does not establish general batched scan arithmetic or caller batching.
 
 ## Oracle and acceptance
 
@@ -113,35 +127,69 @@ initially lacked the Torch namespace and parallel declarations needed by the
 extracted initialization. Adding the dependency headers corrected that failure.
 The extracted source statements remained unchanged.
 
-## Reproduction commands
+## Producer-free replay
 
-These commands run from the Go repository root. Paths to the original checkout
-and existing model score capture are read-only. The oracle writes only beneath
-the new repository's ignored artifact directory. Choose a fresh output name.
+The maintained command defaults to `-mode replay`. It requires the retained
+check-002 attempt and never builds or executes an oracle. Fixed build and run
+receipt hashes anchor the retained inputs, executable, extracted source,
+headers, raw command logs, and all four output stages. Replay verifies the
+qualified backend manifest, binary, and every declared runtime dependency before
+loading the backend. Missing or changed pins fail without a producer fallback.
+Fixture 65's score bytes also match the embedded HAC score pin.
+
+`TestRetainedBatchParity` repeats each retained fixture into N=1..4 lanes and
+compares every lane's scores, forward, backward, and posterior bits with the
+retained N=1 outputs. `TestNativeBatchComposition` separately compares distinct
+lanes and permutations with independent Go singles using one shared blank.
+These are composition checks. They do not produce new native batch evidence.
+Rejection tests mutate fresh copies, leaving genuine artifacts unchanged.
+
+Run from the Go repository root with a fresh output directory:
 
 ```sh
-go test ./internal/crf ./verification/crf/...
-
-go run ./verification/crf/check \
-	-backend artifacts/tensor/attempt-004/libnanopore_tensor.so \
-	-source /home/jake/Projects/nanopore_basecaller/software/dorado-src \
-	-out artifacts/crf/check-next
+GOMAXPROCS=2 GOMEMLIMIT=3GiB GOPROXY=off GOSUMDB=off \
+	go run ./verification/crf/check -mode replay \
+	-backend /home/jake/Projects/nanopore_basecaller_go/artifacts/tensor/attempt-004/libnanopore_tensor.so \
+	-source "$PWD/external/dorado-source" \
+	-retained /home/jake/Projects/nanopore_basecaller_go/artifacts/crf/check-002/native-attempts/attempt-20261023T023747.033251747Z \
+	-out artifacts/crf/replay-next
 ```
 
-The direct native gate is also available.
+Add `-preflight-only` to verify pins and backend loading without running the test
+suite. Use a writable `GOCACHE` in a restricted worker sandbox. The command retains
+clocks, exit codes, environment overrides, raw logs, and SHA256 hashes. Ordinary
+and CGO-disabled tests run without native opt-in variables. The historical
+producer path requires explicit `-mode native-produce`, or
+`CRF_ORACLE_MODE=native-produce` for `TestNativeScanParity`.
 
-```sh
-NANOPORE_TENSOR_BACKEND="$PWD/artifacts/tensor/attempt-004/libnanopore_tensor.so" \
-DORADO_SOURCE=/home/jake/Projects/nanopore_basecaller/software/dorado-src \
-CRF_ARTIFACT_DIR="$PWD/artifacts/crf/direct" \
-	go test -count=1 -v ./internal/crf
-```
+The retained backend is ABI2. Current main requires ABI4; the implementation
+worktree required ABI5. The initial lane-composition preflight verified retained pins but failed backend loading with
+`unsupported tensor ABI version 2`. Consequently the new batch differential,
+native composition, and lifetime tests remain unexecuted here. A compatible
+qualified backend and explicit evidence linkage are required before accepting
+this extension. Changing the tensor ABI or rebuilding dependencies is outside
+this unit.
 
-Ordinary tests explicitly skip native parity when those variables are absent.
-The maintained check command requires them and records separate contracts.
-It performs one native oracle execution for the fixture set. Its race command
-runs validation and cancellation checks without repeating the oracle producer.
+The historical N=1 acceptance above remains separate. General batched scan
+parity, direct CPUDecoder multi-chunk wrapper parity, N>4, CPU caller batching,
+GPU execution, full reads, biological accuracy, and performance remain open.
 
-This unit qualifies the CPU13 float32 scan algorithm over its supported input
-contract. It does not qualify stock CUDA12.8 CPU compatibility, GPU execution,
-batched scans, full read processing, biological accuracy, or performance.
+## Source checkpoint
+
+The source checkpoint `d7e14b421b8e71d2e7e82229943aab64cc446f3c` passed the
+ordinary suite with 363 root passes and 62 opt-in root skips. The maintained CPU
+core gate passed 46 root tests without skips; its package list excludes CRF.
+A separate CGO-disabled retained-data run passed three root tests and 12 subtests
+without skips. The combined receipt SHA256 is
+`95455b485be079b282089942b7322f4682d4c0c7887f3d573502b572837f5986`.
+Raw evidence remains under ignored `artifacts/herdr-crf-source-001/`.
+
+Two independent Sol XHigh processes requested backend authentication before
+expected-stage access. The correction moves the existing verification block
+before all retained-data reads. Its ordering regression fails on the original
+source and passes after the move. Focused retained controls then pass four root
+tests and 12 subtests without skips. The red and green attempts remain preserved
+in task `t-bb36dd`; no native producer or backend load ran in those controls.
+This is evidence for source behavior and retained-byte checks. The numerical
+and lifetime acceptance limits above remain open. Same-family review provides
+no cross-model validation.

@@ -2,6 +2,7 @@
 // translation unit. Every operation validates before enqueueing, keeps the
 // reviewed synchronous-drain contract, and retains every owner until the drain
 // completes. Dtypes mirror the pinned Koi type ids (koi.h:3).
+#include "storage_byte_interval.h"
 namespace {
 #ifdef NT_ENABLE_CUDA
 size_t storage_dtype_size(uint32_t dtype) {
@@ -97,7 +98,11 @@ size_t storage_bytes(const std::shared_ptr<CUDAStorageRecord>& p) {
 void storage_overlap(const std::shared_ptr<CUDAStorageRecord>& a, const std::shared_ptr<CUDAStorageRecord>& b, nt_cuda_detail* d, const char* why) {
     if (a->allocation != b->allocation) return;
     d->handle = a->id;
-    cuda_require(a->end <= b->offset || b->end <= a->offset, NT_CUDA_LAYOUT, why);
+    StorageByteInterval a_bytes, b_bytes;
+    cuda_require(checked_storage_byte_interval(a->offset, a->end, storage_dtype_size(a->dtype), a_bytes) &&
+                         checked_storage_byte_interval(b->offset, b->end, storage_dtype_size(b->dtype), b_bytes),
+                 NT_CUDA_LAYOUT, "storage byte interval overflow or invalid endpoints");
+    cuda_require(storage_byte_intervals_disjoint(a_bytes, b_bytes), NT_CUDA_LAYOUT, why);
 }
 #endif
 }  // namespace
@@ -187,8 +192,8 @@ int nt_cuda_storage_reinterpret(uint64_t e, uint64_t parent_id, uint32_t dtype, 
         storage_tags(tags, rank);
 #ifdef NT_ENABLE_CUDA
         auto parent = cuda_storage(e, parent_id, d);
-        auto psz = int64_t(storage_dtype_size(parent->dtype));
-        auto nsz = int64_t(storage_dtype_size(dtype));
+        auto psz = storage_dtype_size(parent->dtype);
+        auto nsz = storage_dtype_size(dtype);
         d->handle = parent_id;
         d->actual_dtype = parent->dtype;
         d->expected_dtype = dtype;
@@ -196,29 +201,29 @@ int nt_cuda_storage_reinterpret(uint64_t e, uint64_t parent_id, uint32_t dtype, 
         // strided parent has no single byte interval to reinterpret.
         cuda_require(parent->tensor.is_contiguous(), NT_CUDA_LAYOUT,
                      "reinterpret parent must be contiguous");
-        auto start_byte = int64_t(parent->offset) * psz + int64_t(offset_elements) * nsz;
-        cuda_require(start_byte >= 0 && start_byte % nsz == 0, NT_CUDA_LAYOUT,
-                     "reinterpret offset is not a whole element of the new dtype");
-        auto start = uint64_t(start_byte / nsz);
+        StorageByteInterval parent_bytes;
+        uint64_t start = 0;
+        cuda_require(checked_storage_byte_interval(parent->offset, parent->end, psz, parent_bytes) &&
+                             checked_storage_reinterpret_offset(parent_bytes, nsz, offset_elements, start),
+                     NT_CUDA_LAYOUT, "reinterpret offset is invalid or exceeds the parent byte interval");
         auto end = storage_end(shape, strides, rank, start);
-        auto parent_bytes = uint64_t(parent->end) * uint64_t(psz);
-        cuda_require(end <= parent_bytes / uint64_t(nsz), NT_CUDA_LAYOUT,
+        cuda_require(end <= parent_bytes.end / nsz, NT_CUDA_LAYOUT,
                      "reinterpret view exceeds the parent byte interval");
         auto p = std::make_shared<CUDAStorageRecord>(*parent);
         p->id = fresh();
         p->dtype = dtype;
         p->offset = start;
         p->end = end;
-        p->storage = parent_bytes / uint64_t(nsz);
+        p->storage = parent_bytes.end / nsz;
         for (size_t i = 0; i < rank; ++i) p->tags[i] = tags[i];
         auto flat = parent->tensor.view(storage_scalar(dtype));
         p->tensor = flat.as_strided(at::IntArrayRef(shape, rank), at::IntArrayRef(strides, rank),
-                                    flat.storage_offset() + int64_t(offset_elements));
+                                    int64_t(start));
         engines.at(e).storages.emplace(p->id, p);
         *out = p->id;
 #else
         (void)parent_id; (void)dtype; (void)offset_elements; (void)strides;
-        throw CUDAFailure(NT_CUDA_UNSUPPORTED, "ABI4 backend built without CUDA");
+        throw CUDAFailure(NT_CUDA_UNSUPPORTED, "ABI5 backend built without CUDA");
 #endif
     });
 }

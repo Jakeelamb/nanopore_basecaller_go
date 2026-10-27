@@ -1,0 +1,30 @@
+{
+  "schema": "nanopore-hac-vcs-aux-baseline/v1",
+  "head": "3c88e3442940f3b69f5a00fbe762c602b7527199",
+  "dorado_head": "8b8fc5d36a9c0baab262a743cb175b5878e38ca6",
+  "canonical_root": "/home/jake/Projects/nanopore_basecaller_go",
+  "boundary_note": {
+    "path": "artifacts/parity-resume-review-20261024/hac-vcs-native-boundary.md",
+    "sha256": "0086c7d9cc5e063fb2dc4e336924903e0a2693987b74a33d2f09b16f85168061"
+  },
+  "baseline_files": {
+    "go.mod": "deb61467e360b3f0feecbd6b6ab41e80ae069bb4010a21431c057484b0ecfcf0",
+    "internal/gpubatch/aux.go": "9fe27a68c8a8e37cbb76c526081acdd1c44bb8bc80169f9069e74aad4121c646",
+    "internal/gpubatch/aux_test.go": "263b2ce9efce12d934fd57b84deb9ddd8f5a8a455c1d77eba8409c48c4606b1c",
+    "internal/gpubatch/batch.go": "44ab794110436c2a87ab34de8173b4a0fabad2202c0587a9f9bc86cedf79428b",
+    "internal/gpubatch/batch_test.go": "8912fa6acbf64934bc0419e67768381cfd95f29a379a6839f8dec9124994164a"
+  },
+  "owned_paths": [
+    "internal/gpubatch/lstm_packing.go",
+    "internal/gpubatch/lstm_packing_test.go",
+    "internal/gpubatch/aux.go",
+    "verification/hacvcsaux/",
+    "docs/gpu-caller/hac-vcs-aux.md"
+  ],
+  "native_objects": {
+    "utils_lstm.cpp.o": "7598a9c75f9b4d3f3936e3871a31155a8e4b63c417017b7f5b2132db96051243",
+    "utils_lstm.cu.o": "ce998c4411202c7c1c1d6240bad5677dfb8c1d69118355bf9affef6170045117"
+  },
+  "archive_sha256": "17cf3083c5db538f1e275b0a41ac19560b5986c143634e8a25540b9735f5805f",
+  "execution_status": "held"
+}

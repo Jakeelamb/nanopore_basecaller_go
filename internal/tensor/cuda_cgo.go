@@ -25,6 +25,8 @@ func (b *nativeBackend) cuda(q cudaRequest) (cudaResult, error) {
 		return err
 	}
 	switch q.op {
+	case "sup_primitive":
+		code = C.nt_call_cuda_sup_primitive(b.library, b.id, C.uint64_t(q.stream), C.uint32_t(q.supGeometry), C.uint32_t(q.supOp), C.int32_t(q.supSelector), (*C.uint64_t)(unsafe.Pointer(&q.sup[0])), C.size_t(q.count), C.float(q.supAlpha), &d, &buf[0], C.NT_ERROR_CAP)
 	case "device_open":
 		code = C.nt_call_cuda_device_open(b.library, b.id, C.int32_t(q.ordinal), &id, &d, &buf[0], C.NT_ERROR_CAP)
 	case "device_close":
@@ -83,6 +85,50 @@ func (b *nativeBackend) cuda(q cudaRequest) (cudaResult, error) {
 		if code == 0 {
 			r.koiResult = int32(koi)
 		}
+	case "storage_gemm_f16":
+		code = C.nt_call_cuda_storage_gemm_f16(b.library, b.id, C.uint64_t(q.stream), C.uint64_t(q.a), C.uint64_t(q.b), C.uint64_t(q.out), &d, &buf[0], C.NT_ERROR_CAP)
+	case "decoder_beam_program":
+		if q.count < 0 || q.count > 16*1024*1024 {
+			return r, &LayoutError{Op: q.op, Reason: "decoder cubin extent exceeds bound"}
+		}
+		var count C.size_t
+		var data *C.uint8_t
+		if q.count > 0 {
+			r.bytes = make([]byte, q.count)
+			data = (*C.uint8_t)(unsafe.Pointer(&r.bytes[0]))
+		}
+		code = C.nt_call_cuda_decoder_beam_program(b.library, b.id, C.uint64_t(q.device), data, C.size_t(q.count), &count, &d, &buf[0], C.NT_ERROR_CAP)
+		if uint64(count) > 16*1024*1024 {
+			return r, &LayoutError{Op: q.op, Reason: "decoder cubin extent exceeds bound"}
+		}
+		r.count = int(count)
+	case "decoder_beam_numbers":
+		code = C.nt_call_cuda_decoder_beam_numbers(b.library, b.id, C.uint64_t(q.stream), C.uint32_t(q.beamOp), C.uint64_t(q.beam[0]), C.uint64_t(q.beam[1]), C.uint64_t(q.beam[2]), C.uint64_t(q.out), C.float(q.guideClamp), C.float(q.guideBlank), &d, &buf[0], C.NT_ERROR_CAP)
+	case "decoder_guide_program":
+		if q.count < 0 || q.count > 16*1024*1024 {
+			return r, &LayoutError{Op: q.op, Reason: "decoder cubin extent exceeds bound"}
+		}
+		var count C.size_t
+		var data *C.uint8_t
+		if q.count > 0 {
+			r.bytes = make([]byte, q.count)
+			data = (*C.uint8_t)(unsafe.Pointer(&r.bytes[0]))
+		}
+		code = C.nt_call_cuda_decoder_guide_program(b.library, b.id, C.uint64_t(q.device), data, C.size_t(q.count), &count, &d, &buf[0], C.NT_ERROR_CAP)
+		if uint64(count) > 16*1024*1024 {
+			return r, &LayoutError{Op: q.op, Reason: "decoder cubin extent exceeds bound"}
+		}
+		r.count = int(count)
+	case "decoder_post_numbers":
+		code = C.nt_call_cuda_decoder_post_numbers(b.library, b.id, C.uint64_t(q.stream), C.uint32_t(q.decoderPostOp), C.uint64_t(q.a), C.uint64_t(q.b), C.uint64_t(q.out), C.uint64_t(q.decoderPostAux), C.float(q.guideClamp), C.float(q.guideBlank), &d, &buf[0], C.NT_ERROR_CAP)
+	case "decoder_guide_frame":
+		code = C.nt_call_cuda_decoder_guide_frame(b.library, b.id, C.uint64_t(q.stream), C.uint64_t(q.a), C.uint64_t(q.b), C.uint64_t(q.out), C.float(q.guideClamp), C.float(q.guideBlank), &d, &buf[0], C.NT_ERROR_CAP)
+	case "lstm_step_f16":
+		code = C.nt_call_cuda_lstm_step_f16(b.library, b.id, C.uint64_t(q.stream), C.uint64_t(q.bias), C.uint64_t(q.a), C.uint64_t(q.b), C.uint64_t(q.out), C.int32_t(q.n), &d, &buf[0], C.NT_ERROR_CAP)
+	case "factorised_linear":
+		code = C.nt_call_cuda_factorised_linear(b.library, b.id, C.uint64_t(q.stream), C.uint64_t(q.output[0]), C.uint64_t(q.output[1]), C.uint64_t(q.output[2]), C.uint64_t(q.output[3]), C.uint64_t(q.output[4]), C.uint64_t(q.output[5]), C.int64_t(q.outputN), C.int64_t(q.outputT), C.int32_t(q.parity), C.float(q.outputScale), &d, &buf[0], C.NT_ERROR_CAP)
+	case "factorised_lstm":
+		code = C.nt_call_cuda_factorised_lstm(b.library, b.id, C.uint64_t(q.stream), (*C.uint64_t)(unsafe.Pointer(&q.flstm[0])), C.int32_t(q.n), C.int32_t(q.tIn), C.int32_t(q.direction), C.int32_t(q.parity), &d, &buf[0], C.NT_ERROR_CAP)
 	case "linear_f16":
 		var koi C.int32_t
 		code = C.nt_call_cuda_linear_f16(b.library, b.id, C.uint64_t(q.stream), C.uint64_t(q.in), C.uint64_t(q.weights), C.uint64_t(q.bias), C.uint64_t(q.out), C.int32_t(q.n), C.int32_t(q.tOut), C.int32_t(q.k), C.int32_t(q.cOut), C.int32_t(q.inNStride), C.int32_t(q.inStride1), C.int32_t(q.outNStride), C.int32_t(q.outTStride), C.uint32_t(q.activation), C.uint32_t(q.inType), C.uint32_t(q.outType), &koi, &d, &buf[0], C.NT_ERROR_CAP)

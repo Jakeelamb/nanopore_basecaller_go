@@ -102,10 +102,7 @@ int nt_cuda_conv_small_f16(uint64_t e, uint64_t stream_id, uint64_t in_id, uint6
         cuda_require(ot.stride(0) == out_n_stride && ot.stride(1) == c_out && ot.stride(2) == 1,
                      NT_CUDA_LAYOUT, "small convolution output batch stride differs from the view");
         for (auto p : {in, w, b}) {
-            d->handle = out->id;
-            cuda_require(p->allocation != out->allocation || p->end <= out->offset ||
-                                 out->end <= p->offset,
-                         NT_CUDA_LAYOUT, "small convolution output overlaps an input interval");
+            storage_overlap(out, p, d, "small convolution output overlaps an input interval");
         }
         auto act = conv_activation(activation);
         c10::cuda::CUDAStreamGuard guard(c10::cuda::getStreamFromExternal(s->stream, s->device->ordinal));
@@ -122,7 +119,7 @@ int nt_cuda_conv_small_f16(uint64_t e, uint64_t stream_id, uint64_t in_id, uint6
         (void)stream_id; (void)in_id; (void)weight_id; (void)bias_id; (void)out_id;
         (void)n; (void)c_in; (void)c_out; (void)t_in; (void)window; (void)stride;
         (void)padding; (void)out_n_stride; (void)activation;
-        throw CUDAFailure(NT_CUDA_UNSUPPORTED, "ABI4 backend built without CUDA");
+        throw CUDAFailure(NT_CUDA_UNSUPPORTED, "ABI5 backend built without CUDA");
 #endif
     });
 }
@@ -183,7 +180,7 @@ int nt_cuda_weights_permute_cast_f16(uint64_t e, uint64_t stream_id, uint64_t we
         });
 #else
         (void)stream_id; (void)weight_id; (void)bias_id; (void)packed_id; (void)packed_bias_id;
-        throw CUDAFailure(NT_CUDA_UNSUPPORTED, "ABI4 backend built without CUDA");
+        throw CUDAFailure(NT_CUDA_UNSUPPORTED, "ABI5 backend built without CUDA");
 #endif
     });
 }

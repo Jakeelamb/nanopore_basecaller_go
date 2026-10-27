@@ -469,6 +469,33 @@ func (s shortWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+func TestWriterCloseRejectsShortEOF(t *testing.T) {
+	dst := &shortEOFWriter{}
+	w := NewWriter(dst)
+	if err := w.WriteHeader(testHeader()); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); !errors.Is(err, io.ErrShortWrite) {
+		t.Fatalf("close: got %v, want %v", err, io.ErrShortWrite)
+	}
+	if err := w.Close(); !errors.Is(err, io.ErrShortWrite) {
+		t.Fatalf("second close: got %v, want %v", err, io.ErrShortWrite)
+	}
+	if dst.eofWrites != 1 {
+		t.Fatalf("EOF writes: got %d, want 1", dst.eofWrites)
+	}
+}
+
+type shortEOFWriter struct{ eofWrites int }
+
+func (w *shortEOFWriter) Write(p []byte) (int, error) {
+	if bytes.Equal(p, bgzfEOF) {
+		w.eofWrites++
+		return len(p) - 1, nil
+	}
+	return len(p), nil
+}
+
 func TestStoredBlockFallback(t *testing.T) {
 	// Incompressible data forces the stored-block path.
 	data := make([]byte, bgzfBlockData)

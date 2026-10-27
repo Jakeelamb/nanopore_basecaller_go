@@ -1,10 +1,33 @@
 # SUP QKV int8 arithmetic capture
 
-`verification/koiquant` prepares, captures, imports, and compares the native QKV int8 cache boundary. Native execution is currently held for the reference and retrieval priority pass. The new C++ adapter remains uncompiled. No CPU or CUDA arithmetic capture exists for this unit.
+`verification/koiquant` prepares, captures, imports, and compares the native QKV int8 cache boundary. The retained CPU producer completed on 2026-10-23. CUDA capture completed on 2026-10-25 using that exact executable. Both 31-fixture captures pass host import and replay, including genuine metadata and corruption rejection. Independent review remains pending.
 
 This unit has no production Go quantizer. Its replay checks retained raw observations and metadata on the host. Passing replay does not establish Go arithmetic parity, Koi kernel use, biological accuracy, or performance.
 
-The input is the saved unrounded half buffer `[3,8,64,512]`. The intended final outputs are int8 `[3,8,4,32,16,16]` and float32 reciprocal scales `[3,8,64]`. Expected stage dtypes remain source hypotheses until native execution.
+The input is the saved unrounded half buffer `[3,8,64,512]`. Both captures verify final int8 `[3,8,4,32,16,16]` and float32 reciprocal scales `[3,8,64]` storage. This observes source arithmetic, not a production Go implementation.
+
+## Retained CPU evidence
+
+The raw producer manifest is `artifacts/koiquant/attempt-native-cpu-001/raw-manifest.json`, SHA256 `61a028d0837e966019054291427c39a424a0e512b4566475e175f7b9dd8f1f09`. Host import revalidated its source, runtime, command and payload pins without repeating the producer. The exhaustive table covers 31,743 unique finite positive half ranges, with 25,599 finite scales and 6,144 overflowing scales. The Go diagnostic half-scale and reciprocal checks have zero mismatches on this CPU capture. These diagnostics do not qualify a production quantizer or CUDA arithmetic.
+
+| Attempt | Result |
+| --- | --- |
+| `artifacts/resume-koiquant-import-20261024-001` | Rejected output-directory name before import; retained |
+| `artifacts/resume-koiquant-import-20261024-002` | All 31 observations imported and validated |
+| `artifacts/resume-koiquant-replay-20261024-001` | Genuine bridge passed; corruption test failed on a cross-filesystem hard link |
+| `artifacts/resume-koiquant-replay-20261024-002` | Genuine bridge and corruption rejection passed after copying test payloads |
+
+The replay receipt is `artifacts/koiquant/attempt-resume-replay-cpu-20261024-002/replay-manifest.json`. Both required tests passed with no skips. The corruption test now checks that every mutation changes the metadata and selects the observed device string for both CPU and CUDA captures. The saved producer and failed replay remain unchanged.
+
+## CUDA comparison
+
+`artifacts/koiquant/attempt-native-cuda-resume-20261024-001/raw-manifest.json` retains 470 output pins and six successful child commands. The producer reused the CPU executable with SHA256 `4a5c636212df97fa924d878eaa3aac0621335223d0cd60700916789b5e006f9c`; it did not recompile or run a model. The canonical host lock covers the invocation under the existing program-wide grant in `provenance/gpu-admission-grant.json`.
+
+Only the host replay test had changed since preparation. The recorded invocation temporarily restored that test's saved producer version to preserve the exact producer source closure, then restored the corrected consumer test. Both source hashes match before and after. The script and hashes are retained in `artifacts/koiquant/resume-cuda-command-20261024/`.
+
+The CUDA replay receipt is `artifacts/koiquant/attempt-resume-replay-cuda-20261024-001/replay-manifest.json`. The comparison receipt is `artifacts/koiquant/attempt-resume-comparison-20261024-001/manifest.json`, covering 434 stage pairs. The genuine buffer and all exhaustive finite-range fixtures match at every stage. Both runtimes classify 25,599 finite scales and 6,144 overflowing scales across the 31,743 positive finite half ranges, with zero Go diagnostic scale or reciprocal mismatches. All 1,536 genuine rows have finite positive scales and reciprocal values.
+
+Four fixtures differ in NaN representations at intermediate boundaries: `all-half-patterns`, `infinities`, `nans`, and `signed-zero`. These differences remain recorded. Int8 tile bytes match on every fixture, while nonfinite reciprocal bits differ on the NaN fixtures. Zero ranges, nonfinite inputs and overflowing half scales remain outside the proposed finite-scale production domain. A future Go quantizer must reject those rows explicitly and pass its own differential against these saved CUDA stages.
 
 ## Prepare source and retained inputs
 
@@ -50,15 +73,15 @@ The fixture list contains 31 full-size inputs. The original ten cover the genuin
 
 Classification reports finite, zero-range, subnormal, and nonfinite input rows. It separately records native scale infinities, finite-input overflow, NaNs, zero scales, reciprocal classes, and potential domain admission. Differences in native reduction, widening, Go diagnostic half division, and Go diagnostic reciprocal bits are retained. Go diagnostics reuse `internal/signal/half.go`. They are not a production implementation or an assumed CUDA contract. The exhaustive table indexes the original input range even if a native reduction differs.
 
-## Native admission and held commands
+## Native admission and reproduction
 
-Do not run these commands while the priority hold remains active. The coordinator must first release the bounded native invocation after current process and resource intake. A free lock or an admission flag alone does not lift that hold.
+The historical reference/retrieval hold preceded the program-wide grant recorded in `provenance/gpu-admission-grant.json`. Every new invocation still needs current process/resource intake and canonical lock ownership. A free lock or an admission flag alone does not override another owner's active reservation.
 
 Capture requires the exact accepted basic runtime receipt and its matching CUDA13 build. Their SHA256 values are `15ca5c4a0cda12af18a430cf7763efa2bf78590636aa501892b9106d53c9beae` and `f41faaed7ba863f3d16c5a5f08cb373bf588794ec73fe25d1620359863b9d0dd`. The backend pin is `d70b612b442e8449b2357d12284705bd82b30cdfa7316358a29ad1c800c9e3d7`. Admission trusts this accepted receipt, rather than repeating historical runtime tests.
 
 Before every compiler, producer, or GPU query, the command requires explicit admission, exact qualification, and the existing stock lock. It opens `/home/jake/Projects/nanopore_basecaller/results/stock/host.lock` without creation or truncation and takes `LOCK_EX | LOCK_NB`. It holds the file through compilation, diagnostics, capture, and raw receipt storage. Missing admission, invalid qualification, or a held lock launch zero external commands.
 
-The planned sequence compiles one executable during CPU capture. CUDA reuses that exact binary, dependency closure, and source pins. Each declared fixture runs once per runtime. The build uses the accepted Torch CUDA13 archive and `/opt/cuda`, whose actual toolkit version and headers are recorded separately. This is not stock CUDA12 qualification.
+The completed sequence compiled one executable during CPU capture. CUDA reused that exact binary, dependency closure, and source pins. Each declared fixture ran once per runtime. The build uses the accepted Torch CUDA13 archive and `/opt/cuda`, whose actual toolkit version and headers are recorded separately. This is not stock CUDA12 qualification. Reuse the retained captures above for downstream work.
 
 ```sh
 /tmp/koiquant \
@@ -110,4 +133,4 @@ Raw half, int8, and float32 bytes remain outside Git. CPU and CUDA observations 
 
 Replay builds a Go test executable with `CGO_ENABLED=0` and runs exactly `TestCaptureMetadataBridge` and `TestCapturedRawRejection`. Both must run and pass once, without skips. Replay records the binary and current source pins separately and initializes no GPU. Ordinary tests use explicitly synthetic storage metadata. An admitted replay supplies the retained raw capture, imports its genuine fixture, and corrupts a temporary metadata copy for rejection. Those tests validate capture handoff and rejection, not production Go arithmetic.
 
-The Model the Domain principle keeps fixtures, stages, storage widths, and receipt identities in closed tables and types. The source checkpoint is preparation, gated execution code, retained-output import, metadata rejection, and pure Go checks. Native compilation, real handoff, CPU arithmetic, CUDA arithmetic, finite-range observations, and the production arithmetic decision remain open.
+The Model the Domain principle keeps fixtures, stages, storage widths, and receipt identities in closed tables and types. The independent review at `artifacts/parity-resume-review-20261024/s01-review.md` accepts the bounded source observations and test correction. Its admitted production candidate domain requires finite row values and absolute row maximum half bits `0x1801..0x7bff`. Production Go arithmetic, domain rejection and its own differential remain open. Exhaustive row maxima do not exhaust arbitrary 512-value row combinations.

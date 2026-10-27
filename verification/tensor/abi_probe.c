@@ -9,7 +9,7 @@ static int failed(const char* message) {
 }
 
 int main(int argc,char** argv) {
-    if(argc!=2) return failed("expected one ABI 4 library path");
+    if(argc!=2) return failed("expected one ABI 5 library path");
     void* library=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);
     if(!library) return failed(dlerror());
     uint32_t (*version)(void);
@@ -72,6 +72,6 @@ int main(int argc,char** argv) {
     if(sdpa(engine,tensor,tensor,tensor,NULL,0,NULL,0,&out,NULL,31)==0 || out!=UINT64_MAX) return failed("null error buffer accepted");
     if(close_engine(engine,error,sizeof(error))) return failed(error);
     dlclose(library);
-    puts("ABI 4 direct C exception checks passed");
+    puts("ABI 5 direct C exception checks passed");
     return 0;
 }

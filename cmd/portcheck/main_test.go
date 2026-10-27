@@ -157,3 +157,49 @@ func TestCodeChangeInvalidatesInputIdentity(t *testing.T) {
 		t.Fatal("source change did not invalidate identity")
 	}
 }
+
+func TestSessionArtifactsExcludedFromInputIdentity(t *testing.T) {
+	root := t.TempDir()
+	tasks := filepath.Join(root, ".humanlayer", "tasks")
+	if err := os.MkdirAll(tasks, 0700); err != nil {
+		t.Fatal(err)
+	}
+	code := filepath.Join(root, "caller.go")
+	if err := os.WriteFile(code, []byte("package caller"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	before, err := hashInputs(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(t.TempDir(), filepath.Join(tasks, "session")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tasks, "metadata.json"), []byte("{}"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	after, err := hashInputs(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sameJSON(before, after) {
+		t.Fatal("session artifacts changed source identity")
+	}
+	config := filepath.Join(root, ".humanlayer", "workspace.json")
+	if err := os.WriteFile(config, []byte("{}"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	withConfig, err := hashInputs(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if withConfig[filepath.ToSlash(config)] != digest([]byte("{}")) {
+		t.Fatal("workspace configuration outside task artifacts was excluded")
+	}
+	if err := os.Symlink(code, filepath.Join(root, "source.go")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := hashInputs(root); err == nil {
+		t.Fatal("source symlink outside task artifacts was accepted")
+	}
+}

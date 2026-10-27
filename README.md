@@ -77,6 +77,7 @@ status, raw logs, native fixtures and hashes under ignored `artifacts/parity/`.
 It reuses successful evidence only when the identity and retained outputs match.
 `--refresh` forces a new attempt. Skipped or missing native tests fail acceptance.
 Failed attempts remain separate. Code changes during a run invalidate it.
+Session artifacts under `.humanlayer/tasks/` are excluded from the code identity; source symlinks elsewhere remain rejected.
 This command qualifies the listed CPU-core packages. Tensor and model integration
 have separate native acceptance commands and cannot inherit the CPU-core verdict.
 

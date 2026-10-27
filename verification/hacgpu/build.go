@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 )
@@ -33,6 +32,36 @@ type BuildOptions struct {
 	BuildDir     string
 	DoradoSource string
 	Out          string
+	// Source is the oracle translation unit, relative to the repository root.
+	// An empty value selects the H01 stage oracle. Each card that needs its own
+	// observation publishes its own pinned source instead of editing a file whose
+	// SHA an earlier capture manifest already pins.
+	Source string
+}
+
+// OracleBuildToolchain describes the retained CMake compiler and link inputs.
+// Paths and arguments retain their build-directory interpretation.
+type OracleBuildToolchain struct {
+	Compiler                     string
+	Includes, Defines, Libraries []string
+}
+
+// OracleToolchain reads build metadata without compiling or loading a library.
+func OracleToolchain(buildDir string) (OracleBuildToolchain, error) {
+	return OracleToolchainForSource(buildDir, "basecall/model/CRFModel.cpp")
+}
+
+// OracleToolchainForSource selects the stock flags for one source-file suffix.
+func OracleToolchainForSource(buildDir, sourceSuffix string) (OracleBuildToolchain, error) {
+	compiler, includes, defines, err := compilerInvocationForSource(buildDir, sourceSuffix)
+	if err != nil {
+		return OracleBuildToolchain{}, err
+	}
+	libraries, err := linkLibraries(buildDir)
+	if err != nil {
+		return OracleBuildToolchain{}, err
+	}
+	return OracleBuildToolchain{Compiler: compiler, Includes: includes, Defines: defines, Libraries: libraries}, nil
 }
 
 // compileEntry mirrors one record of compile_commands.json.
@@ -79,6 +108,11 @@ func BuildOracle(o BuildOptions) (BuildManifest, error) {
 	source, err := abs(filepath.Join("verification", "hacgpu", "native", "oracle.cpp"))
 	if err != nil {
 		return m, err
+	}
+	if o.Source != "" {
+		if source, err = abs(o.Source); err != nil {
+			return m, err
+		}
 	}
 	if err = os.MkdirAll(o.Out, 0o755); err != nil {
 		return m, err
@@ -165,6 +199,13 @@ func tail(s string, lines int) string {
 // compilerInvocation extracts the C++ compiler and the include/define flags the
 // qualified build used for a stock basecall translation unit.
 func compilerInvocation(buildDir string) (string, []string, []string, error) {
+	return compilerInvocationForSource(buildDir, "basecall/model/CRFModel.cpp")
+}
+
+func compilerInvocationForSource(buildDir, sourceSuffix string) (string, []string, []string, error) {
+	if sourceSuffix == "" {
+		return "", nil, nil, fmt.Errorf("source-file suffix is required")
+	}
 	raw, err := os.ReadFile(filepath.Join(buildDir, "compile_commands.json"))
 	if err != nil {
 		return "", nil, nil, err
@@ -175,16 +216,21 @@ func compilerInvocation(buildDir string) (string, []string, []string, error) {
 	}
 	var chosen *compileEntry
 	for i := range entries {
-		if strings.HasSuffix(entries[i].File, "basecall/model/CRFModel.cpp") {
+		if strings.HasSuffix(entries[i].File, sourceSuffix) {
+			if chosen != nil {
+				return "", nil, nil, fmt.Errorf("compile_commands.json has multiple %s entries", sourceSuffix)
+			}
 			chosen = &entries[i]
-			break
 		}
 	}
 	if chosen == nil {
-		return "", nil, nil, fmt.Errorf("compile_commands.json has no CRFModel.cpp entry")
+		return "", nil, nil, fmt.Errorf("compile_commands.json has no %s entry", sourceSuffix)
 	}
-	fields := splitCommand(chosen.Command)
-	if len(fields) == 0 {
+	fields, err := splitCommand(chosen.Command)
+	if err != nil {
+		return "", nil, nil, err
+	}
+	if len(fields) == 0 || fields[0] == "" {
 		return "", nil, nil, fmt.Errorf("empty compile command")
 	}
 	var includes, defines []string
@@ -238,16 +284,66 @@ func linkLibraries(buildDir string) ([]string, error) {
 	return fields, nil
 }
 
-var quoteSplit = regexp.MustCompile(`'[^']*'|"[^"]*"|\S+`)
-
 // splitCommand splits a shell command line, preserving quoted -D values.
-func splitCommand(line string) []string {
+// It tokenizes literal arguments without expanding variables or running a shell.
+func splitCommand(line string) ([]string, error) {
 	var out []string
-	for _, token := range quoteSplit.FindAllString(line, -1) {
-		if len(token) >= 2 && (token[0] == '\'' || token[0] == '"') {
-			token = token[1 : len(token)-1]
+	var token strings.Builder
+	var quote byte
+	started := false
+	for i := 0; i < len(line); i++ {
+		c := line[i]
+		if quote == '\'' {
+			if c == '\'' {
+				quote = 0
+			} else {
+				token.WriteByte(c)
+			}
+			continue
 		}
-		out = append(out, token)
+		if c == '\\' {
+			if i+1 == len(line) {
+				return nil, fmt.Errorf("trailing escape in compile command")
+			}
+			next := line[i+1]
+			if quote == '"' && next != '"' && next != '$' && next != '`' && next != '\\' && next != '\n' {
+				token.WriteByte(c)
+				continue
+			}
+			i++
+			if next != '\n' {
+				token.WriteByte(next)
+				started = true
+			}
+			continue
+		}
+		if quote == '"' {
+			if c == '"' {
+				quote = 0
+			} else {
+				token.WriteByte(c)
+			}
+			continue
+		}
+		switch c {
+		case '\'', '"':
+			quote, started = c, true
+		case ' ', '\t', '\n':
+			if started {
+				out = append(out, token.String())
+				token.Reset()
+				started = false
+			}
+		default:
+			token.WriteByte(c)
+			started = true
+		}
 	}
-	return out
+	if quote != 0 {
+		return nil, fmt.Errorf("unterminated quote in compile command")
+	}
+	if started {
+		out = append(out, token.String())
+	}
+	return out, nil
 }
