@@ -111,6 +111,9 @@ func sourceHashes(root string) (map[string]string, error) {
 	return pins, nil
 }
 func TestNativeScanParity(t *testing.T) {
+	if os.Getenv("CRF_ORACLE_MODE") != "native-produce" {
+		t.Skip("native oracle production requires CRF_ORACLE_MODE=native-produce; use retained replay otherwise")
+	}
 	library, source, root := os.Getenv("NANOPORE_TENSOR_BACKEND"), os.Getenv("DORADO_SOURCE"), os.Getenv("CRF_ARTIFACT_DIR")
 	if library == "" || source == "" || root == "" {
 		t.Skip("source-linked CPU CRF parity skipped; set NANOPORE_TENSOR_BACKEND, DORADO_SOURCE and CRF_ARTIFACT_DIR")
@@ -322,5 +325,84 @@ func TestNativeValidationAndCancellation(t *testing.T) {
 	}
 	if _, err := Compute(context.Background(), e, valid, 2); !errors.Is(err, tensor.ErrClosed) {
 		t.Fatalf("closed engine: %v", err)
+	}
+}
+
+func TestRetainedBatchParity(t *testing.T) {
+	if os.Getenv("CRF_ORACLE_MODE") != "replay" {
+		t.Skip("retained replay requires CRF_ORACLE_MODE=replay")
+	}
+	source, library, retained, root := os.Getenv("DORADO_SOURCE"), os.Getenv("NANOPORE_TENSOR_BACKEND"), os.Getenv("CRF_RETAINED_ATTEMPT"), os.Getenv("CRF_ARTIFACT_DIR")
+	if source == "" || library == "" || retained == "" || root == "" {
+		t.Fatal("replay requires DORADO_SOURCE, NANOPORE_TENSOR_BACKEND, CRF_RETAINED_ATTEMPT, CRF_ARTIFACT_DIR")
+	}
+	if err := os.MkdirAll(root, 0755); err != nil {
+		t.Fatal(err)
+	}
+	attempt := filepath.Join(root, time.Now().UTC().Format("replay-20060102T150405.000000000Z"))
+	if err := os.Mkdir(attempt, 0755); err != nil {
+		t.Fatal(err)
+	}
+	stats := struct {
+		Status                                   string
+		Qualification                            string
+		Fixtures, Batches, Lanes, Stages, Floats int
+		Inputs, Source                           map[string]string
+	}{Status: "failed", Qualification: "retained original-source N=1 evidence reused for N=1..4 repeated-lane composition; no new native capture"}
+	defer func() {
+		if !t.Failed() {
+			stats.Status = "passed"
+		}
+		if err := saveJSON(filepath.Join(attempt, "replay.json"), stats); err != nil {
+			t.Error(err)
+		}
+	}()
+	fixtures, pins, err := crforacle.Replay(source, library, retained)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stats.Inputs = pins
+	repo, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stats.Source, err = sourceHashes(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := engine(t)
+	for _, f := range fixtures {
+		t.Run(f.Name, func(t *testing.T) {
+			for n := 1; n <= 4; n++ {
+				data := make([]float32, len(f.Scores)*n)
+				channels := 4 * f.States
+				for time := 0; time < f.Blocks; time++ {
+					for lane := 0; lane < n; lane++ {
+						copy(data[(time*n+lane)*channels:], f.Scores[time*channels:(time+1)*channels])
+					}
+				}
+				x, err := e.NewFloat32([]int64{int64(f.Blocks), int64(n), int64(channels)}, data)
+				if err != nil {
+					t.Fatal(err)
+				}
+				results, err := ComputeBatch(context.Background(), e, x, f.Blank)
+				closeErr := x.Close()
+				if err := errors.Join(err, closeErr); err != nil {
+					t.Fatal(err)
+				}
+				if len(results) != n {
+					t.Fatalf("N=%d got %d results", n, len(results))
+				}
+				want := Result{Blocks: f.Blocks, States: f.States, Scores: f.Expected["scores"], Forward: f.Expected["forward"], Backward: f.Expected["backward"], Posts: f.Expected["posts"]}
+				for _, got := range results {
+					assertResultBits(t, got, want)
+					stats.Lanes++
+					stats.Stages += 4
+					stats.Floats += len(got.Scores) + len(got.Forward) + len(got.Backward) + len(got.Posts)
+				}
+				stats.Batches++
+			}
+			stats.Fixtures++
+		})
 	}
 }
