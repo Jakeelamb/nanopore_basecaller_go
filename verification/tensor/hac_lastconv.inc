@@ -160,10 +160,7 @@ int nt_cuda_conv_koi_f16(uint64_t e, uint64_t stream_id, uint64_t in_id, uint64_
                              ot.stride(2) == 1,
                      NT_CUDA_LAYOUT, "last convolution output strides differ from the view");
         for (auto p : {in, w, b}) {
-            d->handle = out->id;
-            cuda_require(p->allocation != out->allocation || p->end <= out->offset ||
-                                 out->end <= p->offset,
-                         NT_CUDA_LAYOUT, "last convolution output overlaps an input interval");
+            storage_overlap(out, p, d, "last convolution output overlaps an input interval");
         }
         auto act = lastconv_activation(activation);
         auto koi_in = lastconv_type(in_type);
@@ -186,7 +183,7 @@ int nt_cuda_conv_koi_f16(uint64_t e, uint64_t stream_id, uint64_t in_id, uint64_
         (void)n; (void)t_in; (void)c_in; (void)c_out; (void)window; (void)stride;
         (void)padding; (void)in_n_stride; (void)out_n_stride; (void)out_t_stride;
         (void)activation; (void)in_type; (void)out_type; (void)accum_type;
-        throw CUDAFailure(NT_CUDA_UNSUPPORTED, "ABI4 backend built without CUDA");
+        throw CUDAFailure(NT_CUDA_UNSUPPORTED, "ABI5 backend built without CUDA");
 #endif
     });
 }
@@ -251,10 +248,7 @@ int nt_cuda_linear_f16(uint64_t e, uint64_t stream_id, uint64_t in_id, uint64_t 
                              ot.stride(2) == 1,
                      NT_CUDA_LAYOUT, "linear output strides differ from the view");
         for (auto p : {in, w, b}) {
-            d->handle = out->id;
-            cuda_require(p->allocation != out->allocation || p->end <= out->offset ||
-                                 out->end <= p->offset,
-                         NT_CUDA_LAYOUT, "linear output overlaps an input interval");
+            storage_overlap(out, p, d, "linear output overlaps an input interval");
         }
         auto act = lastconv_activation(activation);
         auto koi_in = lastconv_type(in_type);
@@ -272,7 +266,7 @@ int nt_cuda_linear_f16(uint64_t e, uint64_t stream_id, uint64_t in_id, uint64_t 
         (void)stream_id; (void)in_id; (void)weight_id; (void)bias_id; (void)out_id;
         (void)size0; (void)size1; (void)k; (void)c_out; (void)in_stride0; (void)in_stride1;
         (void)out_stride0; (void)out_stride1; (void)activation; (void)in_type; (void)out_type;
-        throw CUDAFailure(NT_CUDA_UNSUPPORTED, "ABI4 backend built without CUDA");
+        throw CUDAFailure(NT_CUDA_UNSUPPORTED, "ABI5 backend built without CUDA");
 #endif
     });
 }

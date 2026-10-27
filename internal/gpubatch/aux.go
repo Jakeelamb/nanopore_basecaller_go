@@ -74,6 +74,17 @@ func (a *Aux) Sizes() []int         { return append([]int(nil), a.sizes...) }
 func (a *Aux) SizesOut() []int      { return append([]int(nil), a.sizesOut...) }
 func (a *Aux) TLSTM() int           { return a.tLSTM }
 
+func (a *Aux) PackLSTM() (LSTMPacking, error) {
+	if a == nil || a.cfg.Lane != HAC {
+		return LSTMPacking{}, fmt.Errorf("LSTM packing is HAC-only")
+	}
+	workspace, err := a.Workspace()
+	if err != nil {
+		return LSTMPacking{}, err
+	}
+	return packLSTM(a.cfg.BatchSize, a.tLSTM, workspace, a.sizesOut)
+}
+
 // DeviceTable is the flattened int32 table the transformer lane uploads. The
 // pinned source scales both columns by the chunk granularity.
 func (a *Aux) DeviceTable() ([]int32, error) {

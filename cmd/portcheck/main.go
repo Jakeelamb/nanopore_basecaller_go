@@ -275,6 +275,9 @@ func hashInputs(root string) (map[string]string, error) {
 		if err != nil {
 			return err
 		}
+		if path == filepath.Join(root, ".humanlayer", "tasks") && entry.IsDir() {
+			return filepath.SkipDir
+		}
 		if entry.IsDir() {
 			switch entry.Name() {
 			case ".git", "artifacts", "bin", "external":

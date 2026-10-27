@@ -91,7 +91,7 @@ run below; it reads files only.
 go test -json -count=1 ./internal/model -run '^TestHACGPUMemory$'
 ```
 
-Receipt at the committed head: exit 0, 25 `pass` events, 0 `fail`, 0 `skip`,
+Receipt at the earlier source checkpoint: exit 0, 25 `pass` events, 0 `fail`, 0 `skip`,
 package elapsed 0.003s. `TestHACGPUMemory` runs all of the following:
 
 | Subtest | What it pins |
@@ -136,6 +136,28 @@ is the restored one.
 The differential is also effective against a wrong source rule: changing CUTLASS
 to `T+3`, `CUBLAS_TN2C` to `T+2`, or the alignment to 128 makes the
 differential fail with a reservation mismatch against the oracle.
+
+## First-extent bounds correction
+
+`WorkingMemory.cpp:42-44` checks `current_bytes + new_bytes` against the reservation even when no current tensor exists. The Go replay previously skipped that check until the first `NextTC` succeeded, accepting an oversized initial tensor or any oversized scratch allocation before a current tensor. The replay now applies the source guard unconditionally, before binding or invalidating any view. A rejected allocation leaves the traversal unchanged and can be retried with a fitting extent.
+
+`TestHACGPUMemory/UnderReservationBeforeCurrent` covers initial current and scratch allocations, both directly and after a leading scratch allocation. The original two cases failed before the fix with an accepted oversized extent. `FuzzHACGPUMemoryInitialBounds` checks first-extent containment and oversized rejection across all six source layouts and raw scratch. These are host checks, not native planner qualification.
+
+Retained command receipts (each includes clocks, exit, raw output and output hashes):
+
+| Attempt | Result |
+| --- | --- |
+| `artifacts/hac-arena-bounds-red-001` | Expected failure: oversized first current and scratch accepted |
+| `artifacts/hac-arena-bounds-green-001` | Planner tests and fuzz seeds pass |
+| `artifacts/hac-arena-bounds-fuzz-001` | Bounded fuzz run passes |
+| `artifacts/hac-arena-bounds-suite-002` | `go test ./...` passes |
+| `artifacts/hac-arena-source-pins-001` | HAC stage source hashes, including `WorkingMemory.cpp`, verified |
+| `artifacts/hac-arena-parity-preflight-failed-001` | Preserved preflight failure on session-artifact symlink |
+| `artifacts/portcheck-session-red-001` | Expected failure reproducing the session-artifact blocker |
+| `artifacts/portcheck-session-green-001` | Task-artifact exclusion passes; source symlinks still reject |
+| `artifacts/hac-arena-parity-001` | Maintained CPU-core parity command passes |
+
+The CPU-core receipt is `artifacts/parity/2cce0a0373bf5458-2836927899/receipt.json`. That command does not qualify this GPU planner, CUDA kernels, or a complete caller. No GPU inference or capture was run for this correction.
 
 ## Limits
 

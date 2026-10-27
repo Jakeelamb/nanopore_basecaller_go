@@ -50,7 +50,7 @@ PY
   echo "$name: $observed"
 }
 
-mutate overlap 'cuda_require(a->end <= b->offset || b->end <= a->offset, NT_CUDA_LAYOUT, why);' 'if (false) cuda_require(a->end <= b->offset || b->end <= a->offset, NT_CUDA_LAYOUT, why);'
+mutate overlap 'cuda_require(storage_byte_intervals_disjoint(a_bytes, b_bytes), NT_CUDA_LAYOUT, why);' 'if (false) cuda_require(storage_byte_intervals_disjoint(a_bytes, b_bytes), NT_CUDA_LAYOUT, why);'
 mutate owner-release 'if (item.second->scale_owner == id) {' 'if (false && item.second->scale_owner == id) {'
 mutate scale-dtype 'cuda_require(p->dtype == NT_DTYPE_I8, NT_CUDA_DTYPE, "Koi scale owner requires an I8 tensor");' 'if (false) cuda_require(p->dtype == NT_DTYPE_I8, NT_CUDA_DTYPE, "Koi scale owner requires an I8 tensor");'
 mutate contiguity 'cuda_require(p->tensor.is_contiguous(), NT_CUDA_LAYOUT, why);' 'if (false) cuda_require(p->tensor.is_contiguous(), NT_CUDA_LAYOUT, why);'

@@ -81,7 +81,10 @@ size_t elements(const int64_t* dims, size_t rank) {
 #include "cuda_backend.h"
 #include "cuda_storage.inc"
 #include "hac_smallconv.inc"
+#include "sup_primitive.inc"
 #include "hac_lastconv.inc"
+#include "hac_flstm.inc"
+#include "hac_output.inc"
 extern "C" {
 uint32_t nt_version() { return NT_ABI_VERSION; }
 int nt_open(uint64_t* out, char* err, size_t cap) {
@@ -194,3 +197,8 @@ int nt_sdpa(uint64_t e,uint64_t q_id,uint64_t k_id,uint64_t v_id,const int64_t* 
     });
 }
 }
+
+#include "hac_lstm_step.inc"
+#include "decoder_guide.inc"
+#include "decoder_beam.inc"
+#include "decoder_posts.inc"

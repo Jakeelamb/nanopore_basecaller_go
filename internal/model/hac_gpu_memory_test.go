@@ -336,6 +336,77 @@ func TestHACGPUMemory(t *testing.T) {
 		}
 	})
 
+	t.Run("UnderReservationBeforeCurrent", func(t *testing.T) {
+		for _, c := range []struct {
+			name           string
+			scratch        bool
+			leadingScratch bool
+		}{
+			{name: "current"},
+			{name: "scratch", scratch: true},
+			{name: "current-after-scratch", leadingScratch: true},
+			{name: "scratch-after-scratch", scratch: true, leadingScratch: true},
+		} {
+			t.Run(c.name, func(t *testing.T) {
+				plan, err := NewGPUMemoryPlan(1)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if c.leadingScratch {
+					if err := plan.Temp([]int64{256}, GPUDtypeInt8); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if c.scratch {
+					err = plan.Temp([]int64{256}, GPUDtypeInt8)
+				} else {
+					err = plan.NextTC(1, 128, GPUStorageNTC, GPUOrientationForward)
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				reservation, err := plan.Reserve()
+				if err != nil {
+					t.Fatal(err)
+				}
+				use := reservation.Use()
+				if c.leadingScratch {
+					if _, err := use.Temp([]int64{256}, GPUDtypeInt8); err != nil {
+						t.Fatal(err)
+					}
+				}
+				before, peakBefore := use.Views(), use.PeakLiveBytes()
+				if c.scratch {
+					_, err = use.Temp([]int64{257}, GPUDtypeInt8)
+				} else {
+					_, err = use.NextTC(1, 129, GPUStorageNTC, GPUOrientationForward)
+				}
+				if !errors.Is(err, ErrGPUPlanOverlap) {
+					t.Fatalf("oversized extent before current accepted: %v", err)
+				}
+				if !slices.Equal(use.Views(), before) || use.PeakLiveBytes() != peakBefore {
+					t.Fatal("rejected extent changed the use traversal")
+				}
+				for _, view := range before {
+					if err := use.Alive(view); err != nil {
+						t.Fatalf("rejected extent invalidated scratch: %v", err)
+					}
+				}
+				if c.scratch {
+					_, err = use.Temp([]int64{256}, GPUDtypeInt8)
+				} else {
+					_, err = use.NextTC(1, 128, GPUStorageNTC, GPUOrientationForward)
+				}
+				if err != nil {
+					t.Fatalf("retry within reservation: %v", err)
+				}
+				if err := use.Finish(); err != nil {
+					t.Fatal(err)
+				}
+			})
+		}
+	})
+
 	t.Run("Overlap", func(t *testing.T) {
 		plan, err := NewGPUMemoryPlan(1)
 		if err != nil {
@@ -637,6 +708,66 @@ func TestHACGPUMemory(t *testing.T) {
 		}
 		if scratch.Bytes != GPUWorkingMemoryAlignment || scratch.LiveBytes != 1 {
 			t.Fatalf("minimum scratch bytes %d live %d", scratch.Bytes, scratch.LiveBytes)
+		}
+	})
+}
+
+func FuzzHACGPUMemoryInitialBounds(f *testing.F) {
+	for layout := uint8(0); layout <= uint8(GPUStorageRaw); layout++ {
+		f.Add(layout, uint8(1), uint16(1), uint16(128), uint16(129))
+		f.Add(layout, uint8(3), uint16(17), uint16(129), uint16(128))
+	}
+	f.Fuzz(func(t *testing.T, layoutID, batchID uint8, timeID, reservedC, usedC uint16) {
+		layout := GPUStorageLayout(layoutID % uint8(GPUStorageRaw+1))
+		batch, time := int64(batchID%8)+1, int64(timeID%256)+1
+		reserveChannels, useChannels := int64(reservedC%2048)+1, int64(usedC%2048)+1
+		plan, err := NewGPUMemoryPlan(batch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var geometry GPUStorageGeometry
+		var geometryErr error
+		if layout == GPUStorageRaw {
+			err = plan.Temp([]int64{reserveChannels}, GPUDtypeInt8)
+			geometry, geometryErr = NewGPUScratchGeometry(GPUDtypeInt8, useChannels)
+		} else {
+			err = plan.NextTC(time, reserveChannels, layout, GPUOrientationReverse)
+			geometry, geometryErr = NewGPUStorageGeometry(layout, batch, time, useChannels)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if geometryErr != nil {
+			t.Fatal(geometryErr)
+		}
+		reservation, err := plan.Reserve()
+		if err != nil {
+			t.Fatal(err)
+		}
+		use := reservation.Use()
+		var view GPUView
+		if layout == GPUStorageRaw {
+			view, err = use.Temp([]int64{useChannels}, GPUDtypeInt8)
+		} else {
+			view, err = use.NextTC(time, useChannels, layout, GPUOrientationReverse)
+		}
+		if geometry.Bytes > reservation.Bytes {
+			if !errors.Is(err, ErrGPUPlanOverlap) {
+				t.Fatalf("oversized first extent: geometry=%+v reservation=%d err=%v", geometry, reservation.Bytes, err)
+			}
+			if len(use.Views()) != 0 {
+				t.Fatal("rejected first extent became a bound view")
+			}
+			return
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if view.Offset != 0 || view.End > reservation.Bytes || view.End != geometry.Bytes {
+			t.Fatalf("first extent outside reservation %d: %+v", reservation.Bytes, view)
+		}
+		if err := use.Finish(); err != nil {
+			t.Fatal(err)
 		}
 	})
 }

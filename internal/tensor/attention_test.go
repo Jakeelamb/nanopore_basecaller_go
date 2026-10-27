@@ -47,7 +47,7 @@ func assertAttentionBits(t *testing.T, got *Tensor, want attentionSnapshot) {
 
 func TestNativeAttentionPrimitives(t *testing.T) {
 	e := nativeEngine(t)
-	dir := filepath.Dir(os.Getenv("NANOPORE_TENSOR_BACKEND"))
+	dir := nativeFixtureDirectory()
 	path := filepath.Join(dir, "attention-reference.json")
 	raw, err := os.ReadFile(path)
 	if err != nil {

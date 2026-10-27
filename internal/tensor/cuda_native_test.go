@@ -26,7 +26,7 @@ func TestNativeCUDAUnsupported(t *testing.T) {
 	_, err := e.NewCUDADevice(0)
 	var unavailable *CUDAUnsupportedError
 	if !errors.As(err, &unavailable) || !errors.Is(err, ErrCUDAUnavailable) {
-		t.Fatalf("CPU-only ABI4 CUDA error: %v", err)
+		t.Fatalf("CPU-only ABI5 CUDA error: %v", err)
 	}
 	if _, err := e.NewCUDADevice(-1); err == nil {
 		t.Fatal("negative ordinal accepted")
@@ -392,7 +392,7 @@ func TestNativeCloseFailureRetainsLibrary(t *testing.T) {
 	body := `#include <stdint.h>
 #include <stddef.h>
 #include <stdio.h>
-uint32_t nt_version(void){return 4;}
+uint32_t nt_version(void){return 5;}
 int nt_open(uint64_t* out,char* e,size_t cap){(void)e;(void)cap;*out=1;return 0;}
 int nt_close(uint64_t id,char* e,size_t cap){(void)id;static int attempts=0;if(++attempts==1){snprintf(e,cap,"injected drain failure");return 1;}return 0;}
 `
@@ -400,7 +400,7 @@ int nt_close(uint64_t id,char* e,size_t cap){(void)id;static int attempts=0;if(+
 		"nt_cuda_storage_new", "nt_cuda_storage_view", "nt_cuda_storage_meta", "nt_cuda_storage_upload",
 		"nt_cuda_storage_download", "nt_cuda_storage_copy", "nt_cuda_storage_fill", "nt_cuda_storage_scale",
 		"nt_cuda_storage_release", "nt_cuda_conv_small_f16", "nt_cuda_weights_permute_cast_f16",
-		"nt_cuda_conv_koi_f16", "nt_cuda_linear_f16", "nt_cuda_storage_reinterpret"} {
+		"nt_cuda_conv_koi_f16", "nt_cuda_linear_f16", "nt_cuda_storage_reinterpret", "nt_cuda_factorised_lstm", "nt_cuda_factorised_linear", "nt_cuda_storage_gemm_f16", "nt_cuda_lstm_step_f16", "nt_cuda_decoder_guide_program", "nt_cuda_decoder_guide_frame", "nt_cuda_decoder_beam_program", "nt_cuda_decoder_beam_numbers", "nt_cuda_decoder_post_numbers", "nt_cuda_sup_primitive"} {
 		body += "void " + name + "(void){}\n"
 	}
 	if err := os.WriteFile(source, []byte(body), 0600); err != nil {

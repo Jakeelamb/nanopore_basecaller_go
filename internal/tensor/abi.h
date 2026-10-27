@@ -2,7 +2,7 @@
 #define NANOPORE_TENSOR_ABI_H
 #include <stddef.h>
 #include <stdint.h>
-#define NT_ABI_VERSION 4
+#define NT_ABI_VERSION 5
 #define NT_ERROR_CAP 2048
 #ifdef __cplusplus
 extern "C" {
@@ -143,6 +143,22 @@ int nt_cuda_linear_f16(uint64_t engine, uint64_t stream,
  int32_t in_stride0, int32_t in_stride1, int32_t out_stride0, int32_t out_stride1,
  uint32_t activation, uint32_t in_type, uint32_t out_type,
  int32_t *koi_result, nt_cuda_detail *detail, char *error, size_t error_cap);
+int nt_cuda_factorised_lstm(uint64_t engine, uint64_t stream, const uint64_t *operands, int32_t n, int32_t t, int32_t direction, int32_t parity, nt_cuda_detail *detail, char *error, size_t error_cap);
+/* ABI 5 requires explicit SUP geometry and all decoder numeric symbols. */
+enum nt_sup_geometry { NT_SUP_GEOMETRY_TINY=1, NT_SUP_GEOMETRY_FULL=2, NT_SUP_GEOMETRY_SHORT=3 };
+enum nt_sup_primitive { NT_SUP_COPY_STRIDED=1, NT_SUP_CONV_SILU, NT_SUP_QUANTIZE_ROWS,
+ NT_SUP_SINCOS, NT_SUP_LINEAR, NT_SUP_QKV_ROTARY, NT_SUP_MASKED_ATTENTION,
+ NT_SUP_PROJECTION, NT_SUP_NORM1, NT_SUP_SWIGLU, NT_SUP_FC2, NT_SUP_NORM2 };
+int nt_cuda_sup_primitive(uint64_t engine, uint64_t stream, uint32_t geometry, uint32_t operation, int32_t selector, const uint64_t *operands, size_t count, float alpha, nt_cuda_detail *detail, char *error, size_t error_cap);
+int nt_cuda_factorised_linear(uint64_t engine, uint64_t stream, uint64_t input, uint64_t down_weight, uint64_t down_scale, uint64_t down, uint64_t up_weight, uint64_t output, int64_t n, int64_t t, int32_t parity, float scale, nt_cuda_detail *detail, char *error, size_t error_cap);
+int nt_cuda_storage_gemm_f16(uint64_t engine, uint64_t stream, uint64_t a, uint64_t b, uint64_t out, nt_cuda_detail *detail, char *error, size_t error_cap);
+int nt_cuda_decoder_beam_program(uint64_t engine, uint64_t device, uint8_t *bytes, size_t capacity, size_t *written, nt_cuda_detail *detail, char *error, size_t error_cap);
+int nt_cuda_decoder_beam_numbers(uint64_t engine, uint64_t stream, uint32_t operation, uint64_t a, uint64_t b, uint64_t c, uint64_t out, float clamp, float blank, nt_cuda_detail *detail, char *error, size_t error_cap);
+int nt_cuda_decoder_guide_program(uint64_t engine, uint64_t device, uint8_t *bytes, size_t capacity, size_t *written, nt_cuda_detail *detail, char *error, size_t error_cap);
+int nt_cuda_decoder_guide_frame(uint64_t engine, uint64_t stream, uint64_t scores, uint64_t next, uint64_t out, float clamp, float blank, nt_cuda_detail *detail, char *error, size_t error_cap);
+int nt_cuda_decoder_post_numbers(uint64_t engine, uint64_t stream, uint32_t operation, uint64_t a, uint64_t b, uint64_t out, uint64_t aux, float clamp, float blank, nt_cuda_detail *detail, char *error, size_t error_cap);
+int nt_cuda_lstm_step_f16(uint64_t engine, uint64_t stream, uint64_t bias, uint64_t gates, uint64_t cell, uint64_t out, int32_t n, nt_cuda_detail *detail, char *error, size_t error_cap);
+
 #ifdef __cplusplus
 }
 #endif
