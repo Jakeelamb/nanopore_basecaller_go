@@ -54,7 +54,7 @@ uint64_t put_indices(Tensors& ts, at::Tensor tensor) {
 template<class F> int boundary(char* error, size_t cap, F f) noexcept {
     if (!error || cap == 0) return 1;
     error[0] = 0;
-    try { std::lock_guard<std::mutex> lock(mutex); c10::InferenceMode guard; f(); return 0; }
+    try { std::lock_guard<std::mutex> lock(mutex); initialize_tensor_runtime(); c10::InferenceMode guard; f(); return 0; }
     catch (const std::exception& ex) {
         auto n = std::min(cap-1, std::strlen(ex.what()));
         std::memcpy(error, ex.what(), n); error[n] = 0;
@@ -88,7 +88,7 @@ size_t elements(const int64_t* dims, size_t rank) {
 extern "C" {
 uint32_t nt_version() { return NT_ABI_VERSION; }
 int nt_open(uint64_t* out, char* err, size_t cap) {
-    return boundary(err,cap,[&]{ require(out, "null output"); initialize_tensor_runtime(); auto id=fresh(); engines.emplace(id,EngineRecord{}); *out=id; });
+    return boundary(err,cap,[&]{ require(out, "null output"); auto id=fresh(); engines.emplace(id,EngineRecord{}); *out=id; });
 }
 int nt_close(uint64_t e, char* err, size_t cap) {
     return boundary(err,cap,[&]{ engine(e); close_engine_cuda(e); engines.erase(e); });

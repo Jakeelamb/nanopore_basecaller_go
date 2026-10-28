@@ -11,5 +11,11 @@ inline void initialize_tensor_runtime() {
         at::globalContext().setDeterministicFillUninitializedMemory(false);
         at::globalContext().setDeterministicAlgorithms(true,false);
     });
+    // CGo can enter on an OS thread that did not establish the global policy.
+    static thread_local const bool initialized = [] {
+        at::init_num_threads();
+        return true;
+    }();
+    (void)initialized;
 }
 #endif
