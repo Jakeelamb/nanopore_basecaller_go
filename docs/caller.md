@@ -11,11 +11,17 @@ Production does not invoke Dorado, Python, or a basecalling subprocess.
 The admitted models are the exact pinned
 `dna_r10.4.1_e8.2_400bps_hac@v6.0.0` configuration with 50 weights and
 `dna_r10.4.1_e8.2_400bps_sup@v5.2.0` with 139 consumed weights.
-GPU execution, RNA, modified bases, barcodes, rapid-kit processing, BAM output,
+The CPU CLI emits FASTQ. RNA, modified bases, barcodes, rapid-kit processing,
 and automatic chemistry or model selection are unsupported. Requested trimming
 or splitting rejects every kit except `SQK-LSK114` before inference. With both
 stages disabled, the existing core DNA 5000Hz kit and flow-cell admission remains.
 The native MUX step still runs in every mode.
+
+The separate [GPU caller implementation](gpu-caller/production-run.md) includes
+HAC and SUP graphs, cross-read batching, and FASTQ or BAM output in source.
+No production GPU bundle has been approved. `--device cuda:0` therefore rejects
+startup before model or POD5 initialization. The instructions below use the
+working CPU path; they do not qualify GPU execution or BAM output from it.
 
 ## API and lifetime
 
@@ -42,7 +48,9 @@ HAC chunk sizes must be multiples of stride 6 from 6 through 12,288, with
 overlap a smaller multiple of 6. SUP chunk sizes must be multiples of 768 from
 768 through 12,288, with overlap a smaller multiple of its inner stride 12.
 The CLI defaults to explicit 12,288 and 600 values. These bounds limit the CPU working
-set. The backend uses its qualified one-thread initialization.
+set. The native boundary establishes process settings once and calls public
+`at::init_num_threads()` once per entering OS thread. Go calls can migrate
+between threads without permanent OS-thread locking or OpenMP environment flags.
 
 `Call` and `Replay` preserve the post-MUX core endpoint for producer verification
 and experiments. `Process` and `ReplayProcessed` add postprocessing. Their private
@@ -118,14 +126,29 @@ and protocol clocks. `verification/caller/oracle.go` pins all these sources.
 
 ## Run one selected read
 
+The command requires the pinned model, input, and qualified CPU libraries at the
+listed paths. From the repository root, first build the CPU-only ABI5 library
+with the [tensor rebuild procedure](tensor-backend.md#rebuild-and-verify).
+That procedure uses pinned local source and Torch assets. Complete its native
+check before treating a new library as qualified. The retained current ABI5
+HAC and SUP CLI runs and the maintained native checker pass after the thread fix.
+These results cover the frozen development parent and bounded tensor contracts. See
+[current CPU evidence](cpu-abi5-acceptance.md) and
+[backend preparation](backend-readiness.md)
+for the separately required local POD5 assets.
+For SUP, use the pinned SUP model directory instead. Both models use the same
+explicit chunk size and overlap below.
+
 ```sh
+CPU_TENSOR_LIBRARY="$PWD/artifacts/tensor/abi5-cpu/libnanopore_tensor.so"
 go build -o bin/basecaller ./cmd/basecaller
+mkdir -p artifacts/caller
 
 bin/basecaller \
   --model /home/jake/Projects/nanopore_basecaller/models/dna_r10.4.1_e8.2_400bps_hac@v6.0.0 \
   --pod5 /home/jake/Projects/nanopore_basecaller/data/raw/HG002/PAW70337/PAW70337_66b2eea5_de8117b1_33.pod5 \
   --read-id bb76c31a-36f0-48a0-abd2-107a10e1ade0 \
-  --tensor-library artifacts/tensor/attempt-005-sup-abi3/libnanopore_tensor.so \
+  --tensor-library "$CPU_TENSOR_LIBRARY" \
   --pod5-library external/backend/pod5/lib/libpod5_format.so \
   --device cpu --chunksize 12288 --overlap 600 \
   --capture artifacts/caller/new-capture > called.fastq
@@ -146,12 +169,17 @@ The flags control independent stages.
 All modes apply the five-base minimum. The source default minimum Q is literal
 zero, so Q filtering is disabled. No minimum-Q CLI extension is exposed.
 Zero emitted records is a successful result when every child is filtered.
-FASTQ is the only stdout content. Errors, final capture paths, and input and
-output counts go to stderr. An error returns a nonzero status and retains
+On the CPU path, FASTQ is the only stdout content. Errors, final capture paths,
+and input and output counts go to stderr. An error returns a nonzero status and retains
 partial captures. Each input's complete final records and capture precede its
 stdout write. A later input failure preserves earlier completed output.
 
 ## Capture and replay
+
+The CLI accepts CPU core and processed manifests. The separate sealed GPU
+decoded-read replay API is not connected to this CLI, and GPU production rejects
+`--capture`. A sealed GPU capture establishes integrity, not authentic GPU
+execution. See the [GPU run boundary](gpu-caller/production-run.md).
 
 A capture records model config bytes, the interpreted model spec, all consumed weight
 pins, the tensor-library hash, chunk settings, and beam options. Each read has
@@ -223,6 +251,20 @@ the complete final manifest exists. A crash before publication can leave an
 ignored temporary file. This contract does not guarantee directory durability
 after power loss. A retry uses a new sidecar directory and leaves prior files
 intact.
+
+## Current ABI5 CPU endpoint
+
+The 2026-10-28 ABI5 backend with per-thread initialization passes fresh HAC and
+SUP CLI runs on the same frozen HG002 parent. Both outputs match the unchanged
+stock headers, sequences, qualities, and complete FASTQ bytes. Capture replay
+also matches. Cached default processing reuses these fresh captures and passes
+all four flag modes for both models, including the retained 1,615-base HAC and
+1,619-base SUP defaults. No inference is repeated for that postcall check.
+
+The [current evidence](cpu-abi5-acceptance.md) records paths, hashes, the original
+OpenMP abort, the corrected foreign-thread probe, and remaining acceptance.
+The maintained native checker also passes with the corrected foreign-thread
+regression. The following sections preserve historical accepted endpoints at their original pins.
 
 ## Observed bounded core endpoint
 
@@ -369,8 +411,16 @@ receipt when the implementation changes.
 
 `verification/caller/run.sh` creates a new attempt, builds the Go CLI, runs the
 bounded development read, captures intermediates, and compares with the existing
-stock output. `MODEL_DIR` and `STOCK_CONTROL` select the corresponding SUP model
-and retained control. It never runs the stock producer. Reuse retained captures for
+stock output. Always supply the current CPU-only ABI5 backend explicitly.
+The script still has a historical ABI3 default, which the current loader rejects.
+Use the library built and checked above.
+
+```sh
+TENSOR_LIBRARY="$CPU_TENSOR_LIBRARY" verification/caller/run.sh
+```
+
+`MODEL_DIR` and `STOCK_CONTROL` select the corresponding SUP model and retained
+control. It never runs the stock producer. Reuse retained captures for
 consumer changes instead of rerunning inference.
 
 ```sh

@@ -23,24 +23,36 @@ this target. The original experiment workspace remains the stock control.
 
 ## Completion sequence
 
-The remaining work follows these verification boundaries. Component or host
-checks do not complete a later boundary.
+The Go-owned HAC and SUP GPU graphs, decoder call chain, explicit cross-read
+batching, shared postcall, and FASTQ/BAM output are integrated in source.
+No production GPU bundle has been approved. The empty bundle registry prevents
+the CUDA CLI from completing a basecall. The [production run boundary](gpu-caller/production-run.md)
+records the implemented path and excluded domains. The remaining work follows
+these verification boundaries. Component or host checks do not complete a later
+boundary.
 
-1. Build the integrated fixed HAC GPU command and maintained tensor tests.
+1. Qualify the integrated fixed HAC GPU command and maintained tensor tests.
    Run the genuine CPU fixtures and fake-backend rejection controls, then compare
    all 64 lanes and the padding probe against the pinned native graph.
-2. Capture a fresh authenticated native GPU decoder reference. Compare guides,
-   beam decisions, posterior values, moves, sequence, and quality against the
-   Go-owned decoder candidates. The qualified decoder load-only observation
-   does not qualify the historical numerical capture.
-3. Integrate the reviewed SUP graph and full-size HAC and SUP geometry.
+2. Use the qualified fixed HAC native GPU decoder reference recorded in
+   [current evidence](cpu-abi5-acceptance.md#bounded-hac-native-gpu-reference).
+   Its 32 buffers cover four stages and five numeric identities at score shape
+   `[64,32,1024]` with 256 states. Compare guides, beam decisions, posteriors,
+   moves, sequence, and quality against the Go-owned candidates. SUP references
+   and numerical-payload and mask rejection controls remain open. The external
+   anchor corruption control checks authentication only. This reference does
+   not complete D01, full graphs, packed or partial batches, or the GPU caller.
+3. Qualify the integrated SUP graph and full-size HAC and SUP geometry.
    Compile the native numerical operations and compare every declared retained
-   stage before running complete graphs on full chunks.
-4. Qualify variable-length packing against the original native host function.
-   Implement and compare the remaining variable-length GPU operations for both
-   models. Preserve mixed batches, partial batches, lane identity, and ownership.
-5. Connect the qualified graphs and decoder to the Go caller, batch scheduler,
-   collector, and existing postcall path. Compare complete declared development
+   stage before running complete graphs on full chunks. Qualify shared full/short
+   model caches and stream-order alternation separately.
+4. Preserve the bounded [native HAC host-packing evidence](gpu-caller/hac-vcs-aux.md)
+   at its recorded paths and pins. Source import does not transfer its receipt.
+   Implement and compare the remaining packed GPU operations and decoder indexing
+   for both models. Qualify mixed and partial batches, lane identity, ownership,
+   and the remaining legal beam collision schedule.
+5. Qualify the existing graph/decoder connection to the Go caller, batch scheduler,
+   collector, and shared postcall path. Compare complete declared development
    and validation inputs, input accounting, cancellation, records, tags, FASTQ,
    and BAM artifacts against stock. Preserve raw-artifact failures separately
    from semantic record comparisons.
@@ -49,13 +61,13 @@ checks do not complete a later boundary.
    budget before clocks. Finish with `go test ./...`, the maintained parity
    command, and an independent review of the integrated result.
 
-The current critical path is the integrated HAC build and runtime comparison.
-Decoder reference preparation and variable-length host packing can proceed
-independently. The coordinator serializes compiler and GPU execution through the
-existing stock host lock. Each worker owns its unit through numerical evidence
+The GPU path requires genuine native graph and decoder comparisons and independent
+approval of a complete production bundle. Decoder reference preparation and
+packed GPU implementation can proceed independently. The coordinator serializes
+compiler and GPU execution through the existing stock host lock. Each worker owns its unit through numerical evidence
 and integration handoff. Shared caller and tensor interfaces have one integration
-owner. The isolated full-size graph and decoder candidates remain available for
-integration without changing the stock workspace.
+owner. Imported graph and decoder source does not inherit runtime acceptance
+from isolated candidates or change the stock workspace.
 
 ## Exactness contract
 
@@ -79,28 +91,36 @@ about zero padding does not describe the consuming implementation.
 | --- | --- | --- |
 | POD5 loading | Two independent native fixtures, copied signal/calibration/UUID/metadata and selection guards | Broader input versions and complete-file processing |
 | Scaling | Standardized DNA formula and half bits; one whole caller endpoint | Full native ScalerNode/SIMD and other scaling modes |
-| Chunk planning and padding | All three source algorithms, repeat padding, fixed caller chunks | Integrated variable and transformer scheduling |
+| Chunk planning and padding | All three source algorithms, repeat padding, fixed CPU chunks and GPU profile scheduling source | Genuine integrated variable and transformer execution; packed GPU paths remain unfinished |
 | Model config and weights | Exact HAC/SUP configs and 50/139 consumed weight hashes/shapes | Other models and upstream revisions |
 | CUDA tensor primitives | ABI4 ownership and raw half transfer; 37 exact source-GEMM/copy cases with guards; all 32 float32 precision mutants differ | Model operations, Koi descriptors/kernels, other devices and wider arithmetic/layout domains |
-| GPU batch geometry | Host-tested fixed and variable membership, chunk tables, LSTM/transformer layouts and granularity transitions for both lanes | Extracted native oracle, device table bytes and captured mixed batches |
+| GPU batch geometry | Host-tested fixed and variable membership, chunk tables, LSTM/transformer layouts and granularity transitions for both lanes; bounded native HAC host packing in [HAC VCS auxiliary packing](gpu-caller/hac-vcs-aux.md) | Remaining native geometry comparisons, device table bytes and genuine mixed/partial batches; packing receipts retain their original path bindings |
 | GPU decoded assembly | Host-tested completion-order collector restoring source order before the accepted stitch unit | Genuine GPU decoded-chunk replay after the decoder units |
 | GPU postcall replay | Host-tested reuse of the accepted postcall seam from decoded GPU reads, versioned sealed captures and producer-free replay receipts | Genuine GPU capture, stock header/record differential in all four modes, DS-tag predicate and independent review |
 | HAC inference | 55 source-oracle fixtures and one genuine-weight score capture | Other inputs and device paths |
-| Fixed HAC GPU graph | Bounded native unit evidence for convolution, fused recurrence/cache and projection; Go-owned fixed composition source and an unloaded closed-build backend | Current guarded CPU fixtures, actual all-64 graph comparison and padding probe; half fallback runtime, full chunks, VCS and caller integration remain open |
-| Source-default fixed HAC geometry candidate | Independently reviewed isolated N64/chunk12288/T2048 plan and runtime dimensions; 23 host roots and vet passed with retained input snapshots | Integration, full-size native oracle and runtime comparison; current H08 witness still uses chunk192 |
+| Fixed HAC GPU graph | Bounded native unit evidence for convolution, fused recurrence/cache and projection; Go-owned fixed composition source, caller connection and an unloaded closed-build backend | Current guarded CPU fixtures, actual all-64 graph comparison and padding probe; half fallback runtime, full chunks, VCS and genuine caller qualification remain open |
+| Source-default fixed HAC geometry | Integrated N64/chunk12288/T2048 plan and runtime dimensions; independently reviewed isolated candidate had 23 host roots and vet passed with retained input snapshots | Full-size native oracle and runtime comparison; current H08 witness still uses chunk192 |
 | SUP inference | 12 source-oracle fixtures, 287 stages, 15,228,786 exact float32 values and genuine 18-layer weights | Other inputs and device paths |
-| SUP GPU weight preparation on host | QKV interleave, FP16 tiling and rounding; S02 int8 packing matches all 34,992 native rows; [S05 FP8 packing](gpu-caller/s05-fp8-caches.md) matches 72 native before/after buffers across all 18 layers | Actual GPU upload, remaining cache comparisons and graph integration; S05 composition does not separately qualify every intermediate half cast |
-| Fixed SUP GPU graph candidate | Independently reviewed isolated implementation follows the fixed ATen convolution route and seven explicit primitives per encoder layer; 14 base host checks and two later uploaded-cache observation controls passed | Native compilation and all 733 retained tensor comparisons; runtime/current CGO1/CPU fixtures, full chunks, VCS and caller integration remain open |
-| Source-default fixed SUP geometry candidate | Independently reviewed two-profile implementation derives chunk12288/T1024 and scoresT2048; 15 CGO0 and 19 CGo host roots plus vet passed | Integration and full-size native oracle/graph qualification. Host fake evidence retains an eight transient type-probe output gap and is not a closed compiler artifact |
+| SUP GPU weight preparation on host | QKV interleave, FP16 tiling and rounding; S02 int8 packing matches all 34,992 native rows; [S05 FP8 packing](gpu-caller/s05-fp8-caches.md) matches 72 native before/after buffers across all 18 layers; graph cache composition exists in source | Genuine GPU upload and remaining cache comparisons; S05 composition does not separately qualify every intermediate half cast |
+| Fixed SUP GPU graph | Integrated implementation follows the fixed ATen convolution route and seven explicit primitives per encoder layer; independently reviewed isolated candidate had 14 base host checks and two later uploaded-cache observation controls passed | Native compilation and all 733 retained tensor comparisons; runtime/current CGO1/CPU fixtures, full chunks, VCS and genuine caller qualification remain open |
+| Source-default fixed SUP geometry | Integrated two-profile implementation derives chunk12288/T1024 and scoresT2048; independently reviewed isolated candidate had 15 CGO0 and 19 CGo host roots plus vet passed | Full-size native oracle/graph qualification. Host fake evidence retains an eight transient type-probe output gap and is not a closed compiler artifact |
 | GPU guide scan candidate | Go reverse-time scheduling and typed one-frame SM120 PTX boundary; host/fake checks only | Native build/JIT, D01 numerical differential, packed indexing, posterior scans and independent review |
-| GPU beam and posterior/quality candidates | Independently reviewed isolated Go scheduling, ordering and quality logic with closed numerical kernel operations; source and host controls passed | Native compilation/JIT, authenticated decoder oracle, complete numerical comparisons and caller integration |
-| CRF decoding | CPU N=1 scans, posteriors, beam diagnostics and quality bits; N=1..4 lane composition implemented, replay pending compatible backend | General batched scans, direct CPUDecoder multi-chunk parity, caller batching and GPU kernels |
+| GPU beam and posterior/quality candidates | Integrated caller call chain; independently reviewed isolated Go scheduling, ordering and quality logic with closed numerical kernel operations; source and host controls passed | Native compilation/JIT, authenticated decoder oracle, complete numerical comparisons, legal beam collision schedules and genuine caller qualification |
+| CRF decoding | CPU N=1 scans, posteriors, beam diagnostics and quality bits; N=1..4 lane composition implemented, replay pending compatible backend; fixed GPU decoder composition exists in source | General batched scans, direct CPUDecoder multi-chunk parity, packed GPU indexing and genuine GPU kernel qualification |
 | Stitching | Source algorithm fixtures including partial strides | Integration with variable chunk paths |
 | Split and trim | Source-linked MUX trim, pore-split decisions, child metadata, adapter/primer detection, interval trim and filtering; two genuine default FASTQ controls | Positive biological split/MUX controls, other kits and modes |
-| Scheduling | Selected reads, CPU batch one, cancellation, ownership, immutable captures and replay; owned CUDA streams at primitive boundary | Batching, GPU model scheduling, complete input accounting |
+| Scheduling | Selected reads, CPU batch one, cancellation, ownership, immutable captures and replay; bounded synchronous cross-read GPU batching, profile dispatch and ordered retirement in source | Genuine integrated scheduling/input-accounting qualification and partial fixed batches; automatic sizing and concurrent timeout scheduling are absent |
 | Shared GPU model ownership | Integrated run-owned HAC/SUP caches with explicit per-forward full/short plans; synthetic host ownership controls and qualifier API migration | Genuine native full/short alternation on both stream orders, every graph stage and score, persistent upload/allocation counts and device memory; see [shared caches](gpu-caller/shared-model-caches.md) |
 | BAM and FASTQ output | Raw FASTQ identity for HAC and SUP on one frozen UUID, including headers; Go-owned unaligned BAM writer reproduces the exact 733,623-byte uncompressed payload of one 32-record native stock BAM, including QNAMEs and float bits, with 17 checks, 12 controls and 5 executed faults, plus a pinned-source htslib oracle showing 12 byte-identical conditional-tag cases (TS/RX/pi/sp/mv, barcode, RNA poly-tail, duplex) | Compressed bytes and BGZF member topology (unclaimed), modbase tags, larger read sets, other modes |
-| Complete caller | Two models on one predeclared development read, including default processing from retained core stages | Complete declared input sets, live default producer acceptance beyond the shared-stage source trace |
+| Complete caller | Two CPU models on one predeclared development read, including default processing from retained core stages; gated GPU composition exists in source | Complete declared input sets, live default producer acceptance beyond the shared-stage source trace, genuine GPU endpoints and independently approved production bundle |
+
+The table retains bounded unit evidence, including historical isolated-candidate
+checks. HAC/SUP full/short plans, graph and decoder composition, cache ownership,
+batch scheduling, and output are now connected in source. Packed GPU graphs,
+decoder indexing, and partial fixed invocation remain unfinished.
+The [HAC VCS host-packing unit](gpu-caller/hac-vcs-aux.md)
+records bounded original-host comparisons; its receipts retain their original
+path bindings and do not qualify a packed GPU graph in this checkout.
 
 The linked unit documents describe the exact fixture and runtime limits. A
 bounded pass does not close the remaining column. Package tests and CPU CI do
@@ -131,7 +151,10 @@ backend has a qualified allocation, layout, synchronization, and lifetime
 contract. ABI4 additionally qualifies owned CUDA streams, half buffers and views,
 raw transfers, and the source half-GEMM operation on 37 declared cases. The
 [independent review](independent-review-cuda-abi4.md) records its device, runtime,
-negative controls, and limits. GPU model graphs and Koi kernels remain unfinished.
+negative controls, and limits. GPU model graphs and their caller composition
+exist in source. Complete native graph/decoder qualification remains open,
+alongside packed GPU operations, partial fixed batches, and legal beam collision
+schedules. No production GPU bundle has been approved.
 
 The local Dorado distribution contains runtime libraries but no Torch headers.
 Koi inference and decoding kernels are native dependencies. Rewriting those

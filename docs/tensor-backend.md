@@ -5,7 +5,8 @@ operations and reads Torch weight archives. It contains no model graph, recurren
 loop, CRF scan, decoder schedule, or read pipeline.
 
 The CPU path uses float32 computation from ONT LibTorch
-`2.9.0.0`, distributed in the CUDA 13.0 archive. The bounded CUDA half path is qualified below on one GPU and pinned runtime.
+`2.9.0.0`, distributed in the CUDA 13.0 archive. Historical ABI4 CUDA half
+acceptance is recorded below on one GPU and pinned runtime.
 This does not qualify official stock CUDA 12.8 parity, full basecalling, biological
 accuracy, or performance.
 The original experiment, stock controls, dependencies, weights, and build remain
@@ -13,13 +14,18 @@ read-only.
 
 `torch_utils.cpp` initializes one CPU thread, disables deterministic filling of
 uninitialized memory, and enables deterministic algorithms. The backend matches
-those pinned source settings once when its runtime opens. Every C call enters
-inference mode on its current OS thread, matching `ModelRunner::call_chunks`.
-The independent fixture producer applies the same initialization.
+those pinned process settings once. The common CPU boundary then calls public
+`at::init_num_threads()` once per entering OS thread, before tensor work. Go can
+enter CGo on a thread other than the opener. Process-only initialization left
+foreign threads able to create excess OpenMP workers during direct Tanh calls.
+Each call also enters inference mode on its current OS thread, matching
+`ModelRunner::call_chunks`. No environment workaround, permanent Go thread lock,
+ABI change, or arithmetic change is required. The independent fixture producer
+applies the same process settings.
 
 ## Ownership and types
 
-`tensor.Open(path)` loads a separately built shared library and requires ABI 4.
+`tensor.Open(path)` loads a separately built shared library and requires ABI 5.
 The Go package needs Linux, cgo, the C compiler, and `libdl`. Building the package
 does not require LibTorch headers or link flags. A disabled cgo build returns
 `ErrUnsupported`. Ordinary tests explicitly skip the native gate when
@@ -74,7 +80,7 @@ reader. It requires exactly one float32 tensor per file and maps storage to CPU.
 It rejects int64, empty, and multiple-tensor archives. The native archive parser
 is a dependency boundary, not a newly implemented file format.
 
-ABI 1, ABI 2, and ABI 3 attempts remain immutable evidence. Current Go code deliberately rejects
+ABI 1, ABI 2, ABI 3, and ABI 4 attempts remain immutable evidence. Current Go code deliberately rejects
 those old libraries. There is one production ABI and no compatibility loader.
 
 ## CUDA half owners
@@ -120,37 +126,59 @@ closure leaves its views valid. No finalizer releases native resources.
 
 CUDA failures use `DTypeError`, `DeviceError`, `StreamError`, `LayoutError`,
 `CUDAError`, and `CUDAUnsupportedError`. Closed handles wrap `ErrClosed`.
-An ABI4 CPU-only build wraps `ErrCUDAUnavailable` without loading CUDA.
+An ABI5 CPU-only build wraps `ErrCUDAUnavailable` without loading CUDA.
 `ErrUnsupported` retains its platform and no-cgo meaning. CPU signatures and
-operation IDs are unchanged. All ABI4 symbols are required by the single loader.
+operation IDs are unchanged. The single ABI5 loader also requires the symbols
+introduced in ABI4.
 
 ## Rebuild and verify
 
-Run from the isolated Go checkout. Dependencies, source, and old libraries remain
+Run from the isolated Go checkout's repository root. Dependencies, source, and old libraries remain
 read-only. Every output directory must be new and below `artifacts/tensor`.
+Use Linux, Go 1.24 or newer with cgo, GCC, a C++20-capable `g++`, Git, and
+`ldd`. The listed source, archive, extracted Torch tree, and HAC weight must already
+exist locally and match the pins below. The builder emits ABI5 with CUDA disabled
+when `-cuda-family none` is selected.
+
+The builder, loader, and CPU and CUDA verifier metadata guards now require ABI5.
+CUDA replay rejects historical ABI4 receipts. The first ABI5 CPU backend passed
+all ten maintained checker commands before the thread fix. Fresh HAC and SUP CLI
+runs and all ten maintained checker commands also pass with the fixed backend.
+The native checker runs the corrected foreign-thread regression. See
+[current CPU acceptance](cpu-abi5-acceptance.md) for the retained evidence.
+Build a fresh output from current source and check that same output below.
 
 ```sh
 TORCH_ROOT=/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/dependencies/torch-2.9.0.0-ont-CUDA-13.0-linux-x64-cxx11-abi/libtorch
 TORCH_ARCHIVE=/home/jake/Projects/nanopore_basecaller/software/source-build-qualification-20261023/archives/torch-2.9.0.0-ont-CUDA-13.0-linux-x64-cxx11-abi.zip
 DORADO_SOURCE=/home/jake/Projects/nanopore_basecaller_go/external/dorado-source
 HAC_WEIGHT=/home/jake/Projects/nanopore_basecaller/models/dna_r10.4.1_e8.2_400bps_hac@v6.0.0/0.conv.weight.tensor
-ABI3=/home/jake/Projects/nanopore_basecaller_go/artifacts/tensor/attempt-005-sup-abi3/libnanopore_tensor.so
 
 go run ./verification/tensor/build -torch "$TORCH_ROOT" -archive "$TORCH_ARCHIVE" \
   -dorado-source "$DORADO_SOURCE" -weight "$HAC_WEIGHT" -cuda-family none \
-  -out artifacts/tensor/attempt-abi4-cpu-003
+  -out artifacts/tensor/abi5-cpu
 
-go run ./verification/tensor/check \
-  -backend "$PWD/artifacts/tensor/attempt-abi4-cpu-003/libnanopore_tensor.so" \
-  -old-backend "$ABI3" -weight "$HAC_WEIGHT" \
-  -out artifacts/tensor/check-abi4-cpu-002
-
-go run ./verification/tensor/check -pure-only \
-  -out artifacts/tensor/check-abi4-source-004
+CPU_TENSOR_LIBRARY="$PWD/artifacts/tensor/abi5-cpu/libnanopore_tensor.so"
 ```
 
-The CPU check uses separate processes for the real ABI3 rejection and ABI4 native
-contracts. It records ordinary, no-cgo, native, direct C, race, and vet results.
+Check that new CPU build with the same weight. The backend initializes each
+entering OS thread itself. No `OMP_NUM_THREADS`, `MKL_NUM_THREADS`, or
+`OMP_THREAD_LIMIT` workaround is needed.
+
+```sh
+go run ./verification/tensor/check \
+  -backend "$CPU_TENSOR_LIBRARY" -weight "$HAC_WEIGHT" \
+  -out artifacts/tensor/check-abi5-cpu
+
+go run ./verification/tensor/check -pure-only \
+  -out artifacts/tensor/check-abi5-source
+```
+
+The CPU check records ordinary, no-cgo, native, direct C, race, and vet results.
+For the optional historical ABI3 rejection control, add
+`-old-backend /home/jake/Projects/nanopore_basecaller_go/artifacts/tensor/attempt-005-sup-abi3/libnanopore_tensor.so`
+to the native check. That control runs in a separate process. The old library is
+never a current caller backend.
 The pure-only check does not load a native backend. Ordinary and no-cgo tests
 cover all Go packages. These are source-readiness checks.
 
@@ -181,7 +209,7 @@ toolkit headers declare 13040. This unit does not relabel them as 13.0.
 go run ./verification/tensor/build -torch "$TORCH_ROOT" -archive "$TORCH_ARCHIVE" \
   -dorado-source "$DORADO_SOURCE" -weight "$HAC_WEIGHT" \
   -cuda-family 13.0 -cuda-root /opt/cuda \
-  -out artifacts/tensor/attempt-abi4-cuda-005
+  -out artifacts/tensor/abi5-cuda
 ```
 
 Runtime capture and replay require a coordinator release and the same lock.
@@ -191,13 +219,13 @@ consumer. The CPU check refuses to load a CUDA-enabled build.
 
 ```sh
 go run ./verification/tensor/cuda -runtime-admitted \
-  -backend "$PWD/artifacts/tensor/attempt-abi4-cuda-005/libnanopore_tensor.so" \
-  -out artifacts/tensor/capture-abi4-cuda-002
+  -backend "$PWD/artifacts/tensor/abi5-cuda/libnanopore_tensor.so" \
+  -out artifacts/tensor/capture-abi5-cuda
 
 go run ./verification/tensor/cuda -runtime-admitted \
-  -backend "$PWD/artifacts/tensor/attempt-abi4-cuda-005/libnanopore_tensor.so" \
-  -capture "$PWD/artifacts/tensor/capture-abi4-cuda-002/manifest.json" \
-  -weight "$HAC_WEIGHT" -out artifacts/tensor/replay-abi4-cuda-002
+  -backend "$PWD/artifacts/tensor/abi5-cuda/libnanopore_tensor.so" \
+  -capture "$PWD/artifacts/tensor/capture-abi5-cuda/manifest.json" \
+  -weight "$HAC_WEIGHT" -out artifacts/tensor/replay-abi5-cuda
 ```
 
 The runtime command retains fresh GPU state and compute-process bookends while
@@ -250,6 +278,11 @@ does not rerun the source producer. A changed consumer requires a new comparison
 while source-identical captures remain reusable.
 
 ## Local evidence
+
+The evidence below is historical ABI3 and ABI4 acceptance at its recorded source
+and runtime pins. It does not qualify the current ABI5 build, CPU caller, or GPU
+runtime. Current CPU evidence is recorded separately in
+[ABI5 CPU acceptance](cpu-abi5-acceptance.md), including its passing post-fix checker.
 
 The ABI3 library and its sibling manifest remain unchanged in the canonical Go
 checkout. Its earlier acceptance remains evidence for ABI3 only. ABI4 rejects it.
@@ -318,7 +351,7 @@ failures exercise shared native helpers with dummy owners and Go library
 retention. They do not inject a real CUDA hardware failure. Producer mappings
 are observed after each batch, with prelaunch link and post-map hash checks.
 
-This unit qualifies synchronous half transfer, retained views, the selected
+This historical ABI4 unit qualifies synchronous half transfer, retained views, the selected
 source half GEMM, and the listed controls on this device and pinned runtime.
 It does not qualify model dispatch, Koi, full inference, basecalling, biological
 accuracy, stock CUDA12 parity, or performance.

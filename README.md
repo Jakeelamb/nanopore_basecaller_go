@@ -11,7 +11,11 @@ including headers, sequence, and qualities. With trimming disabled, HAC emits
 Go inference outputs.
 These bounded results do not qualify other reads, GPU execution, biological
 accuracy, or performance.
-The original experiment repository remains the stock control.
+The current ABI5 backend also reproduces these two controls after per-thread
+native initialization was fixed. Its maintained native checker passes, including
+the foreign-thread regression. See [current CPU evidence](docs/cpu-abi5-acceptance.md).
+The full caller port remains unfinished. The original experiment repository
+remains the stock control.
 
 Implemented in Go:
 
@@ -33,12 +37,18 @@ Native differential tests compile pinned original C++ algorithms or audited
 source slices. [The architecture](docs/architecture.md), [port coverage](docs/port-plan.md),
 and [decoder qualification](docs/decode.md) describe the boundaries and open work.
 The [caller instructions and retained endpoint](docs/caller.md) describe the
-working mode. GPU execution, batching, BAM output, and broader input acceptance
-remain open.
+working CPU and replay modes. Go-owned GPU graphs, cross-read batching, caller
+composition, and BAM serialization exist in source behind the
+[production GPU gate](docs/gpu-caller/production-run.md). No production GPU bundle
+has been approved, so `--device cuda:0` cannot currently complete a basecall.
+GPU runtime qualification and broader input acceptance remain open.
 
 ## Call and replay
 
-Build with `go build -o bin/basecaller ./cmd/basecaller`. The caller takes
+First build a current CPU-only ABI5 library and check that same output with the
+[tensor procedure](docs/tensor-backend.md#rebuild-and-verify). Local pinned Torch,
+model, and POD5 dependencies are required. No OpenMP environment workaround is
+required. Build the CLI with `go build -o bin/basecaller ./cmd/basecaller`. It takes
 `--model`, `--pod5`, `--tensor-library`, `--pod5-library`, and selected
 `--read-id` values or explicit `--all`. Use `--device cpu`, `--chunksize 12288`,
 `--overlap 600`. Adapter/primer trimming and pore-adapter splitting are enabled
@@ -53,8 +63,11 @@ posteriors, decoding, and final output with hashes. Reuse those stages:
 bin/basecaller replay --manifest CAPTURE/READ_UUID/manifest.json > replay.fastq
 ```
 
-Replay checks payload integrity and repeats normalization, decoding, and
-stitching. It loads no model or POD5 library and runs no inference.
+Core replay checks payload integrity and repeats normalization, decoding,
+stitching, and MUX trimming. To reproduce captured default processing, pass the
+same read's `processed-manifest.json` instead. Replay loads no model or POD5
+library and runs no inference. These are CPU capture formats; the CLI does not
+replay sealed GPU captures.
 
 ## Verify without sequencing computation
 
@@ -108,12 +121,17 @@ the [tensor ABI](docs/tensor-backend.md), [HAC graph](docs/model-graph.md),
 The qualified development backend uses CPU operations from the pinned CUDA 13
 Torch distribution. Its match to one stock CUDA 12 CPU endpoint does not
 establish general runtime compatibility. Reuse captured outputs when their pins
-match. ABI4 now also provides owned CUDA streams, raw half buffers and views,
-and source-matched half GEMM. An independent review verified 37 saved cases on
-the pinned RTX 5070 runtime. The caller's GPU model graphs remain unfinished.
+match. Historical ABI4 evidence covers owned CUDA streams, raw half buffers,
+views, and source-matched half GEMM. An independent review verified 37 saved
+cases on the pinned RTX 5070 runtime. The current loader requires ABI5; those
+historical receipts do not qualify the current GPU backend. The integrated HAC
+and SUP GPU graphs still require
+genuine per-stage and complete-caller qualification. Partial batches, packed
+graphs, and decoder indexing remain unfinished. See the
+[GPU implementation and limits](docs/gpu-caller/production-run.md).
 The [SUP QKV half-weight preparation](docs/koi-qkv-weights.md) now matches
-native CPU source blocks exactly. It prepares host buffers for future GPU use
-and does not run in the current caller.
+native CPU source blocks exactly. It prepares host buffers for GPU caches
+and does not run in the CPU caller.
 The [SUP int8 oracle preparation tool](docs/koi-qkv-int8.md) reuses those saved
 half weights. Its source-only review does not qualify native int8 arithmetic.
 
