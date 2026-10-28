@@ -70,7 +70,15 @@ library in the [selected-read CLI](caller.md#run-one-selected-read). These
 procedures require the pinned local Torch archive and extracted tree, Dorado
 source, model configs and weights, POD5 file, and POD5 library. They perform no
 implicit dependency acquisition. The maintained `verification/caller/run.sh`
-still defaults to an obsolete ABI3 path, so always set `TENSOR_LIBRARY` explicitly.
+defaults to the current CPU-only ABI5 build output,
+`artifacts/tensor/abi5-cpu/libnanopore_tensor.so`. Set `TENSOR_LIBRARY` explicitly
+to use another qualified library.
+
+The script also passes with `TENSOR_LIBRARY` unset and no existing caller output
+directory. That fresh HAC run uses the documented default library path and matches
+the same 1,653-base stock FASTQ and capture replay. Its outer receipt is canonical
+`cpu-script-default-001/`; the attempt is retained under sibling worktree
+`cpu-caller-script-polish-20261028/artifacts/caller/attempt-20261028T222651Z-qU3vGD/`.
 
 The following are reproducible command forms, not executions by this
 documentation assignment. Use fresh output directories and controller admission

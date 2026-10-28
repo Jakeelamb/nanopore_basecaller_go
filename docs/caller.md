@@ -411,9 +411,9 @@ receipt when the implementation changes.
 
 `verification/caller/run.sh` creates a new attempt, builds the Go CLI, runs the
 bounded development read, captures intermediates, and compares with the existing
-stock output. Always supply the current CPU-only ABI5 backend explicitly.
-The script still has a historical ABI3 default, which the current loader rejects.
-Use the library built and checked above.
+stock output. Its default library is the current CPU-only ABI5 build output,
+`artifacts/tensor/abi5-cpu/libnanopore_tensor.so`. Build and check it as described
+above, or set `TENSOR_LIBRARY` explicitly to another qualified library.
 
 ```sh
 TENSOR_LIBRARY="$CPU_TENSOR_LIBRARY" verification/caller/run.sh
