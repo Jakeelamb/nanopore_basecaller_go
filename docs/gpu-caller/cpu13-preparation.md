@@ -277,3 +277,44 @@ in `cpu13-request-fifo-corrected-001`. The metadata-only CGO0 H08 tree passes
 102 root tests with nine unselected opt-ins skipped in
 `h08-metadata-integrated-host-003`. No compiler, selected target, backend or GPU
 runs in these request-boundary tests.
+
+## Unnamed absolute-path backend policy (evidence pending)
+
+An Allowed record may carry the required explicit `"soname":""` only for a
+canonical pinned ET_DYN image whose read-only `nativeproof.InspectELF` result
+proves absent DT_SONAME, no interpreter and exact Needed order. It must have
+`startup:false`, differ from both role roots and the auditor, and resolve every
+Needed name through a selected named Allowed provider. Empty values never
+create provider aliases; unnamed Alternates remain rejected. H08 additionally
+compares all required backend/provider SONAME and Needed records against the
+authenticated backend Runtime metadata and the inspected Output. A basename
+must never replace absent SONAME.
+
+`TestUnnamedRuntimeGenuine` (supgpu) and `TestBackendPolicyGenuineMetadata`
+(H08) are static opt-in regressions. Both require all seven environment values:
+
+- `H08_UNNAMED_PROOF` and `H08_UNNAMED_PROOF_SHA256`: independently selected
+  retained typed `nanopore-h08-backend-proof/v1` JSON and its exact digest.
+- `H08_UNNAMED_BACKEND` and `H08_UNNAMED_BACKEND_SHA256`: independently selected
+  canonical backend Output and digest, agreeing with that proof.
+- `H08_UNNAMED_POLICY` and `H08_UNNAMED_POLICY_SHA256`: separately selected
+  original closed-wire policy with the real backend's explicit empty SONAME,
+  exact Needed array, 23 named providers and exact sized pins. Role roots and
+  auditor are separately chosen static fixture pins; this does not select a
+  future CPU13 executable.
+- `H08_UNNAMED_CONTROLS`: existing canonical absolute directory selected by the
+  controller. Each test retains a fresh subdirectory with rehashed controls.
+
+Absent environment skips; partial environment fails. No backend is loaded,
+compiled or executed. Copy only the two new test files onto old production
+first: the public positive exposes the missing-SONAME rejection; the H08 fake
+basename/metadata controls expose old inclusion-only acceptance. Then integrate
+production changes and run the same selectors with fresh retained controls,
+followed by full Go tests and the maintained parity command. Formatting,
+execution and configured review remain controller work. This worker ran none.
+
+These Go changes invalidate source currency for both H08 and CPU13 targets and
+Go0 helpers. Leave active compile004 intact as historical evidence; refresh all
+consumers after before/after static controls, full checks and review. Native
+backend/oracle pins remain unchanged. Static acceptance supplies no loader,
+GPU, full-caller, biological or performance qualification.

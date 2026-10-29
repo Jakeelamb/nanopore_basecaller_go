@@ -3,6 +3,7 @@ package h08
 import (
 	"context"
 	"crypto/sha256"
+	"debug/elf"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -190,16 +191,32 @@ func validateBackendPolicy(a RuntimeAdmission, b closedbuild.BackendArtifact) er
 	if e := pinnedJSON(a.Plan, &plan); e != nil {
 		return e
 	}
-	allowed := map[string]string{}
+	allowed := map[string]supgpu.RuntimeCode{}
 	for _, code := range plan.Policy.Allowed {
-		allowed[code.Object.Path] = code.Object.SHA256
+		if _, exists := allowed[code.Object.Path]; exists {
+			return fmt.Errorf("duplicate audited backend provider path")
+		}
+		allowed[code.Object.Path] = code
 	}
-	if allowed[b.Output.Path] != b.Output.SHA256 {
+	if allowed[b.Output.Path].Object.SHA256 != b.Output.SHA256 {
 		return fmt.Errorf("audited runtime omits selected genuine backend")
 	}
-	for _, code := range b.Runtime {
-		if allowed[code.Pin.Path] != code.Pin.SHA256 {
+	output, e := nativeproof.InspectELF(b.Output.Path)
+	if e != nil {
+		return fmt.Errorf("audited backend ELF inspection: %w", e)
+	}
+	if output.Pin.Path != b.Output.Path || output.Pin.SHA256 != b.Output.SHA256 || output.Type != elf.ET_DYN || output.Interpreter != "" {
+		return fmt.Errorf("audited backend differs from canonical selected ELF")
+	}
+	required := append(slices.Clone(b.Runtime), output)
+	for _, code := range required {
+		selected, ok := allowed[code.Pin.Path]
+		if !ok || selected.Object.SHA256 != code.Pin.SHA256 || selected.SONAME != code.SONAME || !slices.Equal(selected.Needed, code.Needed) {
 			return fmt.Errorf("audited runtime differs from qualified backend provider: %s", code.Pin.Path)
+		}
+		actual, err := guardPin(Pin{Path: code.Pin.Path, SHA256: code.Pin.SHA256})
+		if err != nil || selected.Object != actual {
+			return fmt.Errorf("audited backend provider sized pin differs: %s: %v", code.Pin.Path, err)
 		}
 	}
 	return nil
