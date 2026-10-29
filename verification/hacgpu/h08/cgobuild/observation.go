@@ -314,7 +314,31 @@ func ReadCPU13Artifact(evidence, selection Pin) (Artifact, error) {
 	return readArtifact(evidence, selection, CPU13Tests)
 }
 
+// ReadSUPArtifact authenticates a successful SUP compile selection and its live
+// declared inputs in the caller's canonical checkout. It grants no runtime admission.
+func ReadSUPArtifact(evidence, selection Pin, expectedRoot string) (Artifact, error) {
+	return readSelectedArtifact(evidence, selection, SUPGraphCommand, expectedRoot)
+}
+
 func readArtifact(evidence, selection Pin, role BuildRole) (Artifact, error) {
+	return readSelectedArtifact(evidence, selection, role, "")
+}
+
+func checkSUPInputs(p Plan, expectedRoot string) error {
+	if !filepath.IsAbs(expectedRoot) || filepath.Clean(expectedRoot) != expectedRoot {
+		return fmt.Errorf("SUP expected root must be absolute and canonical")
+	}
+	root, e := filepath.EvalSymlinks(expectedRoot)
+	if e != nil || root != expectedRoot || p.Options.Root != expectedRoot {
+		return fmt.Errorf("SUP expected root differs from authenticated plan")
+	}
+	return checkPins(p.Inputs)
+}
+
+func readSelectedArtifact(evidence, selection Pin, role BuildRole, expectedRoot string) (Artifact, error) {
+	if admitted, e := normalizedRole(role); e != nil || admitted != role {
+		return Artifact{}, fmt.Errorf("unknown selected artifact role %q", role)
+	}
 	if e := verifyPin(selection); e != nil {
 		return Artifact{}, e
 	}
@@ -342,8 +366,20 @@ func readArtifact(evidence, selection Pin, role BuildRole) (Artifact, error) {
 		if e != nil {
 			return Artifact{}, e
 		}
+		if role == SUPGraphCommand {
+			var p Plan
+			if e := read(r.Plan, &p); e != nil {
+				return Artifact{}, e
+			}
+			if e := checkSUPInputs(p, expectedRoot); e != nil {
+				return Artifact{}, e
+			}
+		}
 		return Artifact{r.Output}, nil
 	case observedSelectionSchema:
+		if role != H08Command {
+			return Artifact{}, fmt.Errorf("observed selection is H08-only")
+		}
 		var s observedSelectionWire
 		if e := exactRead(selection, &s); e != nil {
 			return Artifact{}, e

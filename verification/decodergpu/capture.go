@@ -2,6 +2,7 @@ package decodergpu
 
 import (
 	"bufio"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -152,7 +153,7 @@ func Capture(o CaptureOptions) (receipt CaptureReceipt, err error) {
 	}
 	command := decoderCommand(r, b, p)
 	receipt.Guarded, err = proofs.native(func() (supgpu.GuardedRun, error) {
-		return supgpu.ExecuteGuarded(guard, phases, command)
+		return supgpu.ExecuteGuarded(context.Background(), guard, phases, command)
 	}, func() error {
 		return verifyGuardRuntimeScoped(r, b, p, true, proofs)
 	})

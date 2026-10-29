@@ -315,13 +315,31 @@ or runtime authorization.
 
 ## Fixed CPU13 test-binary profile
 
-`Options.Role` and `Plan.Role` select only `H08Command` (`h08-command`) or
-`CPU13Tests` (`cpu13-tensor-tests`). An omitted preparation role selects the
+`Options.Role` and `Plan.Role` select `H08Command` (`h08-command`),
+`SUPGraphCommand` (`sup-graph-command`), or `CPU13Tests` (`cpu13-tensor-tests`).
+The SUP command target is `./verification/supgpu/graph/cmd`, output `sup-graph`.
+One private command-target switch selects ordinary command import paths,
+list/build arguments and output names; CPU13 retains its separate overlay.
+An omitted preparation role selects the
 ordinary command; every prepared plan and execution receipt carries an explicit
 role. `ReadBuild`/`ReadH08Build` accept only the ordinary command and
 `ReadCPU13Build` accepts only the maintained test binary. A role mismatch rejects
 before opening its plan. An accepted compiler artifact still carries
 `RuntimeHeld=true`; it supplies no fixture or runtime authorization.
+
+`ReadSUPArtifact(evidence, selection Pin, expectedRoot string) (Artifact, error)`
+requires a successful SUP selection and the existing complete compile proof.
+It then authenticates the selected plan, requires a canonical absolute
+`expectedRoot` equal to `plan.Options.Root`, and checks all declared live inputs.
+Parent and child supply their actual canonical cwd. H08/CPU13 readers retain
+their recorded-root contracts. Historical H08 observed/failed005 evidence cannot
+qualify SUP. The genuine successful-artifact opt-in accepts
+`H08_GENUINE_ROLE=sup-graph-command` with required `SUP_GENUINE_ROOT` and the
+existing independently selected evidence/selection/output pins and controls
+directory. An absent selection skips; it supplies no positive evidence.
+
+No SUP command or genuine successful SUP producer is supplied by this role-only
+source change.
 
 The CPU13 command is fixed to `go test -c -vet=off ... ./internal/tensor`, output
 `tensor.test`. Its single add-only Go overlay maps

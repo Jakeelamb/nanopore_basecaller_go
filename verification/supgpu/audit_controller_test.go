@@ -10,79 +10,12 @@ import (
 	"reflect"
 	"runtime/debug"
 	"sort"
-	"strings"
 )
-
-// Metadata is private to the test controller; the frozen production reader's
-// goPackage wire selection remains unchanged.
-func auditSourceRoot(deps []byte) (string, error) {
-	const module = "github.com/Jakeelamb/nanopore_basecaller_go"
-	const target = module + "/verification/supgpu"
-	decoder := json.NewDecoder(bytes.NewReader(deps))
-	root, targets, packages := "", 0, 0
-	for {
-		var p struct {
-			Dir, Root, ImportPath string
-			Module                *struct {
-				Path, Dir, GoMod string
-				Main             bool
-			}
-		}
-		err := decoder.Decode(&p)
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return "", err
-		}
-		packages++
-		if packages > 10000 {
-			return "", fmt.Errorf("too many test dependency packages")
-		}
-		name := strings.Split(p.ImportPath, " [")[0]
-		project := name == module || strings.HasPrefix(name, module+"/")
-		if !project && (p.Module == nil || !p.Module.Main) {
-			continue
-		}
-		if !project || p.Module == nil || p.Module.Path != module || !p.Module.Main || !filepath.IsAbs(p.Root) || filepath.Clean(p.Root) != p.Root || p.Module.Dir != p.Root || p.Module.GoMod != filepath.Join(p.Root, "go.mod") {
-			return "", fmt.Errorf("invalid audit source module/root evidence")
-		}
-		rel := strings.TrimPrefix(name, module+"/")
-		if name == module {
-			rel = "."
-		}
-		if name == target+".test" {
-			rel = "verification/supgpu"
-		}
-		if p.Dir != filepath.Join(p.Root, rel) || (root != "" && root != p.Root) {
-			return "", fmt.Errorf("ambiguous audit source root")
-		}
-		root = p.Root
-		if p.ImportPath == target {
-			targets++
-		}
-	}
-	if root == "" || targets != 1 {
-		return "", fmt.Errorf("missing/ambiguous audit source package root")
-	}
-	return root, nil
-}
-
-func auditControllerSourceRoot(c GoController) (string, error) {
-	if err := verifyPin("", c.Dependencies); err != nil {
-		return "", err
-	}
-	raw, err := os.ReadFile(c.Dependencies.Path)
-	if err != nil {
-		return "", err
-	}
-	return auditSourceRoot(raw)
-}
 
 // The test controller is separate from the frozen model consumer. Actual
 // go-list -test output includes the generated test main as an absolute GoFile.
 func auditTestInputs(deps, envRaw []byte, goexe string) ([]string, error) {
-	root, err := auditSourceRoot(deps)
+	root, err := controllerSourceRoot(deps, "github.com/Jakeelamb/nanopore_basecaller_go/verification/supgpu")
 	if err != nil {
 		return nil, err
 	}
@@ -313,7 +246,11 @@ func readAuditController(p Pin, current bool) (GoController, error) {
 		}
 	}
 	if current {
-		root, e := auditControllerSourceRoot(c)
+		raw, e := os.ReadFile(c.Dependencies.Path)
+		if e != nil {
+			return c, e
+		}
+		root, e := controllerSourceRoot(raw, "github.com/Jakeelamb/nanopore_basecaller_go/verification/supgpu")
 		if e != nil {
 			return c, e
 		}

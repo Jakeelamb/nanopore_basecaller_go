@@ -20,7 +20,7 @@ func run() error {
 	mode := flag.String("mode", "plan", "plan, queries, build, cc, tool, forbidden-cxx, observe-compiled, or check-controller")
 	observationRequest := flag.String("observation-request", "", "independently selected observation request")
 	observationRequestSHA := flag.String("observation-request-sha", "", "independently selected observation request digest")
-	role := flag.String("role", string(cgobuild.H08Command), "fixed h08-command or cpu13-tensor-tests build role")
+	role := flag.String("role", string(cgobuild.H08Command), "fixed h08-command, cpu13-tensor-tests, or sup-graph-command build role")
 	session := flag.String("session", "", "immutable native session")
 	sessionSHA := flag.String("session-sha", "", "independent native session digest")
 	controller := flag.String("controller", "", "sealed CGO0 interposer custody")

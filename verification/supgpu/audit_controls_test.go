@@ -246,7 +246,14 @@ func auditPlanRecipeForController(controller, proofPin Pin, out string, current 
 }
 
 func auditControllerNativeSources(c GoController) ([]Pin, error) {
-	root, err := auditControllerSourceRoot(c)
+	if err := verifyPin("", c.Dependencies); err != nil {
+		return nil, err
+	}
+	deps, err := os.ReadFile(c.Dependencies.Path)
+	if err != nil {
+		return nil, err
+	}
+	root, err := controllerSourceRoot(deps, "github.com/Jakeelamb/nanopore_basecaller_go/verification/supgpu")
 	if err != nil {
 		return nil, err
 	}

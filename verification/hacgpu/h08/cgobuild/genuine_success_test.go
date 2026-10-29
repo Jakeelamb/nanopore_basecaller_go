@@ -40,6 +40,15 @@ func TestGenuineSuccessfulSelectedArtifact(t *testing.T) {
 	case H08Command:
 	case CPU13Tests:
 		reader, otherRole = ReadCPU13Artifact, H08Command
+	case SUPGraphCommand:
+		root := os.Getenv("SUP_GENUINE_ROOT")
+		if root == "" {
+			t.Fatal("SUP_GENUINE_ROOT is required for a selected SUP artifact")
+		}
+		reader = func(evidence, selection Pin) (Artifact, error) {
+			return ReadSUPArtifact(evidence, selection, root)
+		}
+		otherRole = H08Command
 	default:
 		t.Fatalf("unknown genuine successful artifact role %q", role)
 	}
@@ -85,6 +94,13 @@ func TestGenuineSuccessfulSelectedArtifact(t *testing.T) {
 		t.Fatalf("selected output %+v differs from independent expected output %+v", a.Output(), expected)
 	}
 	t.Logf("authenticated %s output %+v; runtime held", role, a.Output())
+	if role == SUPGraphCommand {
+		for _, root := range []string{"", "relative", t.TempDir()} {
+			if a, err := ReadSUPArtifact(evidence, selection, root); err == nil || a.Output() != (Pin{}) {
+				t.Fatalf("SUP accepted wrong root %q: %v", root, err)
+			}
+		}
+	}
 	dir, e := os.MkdirTemp(parent, "genuine-success-controls-")
 	if e != nil {
 		t.Fatal(e)

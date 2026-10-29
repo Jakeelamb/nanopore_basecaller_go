@@ -278,7 +278,7 @@ func Consume(ctx context.Context, options ConsumerOptions) (r GuardedConsumer, e
 	if err != nil {
 		return r, err
 	}
-	r.Run, err = supgpu.ExecuteGuarded(planPin, contractPin, a.Command)
+	r.Run, err = supgpu.ExecuteGuarded(context.Background(), planPin, contractPin, a.Command)
 	if err != nil {
 		return r, err
 	}

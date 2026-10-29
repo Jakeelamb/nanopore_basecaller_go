@@ -2,6 +2,7 @@ package h08
 
 import (
 	"bufio"
+	"context"
 	_ "embed"
 	"flag"
 	"fmt"
@@ -440,7 +441,7 @@ func RunCPU13(admission Pin) (r CPU13Receipt, err error) {
 	if err != nil {
 		return r, err
 	}
-	r.Run, err = supgpu.ExecuteGuarded(planPin, contractPin, a.Command)
+	r.Run, err = supgpu.ExecuteGuarded(context.Background(), planPin, contractPin, a.Command)
 	if err != nil {
 		return r, err
 	}
