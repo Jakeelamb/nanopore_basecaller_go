@@ -6,6 +6,25 @@ and `build` require explicit native admission, the existing read-only nonblockin
 host lock, effective 2 CPU/3 GiB/swap0/64-task limits and a sealed CGO0 interposer.
 The current H08 `Consume` hold is unchanged.
 
+The H08 CLI's `-mode backend-proof` emits the canonical
+`nanopore-h08-backend-proof/v1` envelope: `Backend` is the authenticated
+`nanopore-tensor-backend-artifact/v1`, `ConsumerExecutable` pins the running
+CLI, and `RuntimeHeld` is true. Pass its verbatim stdout and independently
+recorded SHA256 to `Prepare`; a raw backend artifact is not this protocol.
+
+`TestBackendProofProducerPlanner` in `../cmd` checks the actual CLI-to-planner
+handoff with genuine artifacts. Opt in with `H08_BACKEND_PROOF_FIXTURE` (absolute
+JSON path) and `H08_BACKEND_PROOF_FIXTURE_SHA256` (independent file digest).
+The fixture contains `CLI: {Path, SHA256}`, `Backend: {Build, Plan, Producer,
+Output}` (each a `{Path, SHA256}` pin), absolute `Root` and `GoRoot`, and an
+existing writable `WorkRoot` for retained fresh attempts. The controller must
+separately build and qualify the source-current CGO0 CLI, supply all pins, and
+run the test under the admitted host lock and resource budget. The test executes
+only that CLI in backend-proof mode with a 60-second child deadline; it calls
+static `Prepare`, checks the envelope and rejects a changed schema. It retains
+stdout/stderr, including failed attempts, and invokes no compiler or backend.
+An absent fixture skips this integration check and confers no native acceptance.
+
 The source/host phase produces a prospective plan, source/tool/resource pins and
 immutable snapshots. It is not a CGO1 build receipt. The concrete CC/tool
 interposer and phased native execution path now exist and are exercised with a
