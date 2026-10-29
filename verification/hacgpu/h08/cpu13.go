@@ -302,7 +302,11 @@ func ReadCPU13(pin Pin, backend closedbuild.ArtifactOptions) (r CPU13Receipt, er
 	if q.Backend != backend {
 		return r, fmt.Errorf("CPU13 tested another selected backend")
 	}
-	if _, e = supgpu.ReplayGuarded(guardPin(a.Plan), guardPin(a.Contract), a.Command, r.Run); e != nil {
+	planPin, contractPin, e := guardPins(a)
+	if e != nil {
+		return r, e
+	}
+	if _, e = supgpu.ReplayGuarded(planPin, contractPin, a.Command, r.Run); e != nil {
 		return r, e
 	}
 	var b []byte
@@ -432,11 +436,15 @@ func RunCPU13(admission Pin) (r CPU13Receipt, err error) {
 			}
 		}
 	}()
-	r.Run, err = supgpu.ExecuteGuarded(guardPin(a.Plan), guardPin(a.Contract), a.Command)
+	planPin, contractPin, err := guardPins(a)
 	if err != nil {
 		return r, err
 	}
-	if _, err = supgpu.ReplayGuarded(guardPin(a.Plan), guardPin(a.Contract), a.Command, r.Run); err != nil {
+	r.Run, err = supgpu.ExecuteGuarded(planPin, contractPin, a.Command)
+	if err != nil {
+		return r, err
+	}
+	if _, err = supgpu.ReplayGuarded(planPin, contractPin, a.Command, r.Run); err != nil {
 		return r, err
 	}
 	b, err := readPin(Pin{Path: r.Run.Command.Stdout, SHA256: r.Run.Command.StdoutSHA})

@@ -48,6 +48,20 @@ func hostJSON(t *testing.T, path string, value any) Pin {
 	return p
 }
 
+func hostGuardPin(t *testing.T, p Pin) supgpu.Pin {
+	t.Helper()
+	v, err := guardPin(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return v
+}
+
+func hostGuardPolicy(t *testing.T, target Pin, dir string) supgpu.RuntimePolicy {
+	p := hostGuardPin(t, target)
+	return supgpu.RuntimePolicy{Schema: "nanopore-supgpu-selected-runtime/v1", Lazy: "audit-every-loader-object-before-initializers/v1", Reference: p, Observer: p, Audit: p, Allowed: []supgpu.RuntimeCode{}, Alternates: []supgpu.RuntimeCode{}, Directories: []string{dir}}
+}
+
 func TestH08GuardContractRejectsRehashedPhaseAndCustodyChanges(t *testing.T) {
 	dir := t.TempDir()
 	request := hostJSON(t, filepath.Join(dir, "request"), map[string]string{"fixed": "input-only"})
@@ -56,7 +70,7 @@ func TestH08GuardContractRejectsRehashedPhaseAndCustodyChanges(t *testing.T) {
 	target := request
 	c := supgpu.PhaseContract{Schema: "nanopore-audited-phase-contract/v1", Role: "observer", Action: "hac-all-active", Names: []string{"pre-model", "pre-forward", "post-forward"}}
 	cp := hostJSON(t, filepath.Join(dir, "contract"), c)
-	p := supgpu.GuardPlan{Schema: "nanopore-audited-guard-plan/v1", Contract: guardPin(cp), Policy: supgpu.RuntimePolicy{Reference: guardPin(target), Observer: guardPin(target)}, Inputs: []supgpu.Pin{guardPin(request), guardPin(build), guardPin(selection)}}
+	p := supgpu.GuardPlan{Schema: "nanopore-audited-guard-plan/v1", Contract: hostGuardPin(t, cp), Policy: hostGuardPolicy(t, target, dir), Inputs: []supgpu.Pin{hostGuardPin(t, request), hostGuardPin(t, build), hostGuardPin(t, selection)}}
 	pp := hostJSON(t, filepath.Join(dir, "plan"), p)
 	a := RuntimeAdmission{Schema: "nanopore-h08-runtime-admission/v2", Request: request, ParentBuild: build, ParentBuildSelection: selection, Plan: pp, Contract: cp, Command: supgpu.GuardCommand{Directory: dir, Output: filepath.Join(dir, "fresh")}}
 	check := func(a RuntimeAdmission) error { return validateGuardInputs(a, target, request, nil, "hac-all-active") }
@@ -68,7 +82,7 @@ func TestH08GuardContractRejectsRehashedPhaseAndCustodyChanges(t *testing.T) {
 		changed.Names = names
 		changedPin := hostJSON(t, filepath.Join(dir, "changed-contract"), changed)
 		changedPlan := p
-		changedPlan.Contract = guardPin(changedPin)
+		changedPlan.Contract = hostGuardPin(t, changedPin)
 		changedA := a
 		changedA.Contract = changedPin
 		changedA.Plan = hostJSON(t, filepath.Join(dir, "changed-plan"), changedPlan)

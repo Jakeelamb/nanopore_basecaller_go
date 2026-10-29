@@ -2,12 +2,16 @@ package h08
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
+	"syscall"
 	"time"
 
 	"github.com/Jakeelamb/nanopore_basecaller_go/verification/hacgpu/h08/cgobuild"
@@ -41,7 +45,41 @@ func fixedCommand(executable Pin, request Pin) []string {
 	return []string{executable.Path, "-mode", "guarded-child", "-request", request.Path, "-request-sha", request.SHA256}
 }
 
-func guardPin(p Pin) supgpu.Pin { return supgpu.Pin{Path: p.Path, SHA256: p.SHA256} }
+func guardPin(p Pin) (supgpu.Pin, error) {
+	if !filepath.IsAbs(p.Path) || len(p.SHA256) != 64 {
+		return supgpu.Pin{}, fmt.Errorf("absolute independently pinned guard input required")
+	}
+	f, err := os.OpenFile(p.Path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return supgpu.Pin{}, err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return supgpu.Pin{}, err
+	}
+	if !info.Mode().IsRegular() {
+		return supgpu.Pin{}, fmt.Errorf("regular guard input required: %s", p.Path)
+	}
+	h := sha256.New()
+	n, err := io.Copy(h, f)
+	if err != nil {
+		return supgpu.Pin{}, err
+	}
+	if n <= 0 || n != info.Size() || hex.EncodeToString(h.Sum(nil)) != p.SHA256 {
+		return supgpu.Pin{}, fmt.Errorf("nonempty authenticated guard input required: %s", p.Path)
+	}
+	return supgpu.Pin{Path: p.Path, SHA256: p.SHA256, Bytes: n}, nil
+}
+
+func guardPins(a RuntimeAdmission) (supgpu.Pin, supgpu.Pin, error) {
+	p, err := guardPin(a.Plan)
+	if err != nil {
+		return p, supgpu.Pin{}, err
+	}
+	c, err := guardPin(a.Contract)
+	return p, c, err
+}
 
 func pinnedJSON(p Pin, v any) error {
 	actual, e := closedbuild.PinFile(p.Path)
@@ -52,33 +90,44 @@ func pinnedJSON(p Pin, v any) error {
 }
 
 func validateGuardInputs(a RuntimeAdmission, target Pin, request Pin, required []Pin, action string) error {
-	var p supgpu.GuardPlan
-	var c supgpu.PhaseContract
-	if e := pinnedJSON(a.Plan, &p); e != nil {
+	pp, cp, e := guardPins(a)
+	if e != nil {
 		return e
 	}
-	if e := pinnedJSON(a.Contract, &c); e != nil {
+	p, c, e := supgpu.ReadGuardPlan(pp, cp)
+	if e != nil {
 		return e
 	}
-	if a.Schema != "nanopore-h08-runtime-admission/v2" || p.Schema != "nanopore-audited-guard-plan/v1" || p.Contract != guardPin(a.Contract) || c.Schema != "nanopore-audited-phase-contract/v1" || c.Role != "observer" || c.Action != action || !slices.Equal(c.Names, []string{"pre-model", "pre-forward", "post-forward"}) {
+	if a.Schema != "nanopore-h08-runtime-admission/v2" || c.Role != "observer" || c.Action != action || !slices.Equal(c.Names, []string{"pre-model", "pre-forward", "post-forward"}) {
 		return fmt.Errorf("H08 exact phase/admission contract differs")
 	}
-	if p.Policy.Observer != guardPin(target) || p.Policy.Reference != guardPin(target) || !filepath.IsAbs(a.Command.Directory) || !filepath.IsAbs(a.Command.Output) {
+	tp, e := guardPin(target)
+	if e != nil {
+		return e
+	}
+	if p.Policy.Observer != tp || p.Policy.Reference != tp || !filepath.IsAbs(a.Command.Directory) || !filepath.IsAbs(a.Command.Output) {
 		return fmt.Errorf("H08 guard selected target/directories differ")
 	}
-	selected := map[string]string{}
+	selected := map[string]supgpu.Pin{}
 	for _, v := range p.Inputs {
 		if _, exists := selected[v.Path]; exists {
 			return fmt.Errorf("duplicate guard input")
 		}
-		selected[v.Path] = v.SHA256
+		selected[v.Path] = v
 	}
 	for _, v := range append(slices.Clone(required), request, a.ParentBuild, a.ParentBuildSelection) {
-		if !filepath.IsAbs(v.Path) || len(v.SHA256) != 64 || selected[v.Path] != v.SHA256 {
+		if !filepath.IsAbs(v.Path) || len(v.SHA256) != 64 || selected[v.Path].SHA256 != v.SHA256 {
 			return fmt.Errorf("guard omits required custody input: %s", v.Path)
 		}
+		actual, e := guardPin(v)
+		if e != nil {
+			return e
+		}
+		if selected[v.Path] != actual {
+			return fmt.Errorf("guard custody byte count differs: %s", v.Path)
+		}
 	}
-	return checkPins(selected)
+	return nil
 }
 
 // ReadAdmission does only authenticated file reads. It cannot load the selected
@@ -208,7 +257,11 @@ func Consume(ctx context.Context, options ConsumerOptions) (r GuardedConsumer, e
 	if err != nil || value != witness.Device {
 		return r, fmt.Errorf("source UUID metadata bookend differs: %v", err)
 	}
-	r.Run, err = supgpu.ExecuteGuarded(guardPin(a.Plan), guardPin(a.Contract), a.Command)
+	planPin, contractPin, err := guardPins(a)
+	if err != nil {
+		return r, err
+	}
+	r.Run, err = supgpu.ExecuteGuarded(planPin, contractPin, a.Command)
 	if err != nil {
 		return r, err
 	}
@@ -218,7 +271,7 @@ func Consume(ctx context.Context, options ConsumerOptions) (r GuardedConsumer, e
 	if err != nil || value != r.BeforeDevice {
 		return r, fmt.Errorf("UUID metadata changed across guarded graph: %v", err)
 	}
-	if _, err = supgpu.ReplayGuarded(guardPin(a.Plan), guardPin(a.Contract), a.Command, r.Run); err != nil {
+	if _, err = supgpu.ReplayGuarded(planPin, contractPin, a.Command, r.Run); err != nil {
 		return r, err
 	}
 	r.Consumer, err = closedbuild.PinFile(filepath.Join(o.Out, "consumer.json"))
@@ -275,7 +328,11 @@ func ReadConsumer(pin Pin) (r GuardedConsumer, err error) {
 	if o.Phase != "all-active" {
 		return r, fmt.Errorf("prior phase is not all-active")
 	}
-	if _, err = supgpu.ReplayGuarded(guardPin(a.Plan), guardPin(a.Contract), a.Command, r.Run); err != nil {
+	planPin, contractPin, err := guardPins(a)
+	if err != nil {
+		return r, err
+	}
+	if _, err = supgpu.ReplayGuarded(planPin, contractPin, a.Command, r.Run); err != nil {
 		return
 	}
 	w, e := ReadWitness(o.Sources)

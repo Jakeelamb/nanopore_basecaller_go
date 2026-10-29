@@ -250,9 +250,9 @@ func TestH08GuardRequiresBothRolePairs(t *testing.T) {
 	c := supgpu.PhaseContract{Schema: "nanopore-audited-phase-contract/v1", Role: "observer", Action: "hac-cpu13", Names: []string{"pre-model", "pre-forward", "post-forward"}}
 	cp := hostJSON(t, filepath.Join(dir, "contract"), c)
 	required := []Pin{parent, parentSelection, target, targetSelection}
-	p := supgpu.GuardPlan{Schema: "nanopore-audited-guard-plan/v1", Contract: guardPin(cp), Policy: supgpu.RuntimePolicy{Reference: guardPin(target), Observer: guardPin(target)}, Inputs: []supgpu.Pin{guardPin(request)}}
+	p := supgpu.GuardPlan{Schema: "nanopore-audited-guard-plan/v1", Contract: hostGuardPin(t, cp), Policy: hostGuardPolicy(t, target, dir), Inputs: []supgpu.Pin{hostGuardPin(t, request)}}
 	for _, pin := range required {
-		p.Inputs = append(p.Inputs, guardPin(pin))
+		p.Inputs = append(p.Inputs, hostGuardPin(t, pin))
 	}
 	a := RuntimeAdmission{Schema: "nanopore-h08-runtime-admission/v2", Request: request, ParentBuild: parent, ParentBuildSelection: parentSelection, Contract: cp, Command: supgpu.GuardCommand{Directory: dir, Output: filepath.Join(dir, "guard")}}
 	check := func(plan supgpu.GuardPlan) error {
@@ -268,7 +268,7 @@ func TestH08GuardRequiresBothRolePairs(t *testing.T) {
 	}
 	for _, omitted := range required {
 		mutant := p
-		mutant.Inputs = slices.DeleteFunc(slices.Clone(p.Inputs), func(pin supgpu.Pin) bool { return pin == guardPin(omitted) })
+		mutant.Inputs = slices.DeleteFunc(slices.Clone(p.Inputs), func(pin supgpu.Pin) bool { return pin == hostGuardPin(t, omitted) })
 		requireSelectionError(t, check(mutant), "guard omits required custody input")
 	}
 }
