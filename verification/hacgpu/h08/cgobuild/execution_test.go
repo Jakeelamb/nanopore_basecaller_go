@@ -329,7 +329,7 @@ func TestExactMetadataCCIdentityKeepsCompileStdinRequirementSeparate(t *testing.
 	if len(op.Commands) != 1 || op.Stdin.Path != "" || spawns(log) != 1 {
 		t.Fatal("metadata identity executed a compile profile")
 	}
-	if e = verifyNativeOperation(p, s, op, dir, nil); e != nil {
+	if e = verifyNativeOperation(p, s, op, dir, nil, attestedQueryResources{}); e != nil {
 		t.Fatal(e)
 	}
 	path := filepath.Join(dir, "stdin.c")
@@ -342,7 +342,7 @@ func TestExactMetadataCCIdentityKeepsCompileStdinRequirementSeparate(t *testing.
 	}
 	bad := op
 	bad.Stdin = q
-	if e = verifyNativeOperation(p, s, bad, dir, nil); e == nil || !strings.Contains(e.Error(), "unexpected retained metadata stdin") {
+	if e = verifyNativeOperation(p, s, bad, dir, nil, attestedQueryResources{}); e == nil || !strings.Contains(e.Error(), "unexpected retained metadata stdin") {
 		t.Fatalf("metadata stdin evidence accepted: %v", e)
 	}
 	probe := []string{"-Qunused-arguments", "-O2", "-g", "-c", "-x", "c", "-", "-o", "/dev/null"}
@@ -354,7 +354,7 @@ func TestExactMetadataCCIdentityKeepsCompileStdinRequirementSeparate(t *testing.
 		t.Fatal("nonmetadata stdin was not captured")
 	}
 	compiled.Stdin = Pin{}
-	if e = verifyNativeOperation(p, s, compiled, filepath.Dir(filepath.Dir(compiled.Commands[0].Stdout)), nil); e == nil || !strings.Contains(e.Error(), "compiler stdin not retained") {
+	if e = verifyNativeOperation(p, s, compiled, filepath.Dir(filepath.Dir(compiled.Commands[0].Stdout)), nil, attestedQueryResources{}); e == nil || !strings.Contains(e.Error(), "compiler stdin not retained") {
 		t.Fatalf("nonmetadata missing stdin accepted: %v", e)
 	}
 	if _, e = classifyCC(p, p.Options.Root, append(slices.Clone(args), "-unknown"), nil, nil, nil); e == nil {

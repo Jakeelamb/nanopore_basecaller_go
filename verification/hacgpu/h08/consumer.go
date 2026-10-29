@@ -23,9 +23,11 @@ import (
 )
 
 type FixedRequest struct {
+	Schema                                   string
 	Sources                                  Sources
 	Backend, Model, Out, Phase               string
 	ControllerBuild, CPU13, AllActiveReceipt Pin
+	ControllerBuildSelection                 Pin
 	BackendArtifact                          closedbuild.ArtifactOptions
 	Ordinal                                  int
 }
@@ -52,6 +54,7 @@ type ConsumerReceipt struct {
 	Invocation                                               []string
 	Sources                                                  Sources
 	Executable, ControllerBuild, CPU13, AllActiveReceipt     Pin
+	ControllerBuildSelection                                 Pin
 	Backend                                                  closedbuild.BackendArtifact
 	Inputs, Outputs, Runtime                                 map[string]string
 	BeforeDevice, AfterDevice                                string
@@ -145,6 +148,9 @@ func runtimeEnvironment() map[string]h07.RuntimeEnvValue {
 // exact phase and pin the complete current Go build, backend and prospective
 // runtime policy. No source oracle or stock model executable is invoked.
 func validateFixedRequest(ctx context.Context, o FixedRequest) error {
+	if o.Schema != "nanopore-h08-fixed-request/v1" {
+		return fmt.Errorf("H08 fixed request schema differs")
+	}
 	if o.Phase != "all-active" && o.Phase != "padding" {
 		return fmt.Errorf("unknown fixed graph phase")
 	}
@@ -164,7 +170,14 @@ func validateFixedRequest(ctx context.Context, o FixedRequest) error {
 }
 
 func consumeGuarded(ctx context.Context, o FixedRequest, phases *supgpu.PhaseClient) (r ConsumerReceipt, err error) {
-	r = ConsumerReceipt{Schema: "nanopore-hac-fixed-consumer/v3", Status: "failed", Started: time.Now().UTC().Format(time.RFC3339Nano), Phase: o.Phase, Sources: o.Sources, Invocation: slices.Clone(os.Args), Inputs: map[string]string{}, Outputs: map[string]string{}, Runtime: map[string]string{}, ControllerBuild: o.ControllerBuild, CPU13: o.CPU13, AllActiveReceipt: o.AllActiveReceipt, Limits: []string{"No source producer, full fallback, VCS, other geometry, biological or performance qualification.", "One-slot ProbeInactiveSlots never changes production admission; production remains held for that policy until a separately reviewed integration.", "Reusing retained unit observations does not repair their historical compiler/link/runtime custody limits."}}
+	if err = validateFixedRequest(ctx, o); err != nil {
+		return r, err
+	}
+	controller, err := cgobuild.ReadH08Artifact(o.ControllerBuild, o.ControllerBuildSelection)
+	if err != nil {
+		return r, err
+	}
+	r = ConsumerReceipt{Schema: "nanopore-hac-fixed-consumer/v4", Status: "failed", Started: time.Now().UTC().Format(time.RFC3339Nano), Phase: o.Phase, Sources: o.Sources, Invocation: slices.Clone(os.Args), Inputs: map[string]string{}, Outputs: map[string]string{}, Runtime: map[string]string{}, ControllerBuild: o.ControllerBuild, ControllerBuildSelection: o.ControllerBuildSelection, CPU13: o.CPU13, AllActiveReceipt: o.AllActiveReceipt, Limits: []string{"No source producer, full fallback, VCS, other geometry, biological or performance qualification.", "One-slot ProbeInactiveSlots never changes production admission; production remains held for that policy until a separately reviewed integration.", "Reusing retained unit observations does not repair their historical compiler/link/runtime custody limits."}}
 	r.Attempt, err = runner.NewAttempt(o.Out)
 	if err != nil {
 		return r, err
@@ -192,11 +205,7 @@ func consumeGuarded(ctx context.Context, o FixedRequest, phases *supgpu.PhaseCli
 		return r, err
 	}
 	r.Executable = Pin{Path: executable, SHA256: pin}
-	controller, err := cgobuild.ReadBuild(o.ControllerBuild)
-	if err != nil {
-		return r, err
-	}
-	if controller.Output != r.Executable {
+	if controller.Output() != r.Executable {
 		return r, fmt.Errorf("current executable differs from CGO1 output")
 	}
 	if _, err = ReadCPU13(o.CPU13, o.BackendArtifact); err != nil {
@@ -204,6 +213,7 @@ func consumeGuarded(ctx context.Context, o FixedRequest, phases *supgpu.PhaseCli
 	}
 	r.Inputs[o.CPU13.Path] = o.CPU13.SHA256
 	r.Inputs[o.ControllerBuild.Path] = o.ControllerBuild.SHA256
+	r.Inputs[o.ControllerBuildSelection.Path] = o.ControllerBuildSelection.SHA256
 	r.Inputs[executable] = pin
 	w, err := ReadWitness(o.Sources)
 	if err != nil {
@@ -237,6 +247,9 @@ func consumeGuarded(ctx context.Context, o FixedRequest, phases *supgpu.PhaseCli
 		}
 		var before ConsumerReceipt
 		if err = pinnedJSON(guarded.Consumer, &before); err != nil {
+			return r, err
+		}
+		if err = validateConsumerBuild(before, o); err != nil {
 			return r, err
 		}
 		if before.Status != "fixed_all_active_passed" || before.Executable != r.Executable || before.Backend.Output != r.Backend.Output || before.Sources != r.Sources || len(before.Stages) != 13 || len(before.Caches) != 58 || len(before.Scratch) != 8 || before.ProductionForwardCalls != 1 || before.InactiveProbeCalls != 0 {

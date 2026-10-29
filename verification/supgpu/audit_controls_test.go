@@ -78,7 +78,7 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 func auditControlAdmission(unit string, admitted bool) error {
-	if (unit == "compile" || unit == "run" || unit == "continue") && !admitted {
+	if (unit == "compile" || unit == "run" || unit == "continue" || unit == "effective-run") && !admitted {
 		return fmt.Errorf("native audit %s requires separate coordinator admission", unit)
 	}
 	return nil
@@ -142,6 +142,13 @@ func auditControlCommand(args []string) error {
 		value, err = compileAuditControls(*planPath, *planSHA)
 	case "run":
 		value, err = runAuditControls(*buildPath, *buildSHA, *out)
+	case "effective-run":
+		value, err = runEffectiveAuditControls(*controller, *controllerSHA, *buildPath, *buildSHA, *out)
+	case "effective-check":
+		if *out != "" {
+			return fmt.Errorf("effective-check does not accept output directory")
+		}
+		value, err = checkEffectiveAuditControls(*controller, *controllerSHA, *buildPath, *buildSHA)
 	case "continuation-plan":
 		value, err = prepareAuditContinuation(*controller, *controllerSHA, *buildPath, *buildSHA, *prefix, *prefixSHA, *out)
 	case "check-continuation":
@@ -167,7 +174,9 @@ func auditPlanRecipe(controller, proofPin Pin, out string) (p auditControlPlan, 
 
 func auditPlanRecipeForController(controller, proofPin Pin, out string, current bool) (p auditControlPlan, compiler BuildPlan, err error) {
 	p = auditControlPlan{Schema: "nanopore-supgpu-audit-control-plan/v2", Controller: controller, ProducerProof: proofPin, Out: out, Inputs: []Pin{}, Sources: []Pin{}}
-	if _, err = readAuditController(controller, current); err != nil {
+	c, e := readAuditController(controller, current)
+	if e != nil {
+		err = e
 		return
 	}
 	proof, e := readAuditorProof(proofPin)
@@ -212,13 +221,11 @@ func auditPlanRecipeForController(controller, proofPin Pin, out string, current 
 	for _, v := range []Pin{proofPin, controller, proof.Audit} {
 		add(v)
 	}
-	for _, path := range auditControlSources {
-		var v Pin
-		v, err = pin(path)
-		if err != nil {
-			return
-		}
-		p.Sources = append(p.Sources, v)
+	p.Sources, err = auditControllerNativeSources(c)
+	if err != nil {
+		return
+	}
+	for _, v := range p.Sources {
 		add(v)
 	}
 	for _, path := range []string{"/usr/include/asm/unistd_64.h", "/usr/include/dlfcn.h", "/usr/include/bits/fcntl-linux.h"} {
@@ -236,6 +243,40 @@ func auditPlanRecipeForController(controller, proofPin Pin, out string, current 
 		return
 	}
 	return
+}
+
+func auditControllerNativeSources(c GoController) ([]Pin, error) {
+	root, err := auditControllerSourceRoot(c)
+	if err != nil {
+		return nil, err
+	}
+	sources := []Pin{}
+	for _, path := range auditControlSources {
+		original := filepath.Join(root, path)
+		var selected Pin
+		count := 0
+		for _, s := range c.Snapshots {
+			if s.Original == original {
+				selected = s.Copy
+				count++
+			}
+		}
+		if count != 1 {
+			return nil, fmt.Errorf("native source original membership differs: %s", original)
+		}
+		if err = verifyPin("", selected); err != nil {
+			return nil, err
+		}
+		v, e := pin(original)
+		if e != nil {
+			return nil, e
+		}
+		if v.SHA256 != selected.SHA256 || v.Bytes != selected.Bytes {
+			return nil, fmt.Errorf("native source differs from producer snapshot: %s", original)
+		}
+		sources = append(sources, v)
+	}
+	return sources, nil
 }
 
 func auditControlCommands(out, driver string, sources []Pin, dl string) ([]BuildCommand, []BuildCommand, []string) {
@@ -864,7 +905,7 @@ func TestAuditControlFreezesAbsoluteGeneratedTestMain(t *testing.T) {
 		t.Fatal(err)
 	}
 	generated := filepath.Join(dir, "generated-test-main.go")
-	deps, err := Marshal(goPackage{Dir: filepath.Join(dir, "package"), GoFiles: []string{generated}})
+	deps, err := Marshal(map[string]any{"Dir": filepath.Join(dir, "verification/supgpu"), "Root": dir, "ImportPath": "github.com/Jakeelamb/nanopore_basecaller_go/verification/supgpu", "Module": map[string]any{"Path": "github.com/Jakeelamb/nanopore_basecaller_go", "Main": true, "Dir": dir, "GoMod": filepath.Join(dir, "go.mod")}, "GoFiles": []string{generated}})
 	if err != nil {
 		t.Fatal(err)
 	}

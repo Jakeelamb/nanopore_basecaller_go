@@ -6,6 +6,25 @@ and `build` require explicit native admission, the existing read-only nonblockin
 host lock, effective 2 CPU/3 GiB/swap0/64-task limits and a sealed CGO0 interposer.
 The current H08 `Consume` hold is unchanged.
 
+The H08 CLI's `-mode backend-proof` emits the canonical
+`nanopore-h08-backend-proof/v1` envelope: `Backend` is the authenticated
+`nanopore-tensor-backend-artifact/v1`, `ConsumerExecutable` pins the running
+CLI, and `RuntimeHeld` is true. Pass its verbatim stdout and independently
+recorded SHA256 to `Prepare`; a raw backend artifact is not this protocol.
+
+`TestBackendProofProducerPlanner` in `../cmd` checks the actual CLI-to-planner
+handoff with genuine artifacts. Opt in with `H08_BACKEND_PROOF_FIXTURE` (absolute
+JSON path) and `H08_BACKEND_PROOF_FIXTURE_SHA256` (independent file digest).
+The fixture contains `CLI: {Path, SHA256}`, `Backend: {Build, Plan, Producer,
+Output}` (each a `{Path, SHA256}` pin), absolute `Root` and `GoRoot`, and an
+existing writable `WorkRoot` for retained fresh attempts. The controller must
+separately build and qualify the source-current CGO0 CLI, supply all pins, and
+run the test under the admitted host lock and resource budget. The test executes
+only that CLI in backend-proof mode with a 60-second child deadline; it calls
+static `Prepare`, checks the envelope and rejects a changed schema. It retains
+stdout/stderr, including failed attempts, and invokes no compiler or backend.
+An absent fixture skips this integration check and confers no native acceptance.
+
 The source/host phase produces a prospective plan, source/tool/resource pins and
 immutable snapshots. It is not a CGO1 build receipt. The concrete CC/tool
 interposer and phased native execution path now exist and are exercised with a
@@ -304,7 +323,7 @@ role. `ReadBuild`/`ReadH08Build` accept only the ordinary command and
 before opening its plan. An accepted compiler artifact still carries
 `RuntimeHeld=true`; it supplies no fixture or runtime authorization.
 
-The CPU13 command is fixed to `go test -c ... ./internal/tensor`, output
+The CPU13 command is fixed to `go test -c -vet=off ... ./internal/tensor`, output
 `tensor.test`. Its single add-only Go overlay maps
 `internal/tensor/h08_phase_main_test.go` to the pinned
 `verification/hacgpu/h08/cpu13/testmain.go.txt`. The destination must not exist.
@@ -312,6 +331,15 @@ The overlay imports H08's external `tensor_test` TestMain wrapper; it copies no
 maintained test bodies. The build does not execute a test binary or choose the
 genuine/fake runtime selector. Those selectors remain the existing eleven
 audited genuine tests and two separately qualified fake-loader tests.
+
+The actual `cpu13-abi5-source-build-003` attempt failed with exit 1 after
+linking: `go test -c` invoked default vet, which the compile-only interposer
+rejected as `Go tool not used by fixed H08 build`. That failed receipt remains
+failed; no CPU13 output is qualified by it. Explicit `-vet=off` belongs only to
+this compile-only recipe. Ordinary H08 `go build`, ordinary `go test ./...`,
+maintained parity and separate host vet remain unchanged. This source correction
+requires fresh controller/plan/query and H08/CPU13 target qualification; it
+claims no successful CPU13 execution, native runtime or GPU acceptance.
 
 Static source selection includes the actual CGO-enabled tensor test files and
 their imports, the wrapper imports, and Go's four testmain dependencies. Go's
@@ -476,5 +504,225 @@ This adds no general compiler flag list. Native TU action seeds still require20
 characters; literal seed1 remains rejected for a TU. Source-grounded fake controls
 cover all three trials for both contexts and reject foreign directories/maps,
 unknown/reordered prefixes, other trials, changed stdin/output and absent Cgo
-context before a fake compiler child. Historical failures and caches are retained;
-another genuine phase still requires a fresh source/tool/plan review and grant.
+
+## Retained compiled proof
+
+The retained reader authenticates saved build005 as data through the common
+`validateReceiptBody` used for successful compiled receipts. Its private profile,
+`saved005-final-reader-v1`, admits only the selected original producer tuple,
+handoff, outer command, cleanup and failure stderr. It checks frozen producer
+sources, command clocks, unchanged input manifests, all operation files and
+snapshots, and historical process records. It does not change the failed receipt.
+The strict raw receipt APIs still reject that receipt.
+
+The common validator checks these corrected relationships:
+
+- Exact query answers bind individual resources. The selected prior query receipt
+  supplies 16 noncanonical answers, seven special spellings and nine others.
+  Each answer must match its prospective Query and Resource, the selected command,
+  authenticated producer and before-child snapshots. Trace and map tokens are
+  checked before cleaning. No directory alias or current filesystem resolution
+  supplies an implicit binding.
+- A split probe binds its successful compile to the separate link through the
+  explicit probe object, dependency evidence, exact transformed argv and snapshots.
+  Compiler flags retain their compile role. Linker flags retain their link role.
+  An expected unsupported probe remains an expected exit, with its diagnostics.
+- Exactly one native `go-link` and one `go-tool-link` share the selected lease,
+  command context, output target and authenticated snapshots. The fixed Linux/amd64
+  Go1.27.3 linker profile derives the 32-byte Go FIPS HMAC update. The entire final
+  file must match after that update, with every other byte unchanged.
+
+Both Go-tool input validation and the final-output profile accept the selected
+external driver as its bare absolute path or exactly `strconv.Quote(driver.Path)`.
+Foreign drivers, ambiguous prefixes and other quoting reject. The final profile
+requires an executable external link and an effective empty `-buildid`.
+It rejects `-B`, `-fipso` and unsupported flag forms. The pinned linker SHA256 is
+`97df419b7cf8f4bb8e76c3623b8a1d371c6818533c4be04f0a3563ff6169843d`.
+
+The observation writer and reader reuse `deriveQueryResources`,
+`finalOutputTransition` and authenticated operation metadata. Readers rerun the
+complete common body and compare every serialized proof summary. No alternate
+link or ELF validator, producer replay or bulk hash cache supplies acceptance.
+
+## Select compiled artifacts
+
+The public API is:
+
+```go
+ObserveCompiled(requestPin Pin, out string) (Pin, error)
+ReadH08Artifact(evidence, selection Pin) (Artifact, error)
+ReadCPU13Artifact(evidence, selection Pin) (Artifact, error)
+func (a Artifact) Output() Pin
+```
+
+Pass both an independently selected evidence Pin and selection Pin. There is no
+optional selector or fallback. `Artifact` keeps its state and origin private and
+exposes only the selected output Pin. It conveys no runtime admission.
+
+A successful selection names the expected role and complete producer tuple before
+calling the unchanged strict successful reader. An observed selection names the
+preselected request and the external post-exit Execution. Matching self-authored
+hashes do not prove independent selection. The selecting controller must carry
+both digests through its authenticated request. The retained profile supports
+ordinary H08 only. The CPU13 reader does not make that profile a CPU13 artifact.
+
+All new JSON requires exact case, mandatory fields, no null, unknown or duplicate
+keys, and one JSON value. Every Pin is
+`{"Path":"/absolute/path","SHA256":"64hex"}`.
+The request has this exact structure (symbolic pin values below must be replaced
+with independent selections):
+
+```json
+{
+  "Schema": "nanopore-h08-observation-request/v1",
+  "Role": "h08-command",
+  "Retained": {
+    "Producer": {
+      "Receipt": {"Path":"/selected/receipt","SHA256":"RECEIPT_SHA"},
+      "Plan": {"Path":"/selected/plan","SHA256":"PLAN_SHA"},
+      "Controller": {"Path":"/selected/producer-controller","SHA256":"CONTROLLER_SHA"},
+      "Queries": {"Path":"/selected/queries","SHA256":"QUERIES_SHA"},
+      "Output": {"Path":"/selected/output","SHA256":"OUTPUT_SHA"}
+    },
+    "Handoff": {"Path":"/selected/handoff","SHA256":"HANDOFF_SHA"},
+    "Outer": {"Path":"/selected/outer","SHA256":"OUTER_SHA"},
+    "Cleanup": {"Path":"/selected/cleanup","SHA256":"CLEANUP_SHA"},
+    "FailureStderr": {"Path":"/selected/stderr","SHA256":"STDERR_SHA"},
+    "Profile": "saved005-final-reader-v1"
+  },
+  "ObserverController": {"Path":"/selected/current-controller","SHA256":"OBSERVER_SHA"},
+  "ObserverRoot": "/absolute/selected/checkout",
+  "AlgorithmReferences": [
+    {"Path":"/usr/lib/go/src/cmd/link/internal/ld/fips140.go","SHA256":"f214648c1a2ec04ea5483812ceec13cec96aa1a1acd9f95d2882b6373ef432c5"},
+    {"Path":"/usr/lib/go/src/cmd/internal/obj/fips140.go","SHA256":"25fba80147d77aa812720b5c4ec71304b1547491ff59f0221c12a3c504236137"}
+  ],
+  "OutputDirectory": "/absolute/selected/checkout/artifacts/tensor/fresh-observation"
+}
+```
+
+The historical producer pins remain fixed by `retained.go`. AlgorithmReferences
+are new authenticated inputs, separate from historical Plan.Inputs. Keep them
+separate from the observer's source/tool closure. ObserverController must seal
+`observation.go` and `cmd/main.go` under ObserverRoot, plus the complete selected
+CGO0 source, tools, list/build receipts, snapshots and actual executable.
+
+## Seal and run the observer
+
+Use the [CGO0 seal instructions](tools/README.md) and
+[independent launcher instructions](tools/OBSERVE.md) for exact launch mechanics.
+The sealer runs the maintained `check-controller` and a rehashed missing-snapshot
+rejection. Mocked glue controls do not prove a real observer execution.
+
+Preselect and hash the request before startup. Use a fresh output directory.
+The writer checks its actual cwd and executable against the selected controller,
+reserves that directory, runs the full retained proof, writes `observation.json`
+and emits its Pin. Failed reserved directories remain as evidence. A retry needs
+a new request and output directory. The original failed receipt stays unchanged.
+
+The actual observer argv is:
+
+```text
+EXE -mode observe-compiled -observation-request REQUEST -observation-request-sha REQUEST_SHA -out OUT -host-admitted
+```
+
+Use cwd=ObserverRoot and this complete cleared environment in this exact order:
+
+```text
+CGO_ENABLED=0 GOTOOLCHAIN=local GOWORK=off GOPROXY=off GOSUMDB=off GOENV=off GOMAXPROCS=2 GOMEMLIMIT=3GiB
+```
+
+The root launcher holds the canonical stock lock O_RDONLY with LOCK_EX|LOCK_NB
+through cleanup. The observer never reacquires it. The external deadline starts
+before interpreter startup. Bounds remain outer 600s, service 575s and work 550s,
+with at most 2 CPU, 3 GiB, swap 0 and 64 tasks. The CLI checks host admission,
+CheckRoot and Limits before reading the request.
+
+The root independently witnesses the actual executable, argv, cwd, environment,
+PID, start identity and owned cgroup. After exit 0, stdout must be exactly one
+observation Pin. The root verifies PID/start absence, an empty owned group and
+an absent cgroup before selection. It retains raw logs, UTC RFC3339Nano clocks,
+and this command's exit 0 and raw four-property dead-unit result:
+
+```text
+systemctl --user show UNIT.service -p ActiveState -p SubState -p MainPID -p ControlGroup
+```
+
+The properties are exactly ActiveState=inactive, SubState=dead, MainPID=0 and
+ControlGroup=, each once and newline-terminated. Order is immaterial.
+UNIT.service matches the recorded cgroup's final component. Cleanup's raw command
+has environment_overrides=[]. Readers authenticate these selected records without
+live process checks or CheckController on their own executable.
+
+The post-exit wire types below are schematic notation, not JSON evidence.
+Process is `{PID:int,Start:string,Cgroup:string,Group:true}`. PID is the positive
+group leader, Start is decimal /proc/PID/stat field22, and Cgroup is the raw
+single cgroup-v2 line with an optional final newline.
+```text
+Cleanup = {
+ Schema:"nanopore-h08-observer-cleanup/v1", UTC:string, Unit:string,
+ Process:{PID:int,Start:string,Cgroup:string,Group:true},
+ PIDAbsent:true, GroupAbsent:true, CgroupAbsent:true, RawCommand:CommandReceipt
+}
+Execution = {
+ Schema:"nanopore-h08-observer-execution/v1",
+ Request:Pin, Observation:Pin, ObserverController:Pin, Executable:Pin,
+ Process:Process, Cwd:string, Command:CommandReceipt, Cleanup:Pin
+}
+ObservedSelection = {
+ Schema:"nanopore-h08-observed-selection/v1", Request:Pin, Execution:Pin
+}
+SuccessfulSelection = {
+ Schema:"nanopore-h08-successful-selection/v1", Role:BuildRole,
+ Producer:{Receipt:Pin,Plan:Pin,Controller:Pin,Queries:Pin,Output:Pin}
+}
+CommandReceipt = {
+ command:[string], environment_overrides:[string], started_utc:string,
+ finished_utc:string, exit_code:int, stdout:string, stderr:string,
+ stdout_sha256:string, stderr_sha256:string
+}
+Observation = {
+ Schema:"nanopore-h08-compiled-observation/v1", Request:Pin, RuntimeHeld:true,
+ NativePreimage:Pin, Output:Pin,
+ Proofs:{Aliases:{rawToken:Pin}, Operations:[{
+   Operation:Pin,Role:string,Status:string,Before:Pin,OutputSnapshot:Pin,
+   Bindings:{rawToken:canonicalPath}
+ }],ChecksumOffset:uint64,Checksum:[32 bytes],Ranges:[[start,end] x4]}
+}
+```
+
+The root writes and hashes Cleanup, then Execution, then ObservedSelection after
+real exit and cleanup. The observer creates none of these root records.
+Pass the Observation Pin and independently selected Selection Pin to
+`ReadH08Artifact`.
+
+## Retained acceptance and limits
+
+The [retained-observation evidence](../../../../docs/gpu-caller/h08-retained-observation.md)
+records the accepted complete 297-operation proof, real CGO0 seal, witnessed
+observer and selected-reader result, with their pins and preserved failures.
+The saved executable embeds the old reader and remains unexecuted. It cannot
+serve as the current runtime consumer. All six consumer call sites now require
+independent evidence and selection pins; see the
+[consumer contract](../../../../docs/gpu-caller/h08-selected-consumers.md).
+Source-current native target builds and complete admitted runtime fixtures remain
+open.
+
+The opt-in tests require independent absolute paths and digests, with no defaults:
+
+- `TestGenuineRetainedLinkSubset` uses H08_RETAINED_LINK_RECEIPT and
+  H08_RETAINED_LINK_RECEIPT_SHA256.
+- `TestGenuineRetainedFullBody` uses H08_RETAINED_FULL_RECEIPT,
+  H08_RETAINED_FULL_RECEIPT_SHA256, H08_RETAINED_FULL_HANDOFF and
+  H08_RETAINED_FULL_HANDOFF_SHA256.
+- `TestGenuineSelectedObservation` uses H08_OBSERVATION, H08_OBSERVATION_SHA256,
+  H08_OBSERVATION_SELECTION and H08_OBSERVATION_SELECTION_SHA256.
+- `TestGenuineSelectedObservationRehashedNegative` also requires
+  H08_OBSERVATION_NEGATIVE=output, native, or summary. Run each family in its own
+  bounded attempt. Rehashed ancestors are adversarial fixtures, never witnesses.
+
+Retain each attempt's exit, clocks, logs and cleanup. A timeout stays failed.
+Ordinary `go test ./...`, maintained parity and the final independent review
+remain separate integration gates. RuntimeHeld stays true. This metadata proof
+does not admit native target execution, GPU graphs, CPU13, all64, padding, fixed
+profiles, the full caller, biological results or performance. H08 remains open
+and `approvedGPUBundles` remains empty. Dorado, stock and HG005 are unchanged.

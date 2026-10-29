@@ -190,7 +190,9 @@ func PrepareFixtureView(o FixtureOptions) (v FixtureView, err error) {
 }
 
 type CPU13Request struct {
+	Schema                               string
 	Fixtures, ControllerBuild, FakeProof Pin
+	ControllerBuildSelection             Pin
 	Backend                              closedbuild.ArtifactOptions
 	Out                                  string
 }
@@ -209,14 +211,24 @@ func readCPU13Admission(pin Pin) (a RuntimeAdmission, q CPU13Request, err error)
 	if err = pinnedJSON(pin, &a); err != nil {
 		return
 	}
+	if a.Schema != "nanopore-h08-runtime-admission/v2" {
+		return a, q, fmt.Errorf("H08 runtime admission schema differs")
+	}
 	if err = pinnedJSON(a.Request, &q); err != nil {
 		return
 	}
-	v, e := ReadFixtureView(q.Fixtures)
+	if q.Schema != "nanopore-h08-cpu13-request/v1" {
+		return a, q, fmt.Errorf("CPU13 request schema differs")
+	}
+	if _, e := cgobuild.ReadH08Artifact(a.ParentBuild, a.ParentBuildSelection); e != nil {
+		return a, q, e
+	}
+	b, e := cgobuild.ReadCPU13Artifact(q.ControllerBuild, q.ControllerBuildSelection)
 	if e != nil {
 		return a, q, e
 	}
-	if _, e = cgobuild.ReadBuild(a.ParentBuild); e != nil {
+	v, e := ReadFixtureView(q.Fixtures)
+	if e != nil {
 		return a, q, e
 	}
 	if v.Backend != q.Backend.Output {
@@ -229,17 +241,13 @@ func readCPU13Admission(pin Pin) (a RuntimeAdmission, q CPU13Request, err error)
 	if e = validateBackendPolicy(a, backend); e != nil {
 		return a, q, e
 	}
-	b, e := cgobuild.ReadCPU13Build(q.ControllerBuild)
-	if e != nil {
+	if _, e = readFakeProof(q.FakeProof, b.Output(), q.ControllerBuild, q.ControllerBuildSelection); e != nil {
 		return a, q, e
 	}
-	if _, e = readFakeProof(q.FakeProof, b.Output, q.ControllerBuild); e != nil {
-		return a, q, e
-	}
-	if !slices.Equal(a.Command.Args, cpu13Command(b.Output, a.Request)) || !filepath.IsAbs(q.Out) || a.Command.Output == q.Out {
+	if !slices.Equal(a.Command.Args, cpu13Command(b.Output(), a.Request)) || !filepath.IsAbs(q.Out) || a.Command.Output == q.Out {
 		return a, q, fmt.Errorf("CPU13 exact test target/argv/output differs")
 	}
-	err = validateGuardInputs(a, b.Output, a.Request, []Pin{a.ParentBuild, q.ControllerBuild, q.FakeProof, q.Fixtures, q.Backend.Build, q.Backend.Plan, q.Backend.Producer, q.Backend.Output}, "hac-cpu13")
+	err = validateGuardInputs(a, b.Output(), a.Request, []Pin{a.ParentBuild, a.ParentBuildSelection, q.ControllerBuild, q.ControllerBuildSelection, q.FakeProof, q.Fixtures, q.Backend.Build, q.Backend.Plan, q.Backend.Producer, q.Backend.Output}, "hac-cpu13")
 	return
 }
 
@@ -294,7 +302,11 @@ func ReadCPU13(pin Pin, backend closedbuild.ArtifactOptions) (r CPU13Receipt, er
 	if q.Backend != backend {
 		return r, fmt.Errorf("CPU13 tested another selected backend")
 	}
-	if _, e = supgpu.ReplayGuarded(guardPin(a.Plan), guardPin(a.Contract), a.Command, r.Run); e != nil {
+	planPin, contractPin, e := guardPins(a)
+	if e != nil {
+		return r, e
+	}
+	if _, e = supgpu.ReplayGuarded(planPin, contractPin, a.Command, r.Run); e != nil {
 		return r, e
 	}
 	var b []byte
@@ -309,7 +321,7 @@ func ReadCPU13(pin Pin, backend closedbuild.ArtifactOptions) (r CPU13Receipt, er
 	if e != nil {
 		return r, e
 	}
-	fake, fe := readFakeProof(q.FakeProof, target, q.ControllerBuild)
+	fake, fe := readFakeProof(q.FakeProof, target, q.ControllerBuild, q.ControllerBuildSelection)
 	if fe != nil {
 		return r, fe
 	}
@@ -348,11 +360,14 @@ func CPU13TestMain(run func() int) int {
 		if e = pinnedJSON(Pin{Path: *request, SHA256: *sha}, &q); e != nil {
 			return e
 		}
-		v, e := ReadFixtureView(q.Fixtures)
+		if q.Schema != "nanopore-h08-cpu13-request/v1" {
+			return fmt.Errorf("CPU13 request schema differs")
+		}
+		b, e := cgobuild.ReadCPU13Artifact(q.ControllerBuild, q.ControllerBuildSelection)
 		if e != nil {
 			return e
 		}
-		b, e := cgobuild.ReadCPU13Build(q.ControllerBuild)
+		v, e := ReadFixtureView(q.Fixtures)
 		if e != nil {
 			return e
 		}
@@ -361,7 +376,7 @@ func CPU13TestMain(run func() int) int {
 			return e
 		}
 		actual, e := closedbuild.PinFile(executable)
-		if e != nil || actual != b.Output || v.Backend != q.Backend.Output {
+		if e != nil || actual != b.Output() || v.Backend != q.Backend.Output {
 			return fmt.Errorf("CPU13 actual target/backend differs")
 		}
 		if _, e = AuthenticateBackend(q.Backend, v.Backend.Path); e != nil {
@@ -399,7 +414,7 @@ func RunCPU13(admission Pin) (r CPU13Receipt, err error) {
 	if err != nil {
 		return r, err
 	}
-	if err = actualController(a.ParentBuild); err != nil {
+	if err = actualController(a.ParentBuild, a.ParentBuildSelection); err != nil {
 		return r, err
 	}
 	if err = runner.CheckRoot(); err != nil {
@@ -421,11 +436,15 @@ func RunCPU13(admission Pin) (r CPU13Receipt, err error) {
 			}
 		}
 	}()
-	r.Run, err = supgpu.ExecuteGuarded(guardPin(a.Plan), guardPin(a.Contract), a.Command)
+	planPin, contractPin, err := guardPins(a)
 	if err != nil {
 		return r, err
 	}
-	if _, err = supgpu.ReplayGuarded(guardPin(a.Plan), guardPin(a.Contract), a.Command, r.Run); err != nil {
+	r.Run, err = supgpu.ExecuteGuarded(planPin, contractPin, a.Command)
+	if err != nil {
+		return r, err
+	}
+	if _, err = supgpu.ReplayGuarded(planPin, contractPin, a.Command, r.Run); err != nil {
 		return r, err
 	}
 	b, err := readPin(Pin{Path: r.Run.Command.Stdout, SHA256: r.Run.Command.StdoutSHA})
@@ -443,7 +462,7 @@ func RunCPU13(admission Pin) (r CPU13Receipt, err error) {
 	if e != nil {
 		return r, e
 	}
-	fake, e := readFakeProof(q.FakeProof, target, q.ControllerBuild)
+	fake, e := readFakeProof(q.FakeProof, target, q.ControllerBuild, q.ControllerBuildSelection)
 	if e != nil {
 		return r, e
 	}

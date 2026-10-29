@@ -136,11 +136,29 @@ func VerifyQueries(pin, plan Pin) error {
 	return ValidateReceipt(p, r)
 }
 
+type receiptPhase uint8
+
+const (
+	metadataPhase receiptPhase = iota + 1
+	compiledPhase
+)
+
 // ValidateReceipt rejects partial proof even when the outer Go process returned
 // success. In particular a tolerated failed unknown probe cannot qualify it.
 func ValidateReceipt(p Plan, r Receipt) error {
 	if r.Schema != "nanopore-h08-cgo-execution/v1" || !r.RuntimeHeld || r.Error != "" || r.Status != "metadata_queries_passed" && r.Status != "compiled_unexecuted" {
 		return fmt.Errorf("native phase receipt incomplete")
+	}
+	phase := metadataPhase
+	if r.Status == "compiled_unexecuted" {
+		phase = compiledPhase
+	}
+	return validateReceiptBody(p, r, phase)
+}
+
+func validateReceiptBody(p Plan, r Receipt, phase receiptPhase) error {
+	if phase != metadataPhase && phase != compiledPhase {
+		return fmt.Errorf("invalid receipt phase")
 	}
 	if r.Role != p.Role {
 		return fmt.Errorf("receipt/plan build role differs")
@@ -158,10 +176,13 @@ func ValidateReceipt(p Plan, r Receipt) error {
 	if e := noRejections(s); e != nil {
 		return e
 	}
+	if e := completeOperationInventory(s, r.Operations); e != nil {
+		return e
+	}
 	if len(r.Operations) == 0 {
 		return fmt.Errorf("native/tool operation proof omitted")
 	}
-	if r.Status == "compiled_unexecuted" {
+	if phase == compiledPhase {
 		if r.Selection.Path == "" || len(r.Commands) != 2 {
 			return fmt.Errorf("actual Go selection producer omitted")
 		}
@@ -174,6 +195,14 @@ func ValidateReceipt(p Plan, r Receipt) error {
 		}
 	} else if r.Selection.Path != "" {
 		return fmt.Errorf("metadata phase cannot carry a Go selection")
+	}
+	resources := attestedQueryResources{}
+	if phase == compiledPhase {
+		var e error
+		resources, e = deriveQueryResources(p, r)
+		if e != nil {
+			return e
+		}
 	}
 	roles := map[string]int{}
 	queries := map[string]bool{}
@@ -228,7 +257,7 @@ func ValidateReceipt(p Plan, r Receipt) error {
 			if e := verifyToolOperation(p, s, r.Session, op, dir, generated); e != nil {
 				return e
 			}
-		} else if e := verifyNativeOperation(p, s, op, dir, generated); e != nil {
+		} else if e := verifyNativeOperation(p, s, op, dir, generated, resources); e != nil {
 			return e
 		}
 		operations[dir] = op
@@ -299,7 +328,7 @@ func ValidateReceipt(p Plan, r Receipt) error {
 		if op.Role == "metadata" {
 			for _, q := range p.Queries {
 				if exactArgs(op.OriginalArgs, q.Argv[1:]) {
-					if queries[q.Name] && r.Status == "metadata_queries_passed" {
+					if queries[q.Name] && phase == metadataPhase {
 						return fmt.Errorf("duplicate metadata query")
 					}
 					queries[q.Name] = true
@@ -307,7 +336,7 @@ func ValidateReceipt(p Plan, r Receipt) error {
 			}
 		}
 	}
-	if r.Status == "metadata_queries_passed" {
+	if phase == metadataPhase {
 		if s.Phase != "queries" || len(r.Commands) != 0 || len(r.Generated) != 0 || r.Output.Path != "" || len(r.Operations) != len(p.Queries) || len(queries) != len(p.Queries) {
 			return fmt.Errorf("finite metadata query chain incomplete")
 		}

@@ -1,12 +1,15 @@
 package supgpu
 
 import (
+	"debug/elf"
 	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"slices"
 
+	"github.com/Jakeelamb/nanopore_basecaller_go/verification/nativeproof"
 	"github.com/Jakeelamb/nanopore_basecaller_go/verification/tensor/runner"
 )
 
@@ -107,10 +110,12 @@ func validateGuardPolicy(p RuntimePolicy) error {
 	allowed := map[string]Pin{}
 	paths := map[string]bool{}
 	for _, c := range p.Allowed {
-		if c.SONAME == "" || c.Tier == "" || allowed[c.SONAME].Path != "" || paths[c.Object.Path] {
+		if c.Tier == "" || (c.SONAME != "" && allowed[c.SONAME].Path != "") || paths[c.Object.Path] {
 			return fmt.Errorf("runtime allowed provider is missing/ambiguous")
 		}
-		allowed[c.SONAME] = c.Object
+		if c.SONAME != "" {
+			allowed[c.SONAME] = c.Object
+		}
 		paths[c.Object.Path] = true
 		pins = append(pins, c.Object)
 	}
@@ -134,6 +139,31 @@ func validateGuardPolicy(p RuntimePolicy) error {
 		}
 		if err := verifyPin("", v); err != nil {
 			return err
+		}
+	}
+	for _, c := range p.Allowed {
+		if c.SONAME != "" {
+			continue
+		}
+		if c.Startup || c.Object.Path == p.Reference.Path || c.Object.Path == p.Observer.Path || c.Object.Path == p.Audit.Path {
+			return fmt.Errorf("unnamed runtime image cannot be startup/root/audit code")
+		}
+		m, err := nativeproof.InspectELF(c.Object.Path)
+		if err != nil {
+			return fmt.Errorf("unnamed runtime image inspection: %w", err)
+		}
+		if m.Pin.Path != c.Object.Path || m.Pin.SHA256 != c.Object.SHA256 || m.Type != elf.ET_DYN || m.SONAME != "" || m.Interpreter != "" || !slices.Equal(m.Needed, c.Needed) {
+			return fmt.Errorf("unnamed runtime image differs from canonical ELF metadata")
+		}
+		// Recheck the sized pin after inspection; nil and [] Needed compare equal,
+		// but dependency order is retained and every name needs a named selection.
+		if err := verifyPin("", c.Object); err != nil {
+			return err
+		}
+		for _, name := range c.Needed {
+			if name == "" || allowed[name].Path == "" {
+				return fmt.Errorf("unnamed runtime dependency has no selected named provider: %q", name)
+			}
 		}
 	}
 	return nil
