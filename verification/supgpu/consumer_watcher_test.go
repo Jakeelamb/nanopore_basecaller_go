@@ -248,6 +248,67 @@ assert observed==json.loads(a)['controller_argv'], 'decoded unapproved replaceme
 	}
 }
 
+// Import the real watcher and inject only the stat boundary. Metadata reads
+// still use this host-only helper's own process; no controller is launched.
+func TestConsumerWatcherProcessIdentityExitBoundary(t *testing.T) {
+	dir := t.TempDir()
+	if evidence := os.Getenv("SUPGPU_GUARD_TEST_EVIDENCE"); evidence != "" {
+		dir = filepath.Join(evidence, t.Name())
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	script := filepath.Join(dir, "watch.py")
+	if err := os.WriteFile(script, []byte(roleWatcherSource), 0600); err != nil {
+		t.Fatal(err)
+	}
+	control := `import importlib.util,os,sys
+s=importlib.util.spec_from_file_location('watch',sys.argv[1]); w=importlib.util.module_from_spec(s); s.loader.exec_module(w)
+pid=os.getpid(); stable=w.process_identity(pid,with_hash=True)
+assert stable is not None, 'helper process unavailable'
+first={k:stable[k] for k in ('pid','state','ppid','pgid','sid','start_ticks','raw')}
+original=w.process_stat
+for hashed in (False,True):
+    expected=dict(stable)
+    if not hashed: del expected['image_sha256']
+    cases=[('initial-missing',[None],False,None),
+           ('initial-zombie',[dict(first,state='Z')],False,None),
+           ('second-missing',[first,None],False,None),
+           ('second-zombie',[first,dict(first,state='Z')],False,None),
+           ('stable',[first,first],False,expected)]
+    for key in ('start_ticks','pgid','sid'):
+        for state in (first['state'],'Z'):
+            changed=dict(first,state=state); changed[key]+=1
+            cases.append(('changed-'+key+'-'+state,[first,changed],True,None))
+    for name,records,rejected,want in cases:
+        answers=iter(None if r is None else dict(r) for r in records)
+        w.process_stat=lambda _:next(answers)
+        try:
+            try: actual=w.process_identity(pid,with_hash=hashed)
+            except w.OwnershipError:
+                assert rejected, (name,hashed,'unexpected ownership error')
+            else:
+                assert not rejected, (name,hashed,'accepted changed identity')
+                assert actual==want, (name,hashed,actual,want)
+        finally: w.process_stat=original
+        print(name,'hashed='+str(hashed),'passed')
+`
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	started := time.Now().UTC()
+	raw, runErr := exec.CommandContext(ctx, "/usr/bin/python3", "-c", control, script).CombinedOutput()
+	finished := time.Now().UTC()
+	if err := os.WriteFile(filepath.Join(dir, "combined-output"), raw, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeJSON(filepath.Join(dir, "attempt.json"), map[string]any{"started": started, "finished": finished, "process_state": fmt.Sprint(runErr), "context_error": fmt.Sprint(ctx.Err())}); err != nil {
+		t.Fatal(err)
+	}
+	if runErr != nil {
+		t.Fatalf("process identity exit boundary failed: %v %s (artifacts %s)", runErr, raw, dir)
+	}
+}
+
 func TestConsumerWatcherOrderedBookendsAndRejections(t *testing.T) {
 	exe, err := os.Executable()
 	if err != nil {

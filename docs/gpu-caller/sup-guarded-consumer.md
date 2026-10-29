@@ -100,6 +100,17 @@ shared with numerical execution. Finite outer bounds and descendant admission
 remain the launcher's responsibility; no guard acquires the stock lock.
 No reusable runtime authorization token or global flag is introduced.
 
+Watcher identity reads return unavailable when a process disappears or becomes
+a zombie during metadata collection. A second stat with changed birth ticks,
+process group or session still rejects, including when that record is a zombie.
+Pidfd identity revalidation and authenticated group-member cleanup still apply.
+
+The 2026-10-29 exit-race correction passes the matched deterministic regression,
+focused real process controls, and both independent same-model source reviews.
+`CGO_ENABLED=1 go test -p 2 -json ./...` passes 869 root tests and 1,916 subcases,
+with 92 opt-ins skipped. Maintained parity passes its CPU/native-algorithm scope.
+These checks qualify the watcher correction; native SUP execution remains held.
+
 After approved pre-model, the child opens the selected tensor engine, loads
 weights, constructs device/stream/model and uploads the prepared F16 NCT
 signal. After pre-forward it calls the existing arithmetic comparison exactly
