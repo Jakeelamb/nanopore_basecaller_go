@@ -1,14 +1,14 @@
 // Package graph compares the production Go SUP graph with the retained fixed
-// source observations. Runtime admission is structurally held for integration.
+// source observations under an independently selected audited runtime.
 package graph
 
 import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -18,23 +18,21 @@ import (
 	"github.com/Jakeelamb/nanopore_basecaller_go/verification/supgpu"
 )
 
-var ErrRuntimeHeld = errors.New("SUP graph runtime HOLD: accepted current backend, closed CGO1 build, CPU13 and shared audited runtime guard require separate integration")
-
-type Options struct {
-	Capture, Prepared, Build, Runtime supgpu.Pin
-	Backend, Model, Out               string
-	Ordinal                           int
+type WitnessAnchors struct {
+	Capture, Prepared, SourceBuild, SourceRuntime supgpu.Pin
 }
 type Comparison struct {
 	Event, Role, GoSHA256, NativeSHA256 string
 	Bytes                               int
 	Equal                               bool
+	ContractSHA256, BackingSHA256       string
 }
 type Receipt struct {
-	Status      string
-	Events      int
-	Comparisons []Comparison
-	ScoreSHA256 string
+	Status         string
+	Events         int
+	Comparisons    []Comparison
+	ScoreSHA256    string
+	EventContracts []string
 }
 type Witness struct {
 	capture  supgpu.Capture
@@ -42,19 +40,8 @@ type Witness struct {
 	root     string
 }
 
-// Consume has no arming option. A separately reviewed root integration must
-// establish the shared runtime and current compiler qualifications first.
-func Consume(ctx context.Context, o Options) (Receipt, error) {
-	if ctx == nil {
-		return Receipt{}, fmt.Errorf("nil SUP graph context")
-	}
-	if err := ctx.Err(); err != nil {
-		return Receipt{}, err
-	}
-	return Receipt{Status: "structural_hold"}, ErrRuntimeHeld
-}
-
-func digest(data []byte) string { h := sha256.Sum256(data); return hex.EncodeToString(h[:]) }
+func digest(data []byte) string           { h := sha256.Sum256(data); return hex.EncodeToString(h[:]) }
+func eventContract(e supgpu.Event) string { b, _ := json.Marshal(e); return digest(b) }
 func readPin(root string, p supgpu.Pin) ([]byte, error) {
 	path := p.Path
 	if !filepath.IsAbs(path) {
@@ -63,33 +50,49 @@ func readPin(root string, p supgpu.Pin) ([]byte, error) {
 		}
 		path = filepath.Join(root, path)
 	}
-	info, err := os.Lstat(path)
-	if err != nil {
-		return nil, err
-	}
-	if !info.Mode().IsRegular() || info.Size() != p.Bytes || info.Size() < 1 || info.Size() > 64<<20 {
-		return nil, fmt.Errorf("witness pin extent/type differs")
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	if digest(data) != p.SHA256 {
-		return nil, fmt.Errorf("witness pin digest differs")
-	}
-	return data, nil
+	return readSized(path, p, 64<<20)
 }
 
 // ReadWitness authenticates retained data only. It invokes no compiler,
 // library loader, device query, archive reader, or model graph.
-func ReadWitness(o Options) (Witness, error) {
-	for _, p := range []supgpu.Pin{o.Capture, o.Prepared, o.Build, o.Runtime} {
+func ReadWitness(o WitnessAnchors) (Witness, error) {
+	for _, p := range []supgpu.Pin{o.Capture, o.Prepared, o.SourceBuild, o.SourceRuntime} {
 		if !filepath.IsAbs(p.Path) {
 			return Witness{}, fmt.Errorf("absolute external witness anchors required")
 		}
 		if _, err := readPin("", p); err != nil {
 			return Witness{}, err
 		}
+	}
+	// Reject unknown/duplicate/null original metadata before inherited readers.
+	var prepared supgpu.Prepared
+	if err := readJSON(unsized(o.Prepared), &prepared); err != nil {
+		return Witness{}, err
+	}
+	var capture supgpu.Capture
+	if err := readJSON(unsized(o.Capture), &capture); err != nil {
+		return Witness{}, err
+	}
+	var build supgpu.Build
+	if err := readJSON(unsized(o.SourceBuild), &build); err != nil {
+		return Witness{}, err
+	}
+	var runtime supgpu.RuntimePlan
+	if err := readJSON(unsized(o.SourceRuntime), &runtime); err != nil {
+		return Witness{}, err
+	}
+	// Authenticate every prospective prepared file before ReadPrepared can read
+	// its fixture/signal/config/weights. These are data, never runtime authority.
+	inputs := append([]supgpu.Pin{prepared.Fixture, prepared.Signal, prepared.Input, prepared.Config, prepared.Profile}, prepared.Weights...)
+	inputs = append(inputs, prepared.Sources...)
+	for _, p := range inputs {
+		actual, err := sizedPin(unsized(p))
+		if err != nil || actual != p {
+			return Witness{}, fmt.Errorf("prepared input differs: %s: %v", p.Path, err)
+		}
+	}
+	if len(capture.Commands) != 2 {
+		return Witness{}, fmt.Errorf("source command pair absent")
 	}
 	p, err := supgpu.ReadPrepared(o.Prepared.Path, o.Prepared.SHA256)
 	if err != nil {
@@ -102,7 +105,7 @@ func ReadWitness(o Options) (Witness, error) {
 	if filepath.Base(o.Capture.Path) != "capture.json" {
 		return Witness{}, fmt.Errorf("capture anchor must identify capture.json")
 	}
-	c, err := supgpu.Import(root, o.Prepared.Path, o.Prepared.SHA256, o.Build.Path, o.Build.SHA256, o.Runtime.Path, o.Runtime.SHA256)
+	c, err := supgpu.Import(root, o.Prepared.Path, o.Prepared.SHA256, o.SourceBuild.Path, o.SourceBuild.SHA256, o.SourceRuntime.Path, o.SourceRuntime.SHA256)
 	if err != nil {
 		return Witness{}, err
 	}
@@ -163,7 +166,7 @@ func CompareObservation(root string, want supgpu.Event, got model.SUPGPUObservat
 		}
 		sha := digest(g.Data)
 		equal := slices.Equal(g.Data, data) && slices.Equal(g.Data, backing)
-		out = append(out, Comparison{want.Name, n.Name, sha, n.Data.SHA256, len(g.Data), equal})
+		out = append(out, Comparison{Event: want.Name, Role: n.Name, GoSHA256: sha, NativeSHA256: n.Data.SHA256, Bytes: len(g.Data), Equal: equal, ContractSHA256: eventContract(want), BackingSHA256: n.Backing.SHA256})
 		if !equal {
 			return out, fmt.Errorf("tensor bytes differ at %s/%s", want.Name, n.Name)
 		}
@@ -177,8 +180,7 @@ func CompareObservation(root string, want supgpu.Event, got model.SUPGPUObservat
 	return out, nil
 }
 
-// compareForward is the numerical body for the future shared qualification
-// seam. Consume cannot call it. The only graph input is the prepared signal.
+// compareForward performs one production forward using only prepared signal.
 func compareForward(ctx context.Context, w Witness, m *model.SUPGPU, s *tensor.Stream, input *tensor.Storage) (r Receipt, err error) {
 	r.Status = "failed"
 	original, e := input.Download(s)
@@ -198,6 +200,7 @@ func compareForward(ctx context.Context, w Witness, m *model.SUPGPU, s *tensor.S
 			return e
 		}
 		r.Events++
+		r.EventContracts = append(r.EventContracts, eventContract(w.capture.Events[r.Events-1]))
 		return nil
 	}
 	plan, err := model.PlanSUPGPU(model.FixedSUPGPUProfile())

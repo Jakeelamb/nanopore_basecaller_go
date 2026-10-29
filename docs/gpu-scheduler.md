@@ -139,11 +139,21 @@ go test -count=1 ./...
 go vet ./...
 ```
 
-`ScheduleHandlers()` is still unwired: no command registers it, so it runs through
-`Dispatch` in tests only. Once the P05 owner registers it, the intended shape is
-`-unit schedule-check -mode import -input PLAN -out NEW_ATTEMPT`. The card's
-`schedule-check -plan PLAN -runtime-admitted` form is still absent: native
-scheduling stays unwired and host replay needs no admission.
+The CLI registers `ScheduleHandlers()` for host import and replay:
+
+```sh
+go run ./verification/gpucaller/cmd -unit schedule-check -mode import -input PLAN.json -out NEW_IMPORT_ATTEMPT
+go run ./verification/gpucaller/cmd -unit schedule-check -mode replay -input NEW_IMPORT_ATTEMPT/schedule-receipt.json -out NEW_REPLAY_ATTEMPT
+```
+
+Import reads a `gpu-schedule-plan/1` plan; replay reads a
+`gpu-schedule-receipt/2` receipt. Each `-out` directory must be fresh and its
+parent must exist. Both modes run only the host recorder and need no `-admitted`
+flag. The other registrations are `inventory` import/replay and `postcall-check`
+replay. `qualify`, `biological` and `benchmark` remain unimplemented; every native
+handler remains nil, including schedule-check with `-admitted`. The card's
+`schedule-check -plan PLAN -runtime-admitted` form is absent. These host commands
+provide no native parity, GPU qualification, biological or performance evidence.
 
 ## Host evidence
 
@@ -181,8 +191,6 @@ error after `resume`, and `Abandoned=0`. Both replay to the same result digest.
 - Genuine stream cases are unmet. The interface still needs an owner backed by the
   real views, scratch, stream and buffers, and a device run showing bounded
   memory, no deadlock or use-after-free and complete error propagation.
-- `ScheduleHandlers()` is still unwired: no command registers the schedule unit, so
-  the handler runs only through `Dispatch` in tests.
 - The native `schedule-check -plan PLAN -runtime-admitted` form is still absent.
   Only the host `-unit schedule-check -mode import|replay` shape exists, and host
   replay needs no admission.

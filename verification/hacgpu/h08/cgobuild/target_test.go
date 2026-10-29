@@ -94,6 +94,68 @@ func TestFixedRoleReadersRejectWrongRoleBeforeOpeningPlan(t *testing.T) {
 	}
 }
 
+func TestFixedCompileOnlyBuildArgvContract(t *testing.T) {
+	p := targetFixture(t)
+	common := []string{"-a", "-x", "-work", "-p=1", "-pgo=off", "-trimpath", "-buildvcs=false", "-toolexec=<SEALED_CURRENT_INTERPOSER_TOOL>", "-ldflags=-linkmode=external -compressdwarf=false -buildid= -extld=<SEALED_CURRENT_INTERPOSER_CC>"}
+	wantCPU13 := append([]string{filepath.Join(p.Options.GoRoot, "bin/go"), "test", "-c", "-vet=off"}, common...)
+	wantCPU13 = append(wantCPU13, "-overlay="+p.CPU13.OverlayPath, "-o", filepath.Join(p.Options.WorkRoot, "tensor.test"), "./internal/tensor")
+	if !slices.Equal(p.BuildArgv, wantCPU13) {
+		t.Fatalf("CPU13 compile-only command differs: got %q, want %q", p.BuildArgv, wantCPU13)
+	}
+	if e := validateTarget(p); e != nil {
+		t.Fatal(e)
+	}
+	for _, vet := range []string{"", "-vet=all"} {
+		changed := p
+		changed.BuildArgv = slices.Clone(p.BuildArgv)
+		if vet == "" {
+			changed.BuildArgv = slices.Delete(changed.BuildArgv, 3, 4)
+		} else {
+			changed.BuildArgv[3] = vet
+		}
+		if validateTarget(changed) == nil {
+			t.Fatalf("CPU13 accepted changed vet policy %q", vet)
+		}
+	}
+	ordinary := p
+	ordinary.Role, ordinary.Options.Role, ordinary.CPU13 = H08Command, H08Command, nil
+	ordinary.BuildArgv = plannedBuildArgs(ordinary)
+	wantH08 := append([]string{filepath.Join(p.Options.GoRoot, "bin/go"), "build"}, common...)
+	wantH08 = append(wantH08, "-o", filepath.Join(p.Options.WorkRoot, "h08"), "./verification/hacgpu/h08/cmd")
+	if !slices.Equal(ordinary.BuildArgv, wantH08) {
+		t.Fatalf("ordinary H08 command changed: got %q, want %q", ordinary.BuildArgv, wantH08)
+	}
+	if e := validateTarget(ordinary); e != nil {
+		t.Fatal(e)
+	}
+	for _, plan := range []Plan{p, ordinary} {
+		s := Session{Driver: Pin{Path: "/sealed/interposer"}}
+		sp := Pin{Path: "/sealed/session.json", SHA256: "session-digest"}
+		want := slices.Clone(plan.BuildArgv)
+		for i, a := range want {
+			switch a {
+			case "-toolexec=<SEALED_CURRENT_INTERPOSER_TOOL>":
+				want[i] = "-toolexec=/sealed/interposer -mode tool -session /sealed/session.json -session-sha session-digest --"
+			case "-ldflags=-linkmode=external -compressdwarf=false -buildid= -extld=<SEALED_CURRENT_INTERPOSER_CC>":
+				want[i] = `-ldflags=-linkmode=external -compressdwarf=false -buildid= -extld="/sealed/interposer"`
+			}
+		}
+		if got := buildArgs(plan, s, sp); !slices.Equal(got, want) {
+			t.Fatalf("%s execution command differs: got %q, want %q", plan.Role, got, want)
+		}
+	}
+	mainBoundaryControls(t, p, []byte(p.CPU13.MainSource))
+	args := []string{p.CPU13.Template.Path}
+	inputs := map[string]string{p.CPU13.Template.Path: p.CPU13.Template.SHA256}
+	if e := validateMainInputs(p, TensorPackage+"_test"+testSuffix, args, inputs); e != nil {
+		t.Fatal(e)
+	}
+	inputs[p.CPU13.Template.Path] = digest([]byte("changed TestMain"))
+	if validateMainInputs(p, TensorPackage+"_test"+testSuffix, args, inputs) == nil {
+		t.Fatal("changed source-bound external TestMain accepted")
+	}
+}
+
 func TestCPU13FixedProfileBindsOverlayCopiesAndExactArgv(t *testing.T) {
 	p := targetFixture(t)
 	if e := validateTarget(p); e != nil {

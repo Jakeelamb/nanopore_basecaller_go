@@ -1,0 +1,191 @@
+package graph
+
+// Copy this file as metadata_before_test.go into the frozen original GRAPH
+// package. It deliberately calls that checkout's original private APIs. Native
+// execution requires the controller's external lock, finite bounds and watcher.
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"slices"
+	"testing"
+
+	"github.com/Jakeelamb/nanopore_basecaller_go/verification/nativeproof"
+	"github.com/Jakeelamb/nanopore_basecaller_go/verification/supgpu"
+	"github.com/Jakeelamb/nanopore_basecaller_go/verification/tensor/runner"
+)
+
+type originalMetadataCase struct {
+	Identity nativeproof.Pin
+	Plan supgpu.Pin
+}
+type originalMetadataFixture struct {
+	Schema string
+	Audit, Contract supgpu.Pin
+	ProviderA, ProviderB nativeproof.Pin
+	Matched, Mismatched originalMetadataCase
+	Directory, Output, MarkerA, MarkerB string
+}
+// This is the corrected input wire, not an alternative old identity engine.
+type originalPreparedIdentity struct {
+	Schema string
+	Executable nativeproof.Pin
+	Seeds, LazyProviders []nativeproof.Pin
+	SearchDirs []string
+	Closure nativeproof.ELFClosure
+	Args, Environment []string
+	ExpectedPCI, ExpectedDriver string
+	TimeoutSeconds int
+}
+
+func TestOriginalMetadataProviderExpectedRejectionOptIn(t *testing.T) {
+	path, sha := os.Getenv("SUP_METADATA_FIXTURE"), os.Getenv("SUP_METADATA_FIXTURE_SHA256")
+	if path == "" && sha == "" { t.Skip("original metadata fixture unselected; no native qualification") }
+	if path == "" || sha == "" { t.Fatal("independent prepared fixture path and SHA256 required") }
+	fp := nativeproof.Pin{Path: path, SHA256: sha}
+	var f originalMetadataFixture
+	if e := readJSON(fp, &f); e != nil { t.Fatal(e) }
+	if f.Schema != "nanopore-sup-metadata-provider-fixture/v1" { t.Fatal("prepared metadata fixture schema differs") }
+	originalRoot, e := currentRoot()
+	if e != nil { t.Fatal(e) }
+	if e := canonical(f.Directory); e != nil { t.Fatal(e) }
+	if f.ProviderA.Path == f.ProviderB.Path || f.ProviderA.SHA256 == f.ProviderB.SHA256 || f.MarkerA == f.MarkerB { t.Fatal("distinct selected A/B and marker paths required") }
+	inputs := []supgpu.Pin{}
+	checkPin := func(p nativeproof.Pin) supgpu.Pin {
+		t.Helper()
+		v, e := sizedPin(p)
+		if e != nil { t.Fatal(e) }
+		inputs = append(inputs, v)
+		return v
+	}
+	checkPin(fp)
+	for _, p := range []supgpu.Pin{f.Audit, f.Contract, f.Matched.Plan, f.Mismatched.Plan} {
+		if checkPin(nativeproof.Pin{Path: p.Path, SHA256: p.SHA256}) != p { t.Fatal("prepared sized pin differs", p.Path) }
+	}
+	for _, p := range []nativeproof.Pin{f.ProviderA, f.ProviderB} {
+		checkPin(p)
+		m, e := nativeproof.InspectELF(p.Path)
+		if e != nil || m.Pin != p || m.SONAME != "libmetadata-provider.so" { t.Fatal("real same-SONAME provider differs", e) }
+	}
+	prepared := make([]originalPreparedIdentity, 2)
+	for i, selected := range []originalMetadataCase{f.Matched, f.Mismatched} {
+		checkPin(selected.Identity)
+		var p originalPreparedIdentity
+		if e := readJSON(selected.Identity, &p); e != nil { t.Fatal(e) }
+		if !slices.Equal(p.LazyProviders, []nativeproof.Pin{f.ProviderA}) || !slices.Equal(p.Seeds, []nativeproof.Pin{p.Executable, f.ProviderA}) { t.Fatal("both corrected cases must explicitly select A only") }
+		if filepath.Base(p.Executable.Path) != "nvidia-smi" { t.Fatal("real metadata CLI required") }
+		checkPin(p.Executable)
+		m, e := nativeproof.InspectELF(p.Executable.Path)
+		if e != nil || m.Pin != p.Executable || m.Interpreter == "" { t.Fatal("real metadata CLI differs", e) }
+		for _, dir := range p.SearchDirs { if e := canonical(dir); e != nil { t.Fatal(e) } }
+		for _, v := range p.Closure.Inputs { checkPin(v) }
+		closure, e := nativeproof.CloseELF(p.Seeds, p.SearchDirs)
+		if e != nil || !sameIdentityClosure(closure, p.Closure) { t.Fatal("prepared actual closure differs", e) }
+		for _, node := range p.Closure.Nodes { if node.Pin.Path == f.ProviderB.Path { t.Fatal("B present in selected A closure") } }
+		prepared[i] = p
+	}
+	if prepared[0].Executable.Path == prepared[1].Executable.Path || prepared[0].Executable.SHA256 == prepared[1].Executable.SHA256 { t.Fatal("distinct matched/mismatched CLI bytes required") }
+	// Preserve the exact same four compiled bytes used by corrected execution.
+	for _, v := range []struct { pin nativeproof.Pin; literal, forbidden string }{
+		{prepared[0].Executable, f.ProviderA.Path, f.ProviderB.Path},
+		{prepared[1].Executable, f.ProviderB.Path, f.ProviderA.Path},
+		{f.ProviderA, f.MarkerA, f.MarkerB},
+		{f.ProviderB, f.MarkerB, f.MarkerA},
+	} {
+		p := checkPin(v.pin)
+		body, e := readSized(p.Path, p, 64<<20)
+		if e != nil { t.Fatal(e) }
+		if !bytes.Contains(body, append([]byte(v.literal), 0)) || bytes.Contains(body, append([]byte(v.forbidden), 0)) { t.Fatal("compiled fixture literal differs", v.pin.Path) }
+	}
+	out := f.Output + "-original"
+	if e := validateOutputs(f.Directory, []string{out, f.MarkerA, f.MarkerB}, inputs); e != nil { t.Fatal(e) }
+	if e := requireFresh(out, f.MarkerA, f.MarkerB); e != nil { t.Fatal(e) }
+	if e := os.Mkdir(out, 0700); e != nil { t.Fatal(e) }
+	originals := make([]identityWire, 2)
+	originalPins := make([]nativeproof.Pin, 2)
+	for i, label := range []string{"matched", "mismatched"} {
+		selected := []originalMetadataCase{f.Matched, f.Mismatched}[i]
+		var raw map[string]json.RawMessage
+		selectedPin := checkPin(selected.Identity)
+		body, e := readSized(selectedPin.Path, selectedPin, 64<<20)
+		if e != nil { t.Fatal(e) }
+		// Reverify the selected bytes before editing their JSON projection.
+		if digest(body) != selected.Identity.SHA256 { t.Fatal("corrected identity changed") }
+		if e := json.Unmarshal(body, &raw); e != nil { t.Fatal(e) }
+		delete(raw, "LazyProviders")
+		env, e := json.Marshal(identityEnv())
+		if e != nil { t.Fatal(e) }
+		raw["Environment"] = env
+		oldPath := filepath.Join(out, label+"-identity.json")
+		if e := writeJSON(oldPath, raw); e != nil { t.Fatal(e) }
+		oldPin, e := pinFile(oldPath)
+		if e != nil { t.Fatal(e) }
+		p, e := readIdentity(oldPin)
+		if e != nil { t.Fatal(e) }
+		q := prepared[i]
+		if p.Executable != q.Executable || !slices.Equal(p.Seeds, q.Seeds) || !sameIdentityClosure(p.Closure, q.Closure) || !slices.Equal(p.SearchDirs, q.SearchDirs) || !slices.Equal(p.Args, q.Args) || !slices.Equal(p.Args, identityArgs(p, 0)) || !slices.Equal(p.Environment, identityEnv()) || p.Schema != q.Schema || p.ExpectedPCI != q.ExpectedPCI || p.ExpectedDriver != q.ExpectedDriver || p.TimeoutSeconds != q.TimeoutSeconds {
+			t.Fatal("old identity changed more than LazyProviders/environment")
+		}
+		originals[i], originalPins[i] = p, oldPin
+	}
+	// Retain the actual old run before interpreting its result. No markers are
+	// deleted or moved here; the controller archives the two exact paths later.
+	record := func(label string, identity nativeproof.Pin, run runner.CommandReceipt, runErr error) {
+		t.Helper()
+		markers := []nativeproof.Pin{}
+		markerErrors := []string{}
+		for _, path := range []string{f.MarkerA, f.MarkerB} {
+			if _, e := os.Lstat(path); os.IsNotExist(e) { continue }
+			p, e := pinFile(path)
+			if e != nil { markerErrors = append(markerErrors, path+": "+e.Error()); continue }
+			markers = append(markers, p)
+		}
+		errText := ""
+		if runErr != nil { errText = runErr.Error() }
+		value := struct {
+			Schema, OriginalRoot string
+			Fixture, Identity nativeproof.Pin
+			Inputs []supgpu.Pin
+			Run runner.CommandReceipt
+			Error string
+			Markers []nativeproof.Pin
+			MarkerErrors []string
+		}{"nanopore-sup-original-metadata-run/v1", originalRoot, fp, identity, inputs, run, errText, markers, markerErrors}
+		path := filepath.Join(out, label+"-run.json")
+		if e := writeJSON(path, value); e != nil { t.Fatal(e) }
+		p, e := pinFile(path)
+		if e != nil { t.Fatal(e) }
+		b, e := json.Marshal(struct { Evidence nativeproof.Pin }{p})
+		if e != nil { t.Fatal(e) }
+		fmt.Println(string(b))
+	}
+	marker := func(path string) {
+		t.Helper()
+		p, e := pinFile(path)
+		if e != nil { t.Fatal("required native constructor marker unavailable", e) }
+		v, e := sizedPin(p)
+		if e != nil { t.Fatal(e) }
+		body, e := readSized(path, v, 64)
+		if e != nil || string(body) != "constructed\n" { t.Fatal("native constructor marker bytes differ", e) }
+	}
+	const source = "00112233445566778899aabbccddeeff"
+	matched, e := executeIdentity(context.Background(), out, "matched", originals[0], 0, source)
+	record("matched", originalPins[0], matched, e)
+	if e != nil { t.Fatal("matched native positive failed", e) }
+	if e := validateIdentity(matched, out, "matched", originals[0], 0, source); e != nil { t.Fatal("matched receipt validation failed", e) }
+	marker(f.MarkerA)
+	if _, e := os.Lstat(f.MarkerB); !os.IsNotExist(e) { t.Fatal("matched positive created B or marker state unavailable") }
+	mismatched, e := executeIdentity(context.Background(), out, "mismatched", originals[1], 0, source)
+	record("mismatched", originalPins[1], mismatched, e)
+	if e != nil { t.Fatal("mismatched native control failed before expected-rejection assertion", e) }
+	if e := validateIdentity(mismatched, out, "mismatched", originals[1], 0, source); e != nil { t.Fatal("mismatched receipt validation failed", e) }
+	marker(f.MarkerB)
+	for _, v := range inputs {
+		p, e := sizedPin(nativeproof.Pin{Path: v.Path, SHA256: v.SHA256})
+		if e != nil || p != v { t.Fatal("before-control selected input changed", v.Path, e) }
+	}
+	t.Fatal("expected rejection: original metadata accepted unselected B provider and ran its constructor")
+}

@@ -114,6 +114,18 @@ func cgoLease(p Plan, args []string, cwd string, derived []GeneratedSet) (Lease,
 func toolInputs(p Plan, driver Pin, name string, args []string, cwd string) (map[string]string, error) {
 	return toolInputsEvidence(p, driver, name, args, cwd, nil, nil, nil)
 }
+
+// buildArgs emits strconv.Quote(driver.Path) inside -extld=. Go's quoted.Split
+// preserves quotes inside a field; cmd/link's quoted.Flag removes the outer
+// pair without unescaping. Restrict the selected path so both admitted forms
+// denote exactly one executable, with no arguments or escape interpretation.
+func selectedExternalLinker(value string, driver Pin) bool {
+	if !filepath.IsAbs(driver.Path) || strings.ContainsAny(driver.Path, " \t\r\n\x00\"'\\") {
+		return false
+	}
+	return value == driver.Path || value == strconv.Quote(driver.Path)
+}
+
 func toolInputsEvidence(p Plan, driver Pin, name string, args []string, cwd string, recorded *operation, bindings, outputs map[string]string) (map[string]string, error) {
 	inputs := map[string]string{}
 	resolve := func(path string) (Pin, error) {
@@ -262,7 +274,7 @@ func toolInputsEvidence(p Plan, driver Pin, name string, args []string, cwd stri
 					return nil, fmt.Errorf("unknown Go %s argument %s", name, a)
 				}
 				if strings.HasPrefix(a, "-extld=") {
-					if strings.TrimPrefix(a, "-extld=") != driver.Path {
+					if name != "link" || !selectedExternalLinker(strings.TrimPrefix(a, "-extld="), driver) {
 						return nil, fmt.Errorf("foreign external linker before Go tool child")
 					}
 					continue

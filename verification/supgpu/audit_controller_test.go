@@ -15,6 +15,10 @@ import (
 // The test controller is separate from the frozen model consumer. Actual
 // go-list -test output includes the generated test main as an absolute GoFile.
 func auditTestInputs(deps, envRaw []byte, goexe string) ([]string, error) {
+	root, err := controllerSourceRoot(deps, "github.com/Jakeelamb/nanopore_basecaller_go/verification/supgpu")
+	if err != nil {
+		return nil, err
+	}
 	var env goEnvironment
 	if err := json.Unmarshal(envRaw, &env); err != nil {
 		return nil, err
@@ -63,12 +67,12 @@ func auditTestInputs(deps, envRaw []byte, goexe string) ([]string, error) {
 			seen[filepath.Join(dir, e.Name())] = true
 		}
 	}
-	for _, path := range append([]string{goexe, filepath.Join(env.GOROOT, "bin", "go"), "go.mod", "verification/supgpu/audit-controls.sh"}, auditControlSources...) {
-		abs, err := filepath.Abs(path)
-		if err != nil {
-			return nil, err
-		}
-		seen[abs] = true
+	if !filepath.IsAbs(goexe) {
+		return nil, fmt.Errorf("actual Go executable must be absolute")
+	}
+	seen[goexe], seen[filepath.Join(env.GOROOT, "bin", "go")] = true, true
+	for _, path := range append([]string{"go.mod", "verification/supgpu/audit-controls.sh"}, auditControlSources...) {
+		seen[filepath.Join(root, path)] = true
 	}
 	paths := []string{}
 	for path := range seen {
@@ -242,6 +246,21 @@ func readAuditController(p Pin, current bool) (GoController, error) {
 		}
 	}
 	if current {
+		raw, e := os.ReadFile(c.Dependencies.Path)
+		if e != nil {
+			return c, e
+		}
+		root, e := controllerSourceRoot(raw, "github.com/Jakeelamb/nanopore_basecaller_go/verification/supgpu")
+		if e != nil {
+			return c, e
+		}
+		cwd, e := os.Getwd()
+		if e != nil {
+			return c, e
+		}
+		if cwd != root {
+			return c, fmt.Errorf("current audit source root differs from working directory")
+		}
 		if err = verifyControllerBinary(c.Binary); err != nil {
 			return c, err
 		}

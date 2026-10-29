@@ -25,7 +25,7 @@ func TestWrappedCompilerIdentityRetainsProofAndRejectsOtherRequests(t *testing.T
 		t.Fatalf("exact nested identity proof: %v", e)
 	}
 	dir := filepath.Dir(op.Wrapper.Path)
-	if e = verifyNativeOperation(p, s, op, dir, nil); e != nil {
+	if e = verifyNativeOperation(p, s, op, dir, nil, attestedQueryResources{}); e != nil {
 		t.Fatal(e)
 	}
 	for _, kind := range []string{"foreign tool", "driver hash", "C++", "extra flag", "query phase", "foreign environment", "stdin"} {
@@ -58,13 +58,13 @@ func TestWrappedCompilerIdentityRetainsProofAndRejectsOtherRequests(t *testing.T
 	}
 	missing := op
 	missing.Wrapper = Pin{}
-	if verifyNativeOperation(p, s, missing, dir, nil) == nil {
+	if verifyNativeOperation(p, s, missing, dir, nil, attestedQueryResources{}) == nil {
 		t.Fatal("reader accepted omitted wrapper provenance")
 	}
 	missing = op
 	missing.Snapshots = maps.Clone(op.Snapshots)
 	delete(missing.Snapshots, w.Driver.Path)
-	if verifyNativeOperation(p, s, missing, dir, nil) == nil {
+	if verifyNativeOperation(p, s, missing, dir, nil, attestedQueryResources{}) == nil {
 		t.Fatal("reader accepted omitted wrapper driver snapshot")
 	}
 }
@@ -375,5 +375,75 @@ func TestGoToolReaderBindsSourceEnvironmentProfile(t *testing.T) {
 		if verifyToolOperation(p, s, sp, copy, dir, nil) == nil {
 			t.Fatal("reader accepted changed or omitted environment profile")
 		}
+	}
+}
+
+func TestSelectedExternalLinkerToolAdmission(t *testing.T) {
+	p, _, lease, log := fakeFixture(t)
+	driver := p.CC
+	cwd := p.Packages[0].Directory
+	archive := filepath.Join(lease.ObjectDir, "selected.a")
+	if e := os.WriteFile(archive, []byte("archive"), 0600); e != nil {
+		t.Fatal(e)
+	}
+	q, e := closedPin(archive)
+	if e != nil {
+		t.Fatal(e)
+	}
+	snaps, e := copySnapshots(filepath.Join(t.TempDir(), "snapshots"), map[string]string{q.Path: q.SHA256})
+	if e != nil {
+		t.Fatal(e)
+	}
+	recorded := operation{Inputs: map[string]string{q.Path: q.SHA256}, Bindings: map[string]string{archive: q.Path}, Snapshots: snaps, Outputs: map[string]string{}}
+	for _, test := range []struct {
+		name, value string
+		valid       bool
+	}{
+		{"selected bare", driver.Path, true},
+		{"selected generated quote", strconv.Quote(driver.Path), true},
+		{"foreign bare", "/foreign/driver", false},
+		{"foreign quoted", strconv.Quote("/foreign/driver"), false},
+		{"bare extra argument", driver.Path + " -foreign", false},
+		{"quoted extra argument", strconv.Quote(driver.Path) + " -foreign", false},
+		{"quoted extra command", strconv.Quote(driver.Path) + "; /foreign/driver", false},
+		{"missing close quote", `"` + driver.Path, false},
+		{"missing open quote", driver.Path + `"`, false},
+		{"mismatched quote", `"` + driver.Path + `'`, false},
+		{"single quotes", `'` + driver.Path + `'`, false},
+		{"escaped quotes", `\"` + driver.Path + `\"`, false},
+		{"escaped path", strconv.Quote(strings.Replace(driver.Path, "/", `\x2f`, 1)), false},
+		{"leading space", " " + strconv.Quote(driver.Path), false},
+		{"trailing space", strconv.Quote(driver.Path) + " ", false},
+		{"adjacent empty field", strconv.Quote(driver.Path) + `""`, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			args := []string{"-extld=" + test.value, archive}
+			for _, mode := range []string{"producer", "recorded"} {
+				var op *operation
+				if mode == "recorded" {
+					op = &recorded
+				}
+				inputs, e := toolInputsEvidence(p, driver, "link", args, cwd, op, nil, nil)
+				if test.valid {
+					if e != nil || inputs[q.Path] != q.SHA256 {
+						t.Fatalf("%s selected driver/input rejected: %v", mode, e)
+					}
+				} else if e == nil || !strings.Contains(e.Error(), "foreign external linker before Go tool child") {
+					t.Fatalf("%s driver control missed selection gate: %v", mode, e)
+				}
+			}
+			if spawns(log) != 0 {
+				t.Fatal("driver admission forked a fake compiler")
+			}
+		})
+	}
+	changed := snaps[q.Path]
+	changed.Path = filepath.Join(t.TempDir(), "changed-snapshot")
+	if e := os.WriteFile(changed.Path, []byte("changed"), 0600); e != nil {
+		t.Fatal(e)
+	}
+	recorded.Snapshots[q.Path] = changed
+	if _, e := toolInputsEvidence(p, driver, "link", []string{"-extld=" + strconv.Quote(driver.Path), archive}, cwd, &recorded, nil, nil); e == nil {
+		t.Fatal("quoted driver bypassed recorded input authentication")
 	}
 }
