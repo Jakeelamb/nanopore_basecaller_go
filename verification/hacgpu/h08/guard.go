@@ -24,6 +24,7 @@ type RuntimeAdmission struct {
 	Request, Plan, Contract Pin
 	Identity                Pin
 	ParentBuild             Pin
+	ParentBuildSelection    Pin
 	Command                 supgpu.GuardCommand
 }
 
@@ -59,7 +60,7 @@ func validateGuardInputs(a RuntimeAdmission, target Pin, request Pin, required [
 	if e := pinnedJSON(a.Contract, &c); e != nil {
 		return e
 	}
-	if a.Schema != "nanopore-h08-runtime-admission/v1" || p.Schema != "nanopore-audited-guard-plan/v1" || p.Contract != guardPin(a.Contract) || c.Schema != "nanopore-audited-phase-contract/v1" || c.Role != "observer" || c.Action != action || !slices.Equal(c.Names, []string{"pre-model", "pre-forward", "post-forward"}) {
+	if a.Schema != "nanopore-h08-runtime-admission/v2" || p.Schema != "nanopore-audited-guard-plan/v1" || p.Contract != guardPin(a.Contract) || c.Schema != "nanopore-audited-phase-contract/v1" || c.Role != "observer" || c.Action != action || !slices.Equal(c.Names, []string{"pre-model", "pre-forward", "post-forward"}) {
 		return fmt.Errorf("H08 exact phase/admission contract differs")
 	}
 	if p.Policy.Observer != guardPin(target) || p.Policy.Reference != guardPin(target) || !filepath.IsAbs(a.Command.Directory) || !filepath.IsAbs(a.Command.Output) {
@@ -72,8 +73,8 @@ func validateGuardInputs(a RuntimeAdmission, target Pin, request Pin, required [
 		}
 		selected[v.Path] = v.SHA256
 	}
-	for _, v := range append(required, request) {
-		if v.SHA256 == "" || selected[v.Path] != v.SHA256 {
+	for _, v := range append(slices.Clone(required), request, a.ParentBuild, a.ParentBuildSelection) {
+		if !filepath.IsAbs(v.Path) || len(v.SHA256) != 64 || selected[v.Path] != v.SHA256 {
 			return fmt.Errorf("guard omits required custody input: %s", v.Path)
 		}
 	}
@@ -89,18 +90,21 @@ func ReadAdmission(pin Pin) (a RuntimeAdmission, o FixedRequest, err error) {
 	if err = pinnedJSON(pin, &a); err != nil {
 		return
 	}
+	if a.Schema != "nanopore-h08-runtime-admission/v2" {
+		return a, o, fmt.Errorf("H08 runtime admission schema differs")
+	}
 	if err = pinnedJSON(a.Request, &o); err != nil {
 		return
 	}
 	if err = validateFixedRequest(context.Background(), o); err != nil {
 		return
 	}
-	build, e := cgobuild.ReadBuild(o.ControllerBuild)
+	if a.ParentBuild != o.ControllerBuild || a.ParentBuildSelection != o.ControllerBuildSelection {
+		return a, o, fmt.Errorf("H08 parent/child current build custody differs")
+	}
+	build, e := cgobuild.ReadH08Artifact(o.ControllerBuild, o.ControllerBuildSelection)
 	if e != nil {
 		return a, o, e
-	}
-	if a.ParentBuild != o.ControllerBuild {
-		return a, o, fmt.Errorf("H08 parent/child current build custody differs")
 	}
 	backend, e := AuthenticateBackend(o.BackendArtifact, o.Backend)
 	if e != nil {
@@ -121,14 +125,14 @@ func ReadAdmission(pin Pin) (a RuntimeAdmission, o FixedRequest, err error) {
 			return a, o, fmt.Errorf("padding requires audited all-active acceptance: %v", e)
 		}
 	}
-	if !slices.Equal(a.Command.Args, fixedCommand(build.Output, a.Request)) || a.Command.Output == o.Out || !filepath.IsAbs(o.Out) {
+	if !slices.Equal(a.Command.Args, fixedCommand(build.Output(), a.Request)) || a.Command.Output == o.Out || !filepath.IsAbs(o.Out) {
 		return a, o, fmt.Errorf("H08 child argv/output differs from independent request")
 	}
-	required := []Pin{a.ParentBuild, a.Identity, o.ControllerBuild, o.CPU13, o.BackendArtifact.Build, o.BackendArtifact.Plan, o.BackendArtifact.Producer, o.BackendArtifact.Output}
+	required := []Pin{a.ParentBuild, a.ParentBuildSelection, a.Identity, o.ControllerBuild, o.ControllerBuildSelection, o.CPU13, o.BackendArtifact.Build, o.BackendArtifact.Plan, o.BackendArtifact.Producer, o.BackendArtifact.Output}
 	if o.Phase == "padding" {
 		required = append(required, o.AllActiveReceipt)
 	}
-	err = validateGuardInputs(a, build.Output, a.Request, required, "hac-"+o.Phase)
+	err = validateGuardInputs(a, build.Output(), a.Request, required, "hac-"+o.Phase)
 	return
 }
 
@@ -163,7 +167,7 @@ func Consume(ctx context.Context, options ConsumerOptions) (r GuardedConsumer, e
 	if err != nil {
 		return r, err
 	}
-	if err = actualController(a.ParentBuild); err != nil {
+	if err = actualController(a.ParentBuild, a.ParentBuildSelection); err != nil {
 		return r, err
 	}
 	if err = runner.CheckRoot(); err != nil {
@@ -225,11 +229,14 @@ func Consume(ctx context.Context, options ConsumerOptions) (r GuardedConsumer, e
 	if err = pinnedJSON(r.Consumer, &numerical); err != nil {
 		return r, err
 	}
+	if err = validateConsumerBuild(numerical, o); err != nil {
+		return r, err
+	}
 	want := "fixed_all_active_passed"
 	if o.Phase == "padding" {
 		want = "one_slot_independence_probe_passed_production_policy_held"
 	}
-	if numerical.Status != want || numerical.ControllerBuild != o.ControllerBuild || numerical.CPU13 != o.CPU13 || numerical.Backend.Output != o.BackendArtifact.Output || numerical.Phase != o.Phase {
+	if numerical.Status != want || numerical.CPU13 != o.CPU13 || numerical.Backend.Output != o.BackendArtifact.Output || numerical.Phase != o.Phase {
 		return r, fmt.Errorf("guarded numerical receipt differs from selected phase")
 	}
 	if err = checkPins(numerical.Inputs); err != nil {
@@ -302,7 +309,10 @@ func ReadConsumer(pin Pin) (r GuardedConsumer, err error) {
 	if err = pinnedJSON(r.Consumer, &numerical); err != nil {
 		return
 	}
-	if r.Consumer.Path != filepath.Join(o.Out, "consumer.json") || numerical.Status != r.Status || numerical.Executable != aPolicyTarget(a) || numerical.ControllerBuild != o.ControllerBuild || numerical.CPU13 != o.CPU13 || numerical.Backend.Output != o.BackendArtifact.Output || numerical.Sources != o.Sources || len(numerical.Stages) != 13 || len(numerical.Caches) != 58 || len(numerical.Scratch) != 8 || numerical.ProductionForwardCalls != 1 || numerical.InactiveProbeCalls != 0 {
+	if err = validateConsumerBuild(numerical, o); err != nil {
+		return
+	}
+	if r.Consumer.Path != filepath.Join(o.Out, "consumer.json") || numerical.Status != r.Status || numerical.Executable != aPolicyTarget(a) || numerical.CPU13 != o.CPU13 || numerical.Backend.Output != o.BackendArtifact.Output || numerical.Sources != o.Sources || len(numerical.Stages) != 13 || len(numerical.Caches) != 58 || len(numerical.Scratch) != 8 || numerical.ProductionForwardCalls != 1 || numerical.InactiveProbeCalls != 0 {
 		return r, fmt.Errorf("audited all-active numerical evidence differs")
 	}
 	if err = checkPins(numerical.Inputs); err != nil {
@@ -312,8 +322,20 @@ func ReadConsumer(pin Pin) (r GuardedConsumer, err error) {
 	return
 }
 
-func actualController(build Pin) error {
-	b, e := cgobuild.ReadBuild(build)
+func validateConsumerBuild(r ConsumerReceipt, o FixedRequest) error {
+	if r.Schema != "nanopore-hac-fixed-consumer/v4" || r.ControllerBuild != o.ControllerBuild || r.ControllerBuildSelection != o.ControllerBuildSelection {
+		return fmt.Errorf("numerical receipt build/selection/schema differs")
+	}
+	for _, p := range []Pin{o.ControllerBuild, o.ControllerBuildSelection} {
+		if !filepath.IsAbs(p.Path) || len(p.SHA256) != 64 || r.Inputs[p.Path] != p.SHA256 {
+			return fmt.Errorf("numerical receipt omits build/selection input")
+		}
+	}
+	return nil
+}
+
+func actualController(build, selection Pin) error {
+	b, e := cgobuild.ReadH08Artifact(build, selection)
 	if e != nil {
 		return e
 	}
@@ -322,7 +344,7 @@ func actualController(build Pin) error {
 		return e
 	}
 	p, e := closedbuild.PinFile(path)
-	if e != nil || p != b.Output {
+	if e != nil || p != b.Output() {
 		return fmt.Errorf("executing parent differs from current CGO1 controller: %v", e)
 	}
 	return nil
@@ -353,9 +375,6 @@ func RunGuardedChild(ctx context.Context, request Pin) (r ConsumerReceipt, err e
 	defer func() { err = errors.Join(err, phases.Close()) }()
 	var o FixedRequest
 	if err = pinnedJSON(request, &o); err != nil {
-		return r, err
-	}
-	if err = validateFixedRequest(ctx, o); err != nil {
 		return r, err
 	}
 	return consumeGuarded(ctx, o, phases)

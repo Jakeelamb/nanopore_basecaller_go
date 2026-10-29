@@ -51,12 +51,14 @@ func hostJSON(t *testing.T, path string, value any) Pin {
 func TestH08GuardContractRejectsRehashedPhaseAndCustodyChanges(t *testing.T) {
 	dir := t.TempDir()
 	request := hostJSON(t, filepath.Join(dir, "request"), map[string]string{"fixed": "input-only"})
+	build := hostJSON(t, filepath.Join(dir, "build"), map[string]string{"test": "guard membership only"})
+	selection := hostJSON(t, filepath.Join(dir, "selection"), map[string]string{"test": "guard membership only"})
 	target := request
 	c := supgpu.PhaseContract{Schema: "nanopore-audited-phase-contract/v1", Role: "observer", Action: "hac-all-active", Names: []string{"pre-model", "pre-forward", "post-forward"}}
 	cp := hostJSON(t, filepath.Join(dir, "contract"), c)
-	p := supgpu.GuardPlan{Schema: "nanopore-audited-guard-plan/v1", Contract: guardPin(cp), Policy: supgpu.RuntimePolicy{Reference: guardPin(target), Observer: guardPin(target)}, Inputs: []supgpu.Pin{guardPin(request)}}
+	p := supgpu.GuardPlan{Schema: "nanopore-audited-guard-plan/v1", Contract: guardPin(cp), Policy: supgpu.RuntimePolicy{Reference: guardPin(target), Observer: guardPin(target)}, Inputs: []supgpu.Pin{guardPin(request), guardPin(build), guardPin(selection)}}
 	pp := hostJSON(t, filepath.Join(dir, "plan"), p)
-	a := RuntimeAdmission{Schema: "nanopore-h08-runtime-admission/v1", Request: request, Plan: pp, Contract: cp, Command: supgpu.GuardCommand{Directory: dir, Output: filepath.Join(dir, "fresh")}}
+	a := RuntimeAdmission{Schema: "nanopore-h08-runtime-admission/v2", Request: request, ParentBuild: build, ParentBuildSelection: selection, Plan: pp, Contract: cp, Command: supgpu.GuardCommand{Directory: dir, Output: filepath.Join(dir, "fresh")}}
 	check := func(a RuntimeAdmission) error { return validateGuardInputs(a, target, request, nil, "hac-all-active") }
 	if e := check(a); e != nil {
 		t.Fatal(e)
@@ -102,7 +104,7 @@ func TestH08StatusesRequireExactNamedTestsAndNoSkips(t *testing.T) {
 
 func TestH08RuntimeCannotArmFromReceiptOrFlag(t *testing.T) {
 	dir := t.TempDir()
-	for _, value := range []any{map[string]any{"Admitted": true, "RuntimeHeld": false, "Status": "passed"}, RuntimeAdmission{Schema: "nanopore-h08-runtime-admission/v1"}} {
+	for _, value := range []any{map[string]any{"Admitted": true, "RuntimeHeld": false, "Status": "passed"}, RuntimeAdmission{Schema: "nanopore-h08-runtime-admission/v1"}, RuntimeAdmission{Schema: "nanopore-h08-runtime-admission/v2"}} {
 		pin := hostJSON(t, filepath.Join(dir, "unclosed.json"), value)
 		if _, e := Consume(context.Background(), ConsumerOptions{Admission: pin}); e == nil {
 			t.Fatal("self-declared authority accepted")

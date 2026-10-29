@@ -92,6 +92,13 @@ provider policy, CPU13 evidence, phase contract and parent UUID metadata plan.
 Missing gates stop before lock acquisition or a native child. No accepted
 current CPU13 or graph execution exists yet, so runtime remains held in practice.
 
+The selected-consumer source migration now requires independent evidence and
+selection pins throughout this chain. `RuntimeAdmission` is v2, fixed and CPU13
+requests are newly versioned v1, numerical consumer receipts are v4, and fake
+loader proofs are v2. Old chains are rejected. See
+[selected consumers](h08-selected-consumers.md) for exact schema names, fields,
+role distinctions, source-only checks and pending producer/runtime gates.
+
 The parent holds the canonical nonblocking lock while calling the maintained
 `supgpu.ExecuteGuarded` and `ReplayGuarded`. The child uses one `PhaseClient` at
 `pre-model` before the loader, `pre-forward` immediately before the sole graph
