@@ -61,14 +61,14 @@ func TestPrefixedCompilerSupportTrialsRetainCapturedCgoContext(t *testing.T) {
 					}
 					dir := filepath.Dir(op.Before.Path)
 					dir = filepath.Dir(dir)
-					if e = verifyNativeOperation(p, s, op, dir, derived); e != nil {
+					if e = verifyNativeOperation(p, s, op, dir, derived, attestedQueryResources{}); e != nil {
 						t.Fatal(e)
 					}
 					missing := op
 					request := *op.Request
 					request.Support = nil
 					missing.Request = &request
-					if verifyNativeOperation(p, s, missing, dir, derived) == nil {
+					if verifyNativeOperation(p, s, missing, dir, derived, attestedQueryResources{}) == nil {
 						t.Fatal("reader accepted omitted support context")
 					}
 				})

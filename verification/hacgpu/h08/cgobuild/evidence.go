@@ -12,17 +12,6 @@ import (
 	"github.com/Jakeelamb/nanopore_basecaller_go/verification/tensor/runner"
 )
 
-func finalOutputBindings(p Plan, r Receipt, operations map[string]operation) error {
-	if r.Output.Path != outputPath(p) {
-		return fmt.Errorf("final output differs from selected Go -o")
-	}
-	for _, op := range operations {
-		if (op.Role == "go-link" || op.Role == "go-tool-link") && op.Output.SHA256 != r.Output.SHA256 {
-			return fmt.Errorf("final output bytes differ from successful native/Go link")
-		}
-	}
-	return nil
-}
 func generatedProducer(g GeneratedSet, operations map[string]operation) error {
 	parent, ok := operations[filepath.Dir(g.Producer.Path)]
 	if !ok || parent.Role != "go-tool-cgo" || parent.Lease == nil || parent.Lease.Package != g.Package || len(parent.Commands) != 1 || parent.Commands[0].Exit != 0 || filepath.Base(g.Producer.Path) != "command.json" {
@@ -99,7 +88,7 @@ func beforeCommand(c runner.CommandReceipt, args, env []string, inputs map[strin
 	return nil
 }
 
-func recordedLinkPaths(body string, isMap bool, op operation) (map[string]bool, error) {
+func recordedLinkPaths(body string, isMap bool, op operation, resources attestedQueryResources) (map[string]bool, error) {
 	out := map[string]bool{}
 	for _, line := range strings.Split(body, "\n") {
 		line = strings.TrimSpace(line)
@@ -112,10 +101,22 @@ func recordedLinkPaths(body string, isMap bool, op operation) (map[string]bool, 
 		if line == "" {
 			continue
 		}
-		path := absArg(op.Directory, line)
-		canonical := path
-		if op.Request.Bindings[path] != "" {
-			canonical = op.Request.Bindings[path]
+		canonical := line
+		if selected, ok := resources.exactAnswerBindings[line]; ok {
+			canonical = selected.Path
+			if op.Inputs[canonical] != selected.SHA256 {
+				return nil, fmt.Errorf("query resource differs from link input")
+			}
+			if bound := op.Request.Bindings[line]; bound != "" && bound != canonical {
+				return nil, fmt.Errorf("conflicting query/request binding")
+			}
+		} else if bound := op.Request.Bindings[line]; bound != "" {
+			canonical = bound
+		} else {
+			if !filepath.IsAbs(line) || filepath.Clean(line) != line {
+				return nil, fmt.Errorf("unselected raw link spelling: %s", line)
+			}
+			canonical = absArg(op.Directory, line)
 		}
 		if op.Inputs[canonical] == "" || op.Snapshots[canonical].SHA256 != op.Inputs[canonical] {
 			return nil, fmt.Errorf("link used input outside before-child snapshots")
@@ -127,19 +128,50 @@ func recordedLinkPaths(body string, isMap bool, op operation) (map[string]bool, 
 	}
 	return out, nil
 }
-func recordedLinkEvidence(trace, body string, op operation) error {
-	a, e := recordedLinkPaths(trace, false, op)
+func actualLinkObjects(op operation) (map[string]string, error) {
+	required := maps.Clone(op.Request.Inputs)
+	if op.Request.Link && (op.Request.Source.Path != "" || slices.Contains(op.Request.Args, "-")) {
+		if len(op.Commands) != 3 || op.Commands[1].Exit != 0 {
+			return nil, fmt.Errorf("split link lacks successful probe compile")
+		}
+		last := op.Commands[2]
+		dir := filepath.Dir(filepath.Dir(last.Stdout))
+		object := filepath.Join(dir, "probe.o")
+		want := append(linkProbeArgs(op.Request.Args, object), "-Wl,-t", "-Wl,-Map="+filepath.Join(dir, "link.map"))
+		if len(last.Args) == 0 || !slices.Equal(last.Args[1:], want) {
+			return nil, fmt.Errorf("split link transformed argv differs")
+		}
+		if op.Inputs[object] == "" || op.Snapshots[object].SHA256 != op.Inputs[object] {
+			return nil, fmt.Errorf("probe object before-link pin omitted")
+		}
+		delete(required, op.Request.Source.Path)
+		required[object] = op.Inputs[object]
+	}
+	return required, nil
+}
+
+func recordedLinkEvidence(trace, body string, op operation, resources attestedQueryResources) error {
+	a, e := recordedLinkPaths(trace, false, op, resources)
 	if e != nil {
 		return e
 	}
-	b, e := recordedLinkPaths(body, true, op)
+	b, e := recordedLinkPaths(body, true, op, resources)
 	if e != nil {
 		return e
 	}
 	if !maps.Equal(a, b) {
 		return fmt.Errorf("retained link trace/map differ")
 	}
-	for path := range op.Request.Inputs {
+	required, e := actualLinkObjects(op)
+	if e != nil {
+		return e
+	}
+	if op.Request.Link && (op.Request.Source.Path != "" || slices.Contains(op.Request.Args, "-")) {
+		if a[op.Request.Source.Path] || op.Stdin.Path != "" && a[op.Stdin.Path] {
+			return fmt.Errorf("split link used compile source instead of object")
+		}
+	}
+	for path := range required {
 		if !a[path] {
 			return fmt.Errorf("link evidence omitted requested object")
 		}
@@ -147,7 +179,7 @@ func recordedLinkEvidence(trace, body string, op operation) error {
 	return nil
 }
 
-func verifyNativeOperation(p Plan, s Session, op operation, dir string, derived []GeneratedSet) error {
+func verifyNativeOperation(p Plan, s Session, op operation, dir string, derived []GeneratedSet, resources attestedQueryResources) error {
 	if op.Request == nil || !filepath.IsAbs(op.Directory) {
 		return fmt.Errorf("native request/cwd omitted")
 	}
@@ -280,8 +312,14 @@ func verifyNativeOperation(p Plan, s Session, op operation, dir string, derived 
 			}
 			return nil
 		}
-		if op.Inputs[object] == "" {
+		if op.PreflightDep.Path == "" || op.DepUnavailable != "" {
+			return fmt.Errorf("successful probe compile lacks preflight equality proof")
+		}
+		if op.Inputs[object] == "" || op.Snapshots[object].SHA256 != op.Inputs[object] {
 			return fmt.Errorf("probe object before-link pin omitted")
+		}
+		if e = verifyPin(op.Snapshots[object]); e != nil {
+			return e
 		}
 		inputs[object] = op.Inputs[object]
 		actualArgs = linkProbeArgs(r.Args, object)
@@ -322,7 +360,7 @@ func verifyNativeOperation(p Plan, s Session, op operation, dir string, derived 
 		if e != nil {
 			return e
 		}
-		if e = recordedLinkEvidence(string(trace), string(body), op); e != nil {
+		if e = recordedLinkEvidence(string(trace), string(body), op, resources); e != nil {
 			return e
 		}
 	} else if r.Link && last.Exit == 0 {
