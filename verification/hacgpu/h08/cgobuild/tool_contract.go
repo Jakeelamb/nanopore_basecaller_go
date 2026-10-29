@@ -51,7 +51,11 @@ func selectionTarget(p Plan) string {
 	if p.Role == CPU13Tests {
 		return TensorPackage + ".test"
 	}
-	return Module + "/verification/hacgpu/h08/cmd"
+	path, _, e := commandTarget(p.Role)
+	if e != nil {
+		return ""
+	}
+	return path
 }
 
 func selectionDefault(p Plan, body []byte) (string, error) {

@@ -66,7 +66,22 @@ func main() {
 			RuntimeHeld bool
 		}{a, q, true}
 	case "backend-proof":
-		r, err = h08.AuthenticateBackend(closedbuild.ArtifactOptions{Build: h08.Pin{Path: *backendBuild, SHA256: *backendBuildSHA}, Plan: h08.Pin{Path: *backendPlan, SHA256: *backendPlanSHA}, Producer: h08.Pin{Path: *backendProducer, SHA256: *backendProducerSHA}, Output: h08.Pin{Path: *backend, SHA256: *backendSHA}}, *backend)
+		var a closedbuild.BackendArtifact
+		a, err = h08.AuthenticateBackend(closedbuild.ArtifactOptions{Build: h08.Pin{Path: *backendBuild, SHA256: *backendBuildSHA}, Plan: h08.Pin{Path: *backendPlan, SHA256: *backendPlanSHA}, Producer: h08.Pin{Path: *backendProducer, SHA256: *backendProducerSHA}, Output: h08.Pin{Path: *backend, SHA256: *backendSHA}}, *backend)
+		if err == nil {
+			var exe string
+			exe, err = os.Executable()
+			if err == nil {
+				var self h08.Pin
+				self, err = closedbuild.PinFile(exe)
+				r = struct {
+					Schema             string
+					Backend            closedbuild.BackendArtifact
+					ConsumerExecutable h08.Pin
+					RuntimeHeld        bool
+				}{"nanopore-h08-backend-proof/v1", a, self, true}
+			}
+		}
 	default:
 		err = fmt.Errorf("unknown H08 mode")
 	}

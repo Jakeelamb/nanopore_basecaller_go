@@ -1,6 +1,7 @@
 package decodergpu
 
 import (
+	"context"
 	"fmt"
 	"maps"
 	"os"
@@ -113,7 +114,7 @@ func RunLineageLoad(o LineageLoadOptions) (receipt LineageLoadReceipt, err error
 		return receipt, err
 	}
 	command := lineageCommand(r, b)
-	receipt.Guarded, err = supgpu.ExecuteGuarded(guard, phases, command)
+	receipt.Guarded, err = supgpu.ExecuteGuarded(context.Background(), guard, phases, command)
 	if err != nil {
 		return receipt, err
 	}

@@ -212,27 +212,44 @@ func TestReadOnlyTransitiveELFClosureAndUnknownRuntimeControl(t *testing.T) {
 
 func syntheticController(t *testing.T) (GoController, func(GoController) Pin, string, string) {
 	t.Helper()
-	t.Chdir(filepath.Join("..", ".."))
+	const module = "github.com/Jakeelamb/nanopore_basecaller_go"
+	const projectTarget = module + "/verification/supgpu/cmd"
 	dir := t.TempDir()
+	producer := filepath.Join(dir, "producer")
+	command := filepath.Join(producer, "verification", "supgpu", "cmd")
 	root := filepath.Join(dir, "goroot")
 	tools := filepath.Join(root, "pkg", "tool", "linux_amd64")
 	includes := filepath.Join(root, "pkg", "include")
-	for _, p := range []string{tools, includes, filepath.Join(root, "bin")} {
+	for _, p := range []string{tools, includes, filepath.Join(root, "bin"), command} {
 		if err := os.MkdirAll(p, 0700); err != nil {
 			t.Fatal(err)
 		}
 	}
-	source := filepath.Join(dir, "runner.go")
+	source := filepath.Join(command, "runner.go")
 	tool := filepath.Join(tools, "compile")
-	for _, path := range []string{source, filepath.Join(dir, "profile.go"), filepath.Join(dir, "main.go"), filepath.Join(dir, "observer.h"), filepath.Join(dir, "graph.cpp"), tool, filepath.Join(root, "bin", "go"), filepath.Join(includes, "textflag.h")} {
+	for _, path := range []string{source, filepath.Join(command, "profile.go"), filepath.Join(command, "main.go"), filepath.Join(command, "observer.h"), filepath.Join(command, "graph.cpp"), tool, filepath.Join(root, "bin", "go"), filepath.Join(includes, "textflag.h")} {
 		if err := os.WriteFile(path, []byte("synthetic closed input"), 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
+	// These inert fixture inputs and recorded commands are never executed.
+	for path, body := range map[string]string{
+		filepath.Join(producer, "go.mod"):                                     "module " + module + "\n",
+		filepath.Join(producer, "verification", "supgpu", "host-controls.sh"): "# synthetic host controls; never executed\n",
+	} {
+		if err := os.WriteFile(path, []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Chdir(producer)
 	goexe := filepath.Join(root, "bin", "go")
 	env := goEnvironment{GOROOT: root, GOTOOLDIR: tools, GOVERSION: "synthetic", GOOS: "linux", GOARCH: "amd64", GOAMD64: "v1", CGO_ENABLED: "0", GOENV: "", GOWORK: "off"}
 	envRaw, _ := json.Marshal(env)
-	pkg := goPackage{Dir: dir, GoFiles: []string{"runner.go", "profile.go", "main.go"}, EmbedFiles: []string{"observer.h", "graph.cpp"}}
+	pkg := goPackage{Dir: command, Root: producer, ImportPath: projectTarget, GoFiles: []string{"runner.go", "profile.go", "main.go"}, EmbedFiles: []string{"observer.h", "graph.cpp"}}
+	pkg.Module = &struct {
+		Path, Dir, GoMod string
+		Main             bool
+	}{Path: module, Dir: producer, GoMod: filepath.Join(producer, "go.mod"), Main: true}
 	deps, _ := json.Marshal(pkg)
 	paths, ng, ne, _, err := selectedGoInputs(deps, envRaw, goexe)
 	if err != nil {

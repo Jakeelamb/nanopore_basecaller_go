@@ -9,21 +9,20 @@ import (
 
 	"github.com/Jakeelamb/nanopore_basecaller_go/internal/model"
 	"github.com/Jakeelamb/nanopore_basecaller_go/internal/tensor"
+	"github.com/Jakeelamb/nanopore_basecaller_go/verification/nativeproof"
 	"github.com/Jakeelamb/nanopore_basecaller_go/verification/supgpu"
 )
 
-func TestSUPGraphRuntimeHoldPrecedesAnyPathOrLoader(t *testing.T) {
-	o := Options{Capture: supgpu.Pin{Path: "/must/not/open"}, Backend: "/must/not/dlopen", Model: "/must/not/load", Out: filepath.Join(t.TempDir(), "must-not-create")}
-	r, err := Consume(context.Background(), o)
-	if !errors.Is(err, ErrRuntimeHeld) || r.Status != "structural_hold" {
-		t.Fatalf("runtime escaped hold: %+v %v", r, err)
+func TestSUPGraphRejectsMissingAdmissionAndContext(t *testing.T) {
+	if _, err := Consume(context.Background(), nativeproof.Pin{}); err == nil {
+		t.Fatal("missing independent admission accepted")
 	}
-	if _, err = os.Stat(o.Out); !os.IsNotExist(err) {
-		t.Fatal("held runtime wrote output")
+	if _, err := Consume(nil, nativeproof.Pin{}); err == nil {
+		t.Fatal("nil context accepted")
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err = Consume(ctx, o); !errors.Is(err, context.Canceled) {
+	if _, err := Consume(ctx, nativeproof.Pin{}); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
 }
@@ -67,5 +66,23 @@ func TestSUPGraphDifferentialRejectsDataBackingDescriptorsAndOrder(t *testing.T)
 	want.Tensors[0].Backing = supgpu.Pin{Path: "back.bin", Bytes: 4, SHA256: digest([]byte{0, 0x3c, 0, 0x41})}
 	if _, err = CompareObservation(dir, want, got); err == nil {
 		t.Fatal("different full backing accepted")
+	}
+}
+
+func TestSUPGraphDescriptorMetadataCorruption(t *testing.T) {
+	dir := t.TempDir()
+	data := []byte{0, 0x3c}
+	if e := os.WriteFile(filepath.Join(dir, "v"), data, 0600); e != nil {
+		t.Fatal(e)
+	}
+	pin := supgpu.Pin{Path: "v", Bytes: 2, SHA256: digest(data)}
+	want := supgpu.Event{Name: "cache", Layer: 2, Tensors: []supgpu.Tensor{{Name: "x", DType: "Half", Shape: []int64{1}, Strides: []int64{1}, Tags: []int{int(tensor.TagC)}, Data: pin, Backing: pin}}, Descriptors: []supgpu.Descriptor{{Name: "d", DType: "Half", Shape: []int64{1}, Strides: []int64{1}, Tags: []int{int(tensor.TagC)}, ScaleDType: "Float"}}}
+	got := model.SUPGPUObservation{Name: "cache", Layer: 2, Tensors: []model.SUPGPUBufferSnapshot{{Name: "x", DType: tensor.DTypeF16, Shape: []int64{1}, Strides: []int64{1}, Tags: []tensor.KoiTag{tensor.TagC}, Data: data}}, Descriptors: []model.SUPGPUDescriptorSnapshot{{Name: "d", DType: tensor.DTypeF16, Shape: []int64{1}, Strides: []int64{1}, Tags: []tensor.KoiTag{tensor.TagC}, ScaleDType: tensor.DTypeF32}}}
+	if _, e := CompareObservation(dir, want, got); e != nil {
+		t.Fatal(e)
+	}
+	got.Descriptors[0].ScaleDType = tensor.DTypeF16
+	if _, e := CompareObservation(dir, want, got); e == nil {
+		t.Fatal("different scale descriptor accepted")
 	}
 }

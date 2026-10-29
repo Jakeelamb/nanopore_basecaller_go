@@ -7,6 +7,7 @@ import json
 import os
 import pathlib
 import signal
+import stat
 import subprocess
 import sys
 import time
@@ -177,25 +178,143 @@ class OwnedGroup:
                 os.close(fd)
 
 
+SUP_SCHEMA = 'nanopore-sup-consumer-watch/v1'
+
+
+def exact_fields(value, fields):
+    if type(value) is not dict or set(value) != set(fields):
+        raise ValueError('missing/unknown/case-mismatched plan fields')
+
+
+def bounded_integer(value, ceiling):
+    if type(value) is not int or not 0 < value <= ceiling:
+        raise ValueError('explicit positive integer deadline exceeds policy')
+
+
+def exact_command(argv):
+    if (type(argv) is not list or not argv
+            or any(type(v) is not str or '\0' in v for v in argv)
+            or not argv[0] or str(pathlib.Path(argv[0]).resolve(strict=True)) != argv[0]):
+        raise ValueError('exact canonical image/argv required')
+
+
+def expected_sha(value):
+    if (type(value) is not str or len(value) != 64
+            or any(c not in '0123456789abcdef' for c in value)):
+        raise ValueError('independent lowercase SHA256 required')
+
+
+def validate_sup_plan(plan):
+    """Finite exploratory limits, not completion predictions or launch permission.
+
+    The external root owns caps and the stock lock through terminal/empty unit
+    and descendant cleanup, including controller failure. This script owns no
+    lock and cannot attest external caps. PIDs/observations never select work.
+    """
+    exact_fields(plan, ('schema', 'controller_argv', 'controller_sha256',
+                        'controller_limit_seconds', 'outer_limit_seconds', 'roles'))
+    if plan['schema'] != SUP_SCHEMA:
+        raise ValueError('unknown watcher schema')
+    bounded_integer(plan['controller_limit_seconds'], 2100)
+    bounded_integer(plan['outer_limit_seconds'], 2400)
+    if plan['outer_limit_seconds'] - plan['controller_limit_seconds'] < 60:
+        raise ValueError('outer deadline must reserve at least 60 seconds')
+    exact_command(plan['controller_argv'])
+    expected_sha(plan['controller_sha256'])
+    roles = plan['roles']
+    if type(roles) is not list or len(roles) != 3:
+        raise ValueError('SUP requires exactly three ordered slots')
+    for role, name in zip(roles, ('before-identity', 'graph', 'after-identity')):
+        exact_fields(role, ('name', 'argv', 'sha256', 'limit_seconds'))
+        if role['name'] != name:
+            raise ValueError('SUP ordered slot names differ')
+        exact_command(role['argv'])
+        expected_sha(role['sha256'])
+        bounded_integer(role['limit_seconds'], 900)
+        if role['limit_seconds'] > plan['controller_limit_seconds']:
+            raise ValueError('role deadline exceeds controller deadline')
+    if (roles[0]['argv'] != roles[2]['argv']
+            or roles[0]['sha256'] != roles[2]['sha256']):
+        raise ValueError('SUP identity bookends must bind the same command')
+
+
+def unique_object(pairs):
+    value = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError('duplicate JSON field: ' + key)
+        value[key] = item
+    return value
+
+
+def read_plan(path, plan_sha):
+    expected_sha(plan_sha)
+    # One bounded, nonblocking regular-file read owns both the hash input and
+    # every decoder input, even if the pathname is replaced after this read.
+    limit = 1024 * 1024
+    fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise ValueError('role plan must be a regular file')
+        with os.fdopen(fd, 'rb') as source:
+            fd = None
+            raw = source.read(limit + 1)
+    finally:
+        if fd is not None:
+            os.close(fd)
+    if len(raw) > limit:
+        raise ValueError('role plan exceeds byte limit')
+    if hashlib.sha256(raw).hexdigest() != plan_sha:
+        raise ValueError('independent expected role-plan SHA256 required')
+    plan = json.loads(raw)
+    # Legacy plans have no schema. Strict original-byte decoding is mandatory
+    # for the explicit policy, before any controller can be started.
+    if type(plan) is dict and any(k.lower() == 'schema' for k in plan):
+        plan = json.loads(raw, object_pairs_hook=unique_object)
+        validate_sup_plan(plan)
+    return plan
+
+
+def select_role(roles, ordered, count, record, controller, own_cgroup):
+    """Select a declared slot from an actual observation, never from stdout."""
+    candidates = roles[count:count + 1] if ordered else roles
+    matches = [r for r in candidates if r['argv'] == record['argv']
+               and r['argv'][0] == record['image']]
+    if (len(matches) != 1 or record['ppid'] != controller['pid']
+            or record['pgid'] != record['pid']
+            or record['sid'] != controller['sid'] or record['cgroup'] != own_cgroup):
+        raise RuntimeError('unexpected child identity/argv/private group: %r' % record)
+    role = matches[0]
+    if record['image_sha256'] != role['sha256']:
+        raise RuntimeError('actual child image hash differs')
+    return role
+
+
 def run(plan, output):
+    ordered = 'schema' in plan
+    if ordered:
+        validate_sup_plan(plan)
     roles = plan['roles']
     if not roles or len(roles) > 8 or len({r['name'] for r in roles}) != len(roles):
         raise ValueError('one to eight unique expected roles required')
     for role in roles:
-        if not role['argv'] or not 0 < role['limit_seconds'] <= 180:
+        if not ordered and (not role['argv'] or not 0 < role['limit_seconds'] <= 180):
             raise ValueError('exact role argv and bounded lifetime required')
         if str(pathlib.Path(role['argv'][0]).resolve()) != role['argv'][0]:
             raise ValueError('role image must be canonical')
         if image_sha(role['argv'][0]) != role['sha256']:
             raise ValueError('prospective role image changed before controller')
-    if not 0 < plan['controller_limit_seconds'] <= 560:
+    if not ordered and not 0 < plan['controller_limit_seconds'] <= 560:
         raise ValueError('controller limit must fit outer600s cleanup budget')
     controller_image = str(pathlib.Path(plan['controller_argv'][0]).resolve(strict=True))
     controller_sha = image_sha(controller_image)
+    if ordered and controller_sha != plan['controller_sha256']:
+        raise ValueError('prospective controller image differs from expected SHA256')
     own_cgroup = pathlib.Path('/proc/self/cgroup').read_text()
     receipt = {'schema': 'nanopore-native-role-watch/v1', 'started': utc(),
                'plan': plan, 'roles': [], 'signals': [], 'timeout': False,
                'ownership_errors': [], 'own_cgroup': own_cgroup,
+               'authenticated_children': [],
                'signal_policy': 'current-identity-revalidated-pidfd-members-only'}
     proc = subprocess.Popen(plan['controller_argv'], start_new_session=True)
     receipt['controller_pid'] = receipt['controller_pgid'] = proc.pid
@@ -233,22 +352,28 @@ def run(plan, output):
             children = sorted({child for group in by_thread.values() for child in group})
             for pid in children:
                 if pid in seen:
+                    if ordered:
+                        current = process_identity(pid, with_hash=True)
+                        if current and not same_identity(groups[pid].leader, current, with_hash=True):
+                            raise OwnershipError('observed PID reused or changed')
                     continue
                 record = process_identity(pid, with_hash=True)
                 if not record:
                     continue
                 argv = record['argv']
-                matches = [r for r in roles if r['argv'] == argv and r['argv'][0] == record['image']]
-                if (len(matches) != 1 or record['ppid'] != proc.pid or record['pgid'] != pid
-                        or record['sid'] != controller['sid'] or record['cgroup'] != own_cgroup):
-                    raise RuntimeError('unexpected child identity/argv/private group: %r' % record)
-                role = matches[0]
+                role = select_role(roles, ordered, len(seen), record, controller, own_cgroup)
+                # Authentication establishes cleanup ownership independently
+                # of semantic acceptance of this execution/ordered slot.
+                groups[pid] = OwnedGroup(record, receipt['signals'])
+                authenticated = {'identity': record, 'expected_role': role['name'],
+                                 'accepted': False, 'observed_at': utc()}
+                receipt['authenticated_children'].append(authenticated)
                 if role['name'] in [v['name'] for v in seen.values()]:
                     raise RuntimeError('duplicate role execution')
                 if role is not roles[len(seen)]:
                     raise RuntimeError('native roles arrived out of the declared order')
-                if record['image_sha256'] != role['sha256']:
-                    raise RuntimeError('actual child image hash differs')
+                if ordered and any(groups[p].refresh() for p in seen):
+                    raise RuntimeError('next ordered slot started before prior slot finished')
                 entry = {'name': role['name'], 'pid': pid, 'pgid': pid, 'argv': argv,
                          'image_sha256': role['sha256'], 'observed_started': utc(),
                          'start_ticks': record['start_ticks'], 'clock_ticks_per_second': hz,
@@ -256,11 +381,16 @@ def run(plan, output):
                          'stat': record['raw'], 'limit_seconds': role['limit_seconds'],
                          'children_by_thread': by_thread,
                          'old_main_thread_children': by_thread.get(proc.pid, [])}
+                if ordered:
+                    entry['slot'] = len(seen)
                 seen[pid] = entry
-                groups[pid] = OwnedGroup(record, receipt['signals'])
                 receipt['roles'].append(entry)
+                authenticated['accepted'] = True
             for pid, entry in seen.items():
                 active = groups[pid].refresh()
+                if ordered and (any(m['pid'] != pid for m in active)
+                                or any(thread_children(pid).values())):
+                    raise RuntimeError('unexpected role descendant')
                 if not active:
                     entry.setdefault('observed_finished', utc())
                     continue
@@ -278,20 +408,22 @@ def run(plan, output):
         receipt['timeout'] = isinstance(error, TimeoutError)
         if isinstance(error, OwnershipError):
             receipt['ownership_errors'].append({'error': failure, 'at': utc()})
-        for pid in seen:
-            stop(groups[pid], signal.SIGTERM)
+        for pid, group in groups.items():
+            if pid != proc.pid:
+                stop(group, signal.SIGTERM)
         if not wait_controller(5):
             if proc.pid in groups:
                 stop(groups[proc.pid], signal.SIGTERM)
             wait_controller(5)
-            for pid in seen:
-                stop(groups[pid], signal.SIGKILL)
+            for pid, group in groups.items():
+                if pid != proc.pid:
+                    stop(group, signal.SIGKILL)
             if proc.pid in groups:
                 stop(groups[proc.pid], signal.SIGKILL)
             wait_controller(5)
     receipt['controller_exit'] = proc.poll()
     # Group cleanup is independent of leader Wait and pipe inheritance.
-    receipt['members_after_leader'] = {str(pid): group_members(pid) for pid in [proc.pid, *seen]}
+    receipt['members_after_leader'] = {str(pid): group_members(pid) for pid in groups}
     for pid, group in groups.items():
         try:
             active = group.refresh()
@@ -299,6 +431,9 @@ def run(plan, output):
             receipt['ownership_errors'].append({'pgid': pid, 'error': str(error), 'at': utc()})
             continue
         if active:
+            if ordered and not failure:
+                failure = 'controller exited with live descendants; execution unqualified'
+                receipt['error'] = failure
             stop(group, signal.SIGKILL)
             for _ in range(100):
                 try:
@@ -308,7 +443,7 @@ def run(plan, output):
                     receipt['ownership_errors'].append({'pgid': pid, 'error': str(error), 'at': utc()})
                     break
                 time.sleep(.05)
-    receipt['members_after_cleanup'] = {str(pid): group_members(pid) for pid in [proc.pid, *seen]}
+    receipt['members_after_cleanup'] = {str(pid): group_members(pid) for pid in groups}
     if any(receipt['members_after_cleanup'].values()) or receipt['controller_exit'] is None:
         failure = 'processes remain; outer owned-cgroup cleanup required'
         receipt['cleanup_error'] = failure
@@ -325,8 +460,7 @@ def run(plan, output):
 
 
 if __name__ == '__main__':
-    if len(sys.argv) != 4 or image_sha(sys.argv[1]) != sys.argv[3]:
+    if len(sys.argv) != 4:
         raise SystemExit('independent expected role-plan SHA256 required')
-    with open(sys.argv[1]) as plan_file:
-        plan = json.load(plan_file)
+    plan = read_plan(sys.argv[1], sys.argv[3])
     raise SystemExit(run(plan, sys.argv[2]))
