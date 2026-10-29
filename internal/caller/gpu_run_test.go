@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Jakeelamb/nanopore_basecaller_go/internal/gpudecode"
 	"github.com/Jakeelamb/nanopore_basecaller_go/internal/model"
 	"github.com/Jakeelamb/nanopore_basecaller_go/internal/pod5"
 	"github.com/Jakeelamb/nanopore_basecaller_go/internal/postcall"
@@ -17,10 +18,12 @@ import (
 )
 
 type gpuHostInput struct {
-	reads    []pod5.Read
-	closed   int
-	events   *[]string
-	earlyEOF bool
+	reads      []pod5.Read
+	closed     int
+	events     *[]string
+	earlyEOF   bool
+	failAfter  int
+	iterateErr error
 }
 
 func (in *gpuHostInput) IDs(ctx context.Context) ([]pod5.ID, error) {
@@ -37,6 +40,9 @@ func (in *gpuHostInput) Iterate(ctx context.Context, ids []pod5.ID, visit func(p
 	for j, r := range in.reads {
 		if err := ctx.Err(); err != nil {
 			return err
+		}
+		if in.iterateErr != nil && j == in.failAfter {
+			return in.iterateErr
 		}
 		if in.earlyEOF && j == len(in.reads)-1 {
 			return nil
@@ -89,6 +95,7 @@ func (i *gpuHostInvocation) Call(ctx context.Context, b scheduler.Batch) error {
 	h.calls++
 	h.real = append(h.real, b.Real)
 	h.profileCalls = append(h.profileCalls, i.profile)
+	h.eofAtCall = append(h.eofAtCall, i.run.eof)
 	if len(i.run.pending) > i.run.cfg.Limits.PendingChunks || len(i.run.parents) > i.run.cfg.Limits.LiveParents || i.run.liveSamples > i.run.cfg.Limits.LiveSamples {
 		h.t.Fatal("host buffers exceeded limits")
 	}
@@ -108,6 +115,20 @@ func (i *gpuHostInvocation) Call(ctx context.Context, b scheduler.Batch) error {
 			moves[k] = 1
 		}
 		work[j] = DecodedWork{ReadID: ref.parent.read.ID.String(), ChunkIndex: ref.index, Offset: c.offset, RawLength: c.rawLength, Granularity: c.granularity, Sequence: strings.Repeat("A", len(moves)), Qstring: strings.Repeat("I", len(moves)), Moves: moves}
+	}
+	if h.physicalDecode {
+		quality := gpudecode.QualityBatch{Chunks: make([]gpudecode.QualityChunk, b.PaddedSlots)}
+		for j := range quality.Chunks {
+			quality.Chunks[j] = gpudecode.QualityChunk{Moves: []byte{2}, Sequence: []byte("ABSENT"), Q: []byte("!!!!!!")}
+		}
+		for j, w := range work {
+			quality.Chunks[j] = gpudecode.QualityChunk{Moves: w.Moves, Sequence: []byte(w.Sequence), Q: []byte(w.Qstring)}
+		}
+		var err error
+		work, err = (&gpuInvocation{run: i.run, profile: i.profile}).decodedWork(b, quality)
+		if err != nil {
+			return err
+		}
 	}
 	if h.omitResult {
 		work = work[:len(work)-1]
@@ -140,6 +161,8 @@ type gpuHostHarness struct {
 	real, profileCalls                           []int
 	omitResult                                   bool
 	badCoordinates                               bool
+	physicalDecode                               bool
+	eofAtCall                                    []bool
 	drainErr, sharedErr                          error
 }
 
@@ -438,4 +461,134 @@ func TestGPUHostSharedModelClosesAfterProfileDrains(t *testing.T) {
 			h.assertRetired()
 		})
 	}
+}
+
+// Private host records exercise publication only; they never enter the registry.
+func enableGPUHostPhysicalDecode(h *gpuHostHarness) {
+	h.physicalDecode = true
+	h.run.bundle.record.profiles = make(map[gpuProfileKey]bool)
+	h.run.bundle.record.partialProfiles = make(map[gpuProfileKey]bool)
+	for _, p := range h.run.recipes {
+		key := gpuProfileKey{string(h.run.spec.Architecture), int(p.chunkSize), h.run.cfg.BatchSize, false}
+		h.run.bundle.record.profiles[key] = true
+		h.run.bundle.record.partialProfiles[key] = true
+	}
+}
+
+func TestGPUHostPartialPhysicalAccounting(t *testing.T) {
+	for _, architecture := range []model.Architecture{model.HAC, model.SUP} {
+		t.Run(string(architecture), func(t *testing.T) {
+			reads := []pod5.Read{gpuHostRead(1, 7002), gpuHostRead(2, 7002), gpuHostRead(3, 7002)}
+			h := newGPUHostHarness(t, reads)
+			h.run.spec, _ = model.Pinned(architecture)
+			if architecture == model.SUP {
+				h.run.cfg.BatchSize = 32
+			}
+			enableGPUHostPhysicalDecode(h)
+			if err := h.execute(); err != nil {
+				t.Fatal(err)
+			}
+			if h.calls != 2 || h.real[0] != 2 || h.real[1] != 1 || h.eofAtCall[0] || !h.eofAtCall[1] {
+				t.Fatalf("pre-EOF and EOF partial membership: real=%v eof=%v", h.real, h.eofAtCall)
+			}
+			st := h.run.profiles[0].scheduler.Stats()
+			if st.Submitted != 3 || st.RealChunks != 3 || st.Dispatched != 2 || st.PaddedSlots != 2*h.run.cfg.BatchSize || st.PaddedSamples != 2*h.run.cfg.BatchSize*12288 || st.FailedChunks != 0 || st.Abandoned != 0 || st.Pending != 0 || !st.Drained {
+				t.Fatalf("physical vs real accounting: %+v", st)
+			}
+			if h.run.report.ExpectedParents != 3 || h.run.report.InputParents != 3 || h.run.report.CompletedParents != 3 || h.run.report.SerializedParents != 3 || h.run.report.OutputRecords != 3 || len(h.output.ids) != 3 {
+				t.Fatalf("absent decoded rows affected publication: %+v ids=%v", h.run.report, h.output.ids)
+			}
+			for j, read := range reads {
+				if h.output.ids[j] != read.ID.String() {
+					t.Fatal("real parent identity or order changed")
+				}
+			}
+			h.assertRetired()
+		})
+	}
+}
+
+func TestGPUHostLoaderErrorAfterAcceptedParents(t *testing.T) {
+	for _, accepted := range []int{1, 3} {
+		t.Run(fmt.Sprintf("accepted%d", accepted), func(t *testing.T) {
+			h := newGPUHostHarness(t, []pod5.Read{gpuHostRead(1, 7002), gpuHostRead(2, 7002), gpuHostRead(3, 7002), gpuHostRead(4, 7002)})
+			enableGPUHostPhysicalDecode(h)
+			loaderErr := errors.New("POD5 loader failed after accepted parent")
+			h.input.failAfter, h.input.iterateErr = accepted, loaderErr
+			if err := h.execute(); !errors.Is(err, loaderErr) {
+				t.Fatalf("loader failure lost: %v", err)
+			}
+			published := accepted - 1
+			if h.run.eof || h.run.report.InputParents != uint64(accepted) || h.run.report.CompletedParents != uint64(published) || h.run.report.SerializedParents != uint64(published) || h.run.report.OutputRecords != uint64(published) || len(h.output.ids) != published || h.calls != published/2 {
+				t.Fatalf("loader failure flushed pending work or lost earlier output: %+v calls=%d", h.run.report, h.calls)
+			}
+			st := h.run.profiles[0].scheduler.Stats()
+			if st.Submitted != accepted || st.RealChunks != published || st.Abandoned != 1 || st.FailedChunks != 0 || st.Pending != 0 || !st.Drained || st.PaddedSlots != h.calls*64 || st.PaddedSamples != h.calls*64*12288 {
+				t.Fatalf("loader failure accounting: %+v", st)
+			}
+			h.assertRetired()
+		})
+	}
+}
+
+func TestGPUHostFinalPartialOutcomes(t *testing.T) {
+	for _, name := range []string{"call-fails", "cancel-during", "cancel-after-publication", "writer", "drain", "finalize"} {
+		t.Run(name, func(t *testing.T) {
+			h := newGPUHostHarness(t, []pod5.Read{gpuHostRead(1, 7002), gpuHostRead(2, 7002), gpuHostRead(3, 7002)})
+			enableGPUHostPhysicalDecode(h)
+			switch name {
+			case "call-fails":
+				h.failCall = 2
+			case "cancel-during":
+				h.cancelCall = 2
+			case "cancel-after-publication":
+				h.cancelAfterCall = 2
+			case "writer":
+				h.output.failWrite = 3
+			case "drain":
+				h.drainErr = errors.New("final partial drain failed")
+			case "finalize":
+				h.output.finalErr = errors.New("final partial writer finalization failed")
+			}
+			err := h.execute()
+			if err == nil || h.calls != 2 || h.real[1] != 1 || !h.eofAtCall[1] {
+				t.Fatalf("final partial outcome lost: %v real=%v eof=%v", err, h.real, h.eofAtCall)
+			}
+			if strings.HasPrefix(name, "cancel-") && !errors.Is(err, context.Canceled) {
+				t.Fatal("cancellation cause lost", err)
+			}
+			st := h.run.profiles[0].scheduler.Stats()
+			failed := name == "call-fails" || name == "cancel-during"
+			wantReal, wantBatches, wantFailed := 3, 2, 0
+			if failed {
+				wantReal, wantBatches, wantFailed = 2, 1, 1
+			}
+			if st.Submitted != 3 || st.RealChunks != wantReal || st.Dispatched != wantBatches || st.FailedChunks != wantFailed || st.FailedBatches != wantFailed || st.PaddedSlots != wantBatches*64 || st.PaddedSamples != wantBatches*64*12288 || st.Abandoned != 0 || st.Pending != 0 || st.Drained != (name != "drain") {
+				t.Fatalf("final partial scheduler accounting: %+v", st)
+			}
+			wantSerialized := uint64(3)
+			if failed || name == "cancel-after-publication" || name == "writer" {
+				wantSerialized = 2
+			}
+			wantCompleted := wantSerialized
+			if name == "writer" {
+				wantCompleted = 3
+			}
+			if h.run.report.InputParents != 3 || h.run.report.CompletedParents != wantCompleted || h.run.report.SerializedParents != wantSerialized || h.run.report.OutputRecords != wantSerialized || len(h.output.ids) != int(wantSerialized) {
+				t.Fatalf("final partial publication accounting: %+v", h.run.report)
+			}
+			h.assertRetired()
+		})
+	}
+}
+
+func TestGPUHostZeroSelectedReads(t *testing.T) {
+	h := newGPUHostHarness(t, nil)
+	if err := h.execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !h.run.eof || h.calls != 0 || len(h.invocations) != 0 || len(h.output.ids) != 0 || h.run.report != (GPUReport{}) {
+		t.Fatalf("zero reads created work: %+v", h.run.report)
+	}
+	h.assertRetired()
 }
