@@ -11,11 +11,11 @@ import (
 )
 
 func main() {
-	unit := flag.String("unit", "", "schedule-check, postcall-check, qualify, biological, benchmark, or inventory")
-	mode := flag.String("mode", "", "import, replay, or native")
-	input := flag.String("input", "", "pinned input manifest")
+	unit := flag.String("unit", "", "registered: schedule-check and inventory (import/replay), postcall-check (replay); qualify, biological, benchmark unimplemented")
+	mode := flag.String("mode", "", "import or replay (unit-dependent); native is unwired")
+	input := flag.String("input", "", "unit-specific plan, capture, or retained receipt")
 	output := flag.String("out", "", "fresh attempt directory")
-	admitted := flag.Bool("admitted", false, "coordinator resource intake granted; qualification is still required")
+	admitted := flag.Bool("admitted", false, "coordinator resource intake granted; does not enable native handlers")
 	flag.Parse()
 	if flag.NArg() != 0 {
 		fmt.Fprintln(os.Stderr, "unexpected positional arguments")
@@ -24,6 +24,7 @@ func main() {
 	handlers := gpucaller.Handlers{}
 	handlers.Inventory = gpucaller.InventoryHandlers()
 	handlers.PostcallCheck = gpucaller.PostcallHandlers()
+	handlers.ScheduleCheck = gpucaller.ScheduleHandlers()
 	err := gpucaller.Dispatch(gpucaller.Request{Unit: gpucaller.Unit(*unit), Mode: gpucaller.Mode(*mode), Input: *input, Output: *output, Admitted: *admitted}, handlers)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
