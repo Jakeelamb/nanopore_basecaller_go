@@ -26,6 +26,23 @@ type gpuBundleRecord struct {
 	tensor, pod5           gpuBundleFile
 	guide, beam, posterior [32]byte
 	profiles               map[gpuProfileKey]bool
+	partialProfiles        map[gpuProfileKey]bool
+}
+
+// Partial publication needs independent evidence in addition to full-profile
+// approval. Neither an omitted entry nor ordinary profile approval admits it.
+func (r gpuBundleRecord) validatePartialProfiles() error {
+	for key, approved := range r.partialProfiles {
+		if !approved {
+			continue
+		}
+		fixed := !key.variable && (key.chunk == 12288 || key.chunk == 6144)
+		physical := key.lane == "hac-flstm-v6" && key.batch == 64 || key.lane == "sup-transformer-v5.2" && key.batch == 32
+		if !r.profiles[key] || !fixed || !physical {
+			return fmt.Errorf("%w: partial approval requires an independently approved fixed physical profile", ErrGPUUnqualified)
+		}
+	}
+	return nil
 }
 
 // Entries require independently accepted ABI5, POD5 and numerical evidence.
@@ -73,6 +90,9 @@ func loadGPUBundle(directory string) (gpuBundle, error) {
 	}
 	if record.guide == [32]byte{} || record.beam == [32]byte{} || record.posterior == [32]byte{} || len(record.profiles) == 0 {
 		return gpuBundle{}, fmt.Errorf("%w: incomplete approved bundle", ErrGPUUnqualified)
+	}
+	if err := record.validatePartialProfiles(); err != nil {
+		return gpuBundle{}, err
 	}
 	tensorPath, err := verifyGPUBundleFile(root, record.tensor)
 	if err != nil {
