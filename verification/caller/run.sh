@@ -3,10 +3,11 @@ set -euo pipefail
 root=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$root"
 stock=${STOCK_ROOT:-/home/jake/Projects/nanopore_basecaller}
-tensor=${TENSOR_LIBRARY:-$root/artifacts/tensor/attempt-005-sup-abi3/libnanopore_tensor.so}
+tensor=${TENSOR_LIBRARY:-$root/artifacts/tensor/abi5-cpu/libnanopore_tensor.so}
 model=${MODEL_DIR:-$stock/models/dna_r10.4.1_e8.2_400bps_hac@v6.0.0}
 pod5=${POD5_LIBRARY:-$root/external/backend/pod5/lib/libpod5_format.so}
 control=${STOCK_CONTROL:-$root/artifacts/native-cpu-control/stock-hac-dev1-001/stdout}
+mkdir -p "$root/artifacts/caller"
 receipt=$(mktemp -d "$root/artifacts/caller/attempt-$(date -u +%Y%m%dT%H%M%SZ)-XXXXXX")
 printf '%s\n' "$receipt"
 run(){

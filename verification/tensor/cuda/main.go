@@ -55,6 +55,42 @@ type evidence struct {
 	CPUContracts      int                     `json:"cpu_contracts,omitempty"`
 }
 
+type buildManifest struct {
+	ABI       int               `json:"abi_version"`
+	Family    string            `json:"cuda_family"`
+	Status    string            `json:"status"`
+	OutputSHA string            `json:"output_sha256"`
+	Inputs    map[string]string `json:"input_sha256"`
+	Runtime   map[string]string `json:"runtime_sha256"`
+	Torch     string            `json:"torch_root"`
+}
+
+func readBuildManifest(path string) (buildManifest, error) {
+	var build buildManifest
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return build, err
+	}
+	if err = json.Unmarshal(raw, &build); err != nil {
+		return build, err
+	}
+	if build.ABI != 5 || build.Family != "13.0" || build.Status != "built" {
+		return build, fmt.Errorf("expected successfully built ABI5 CUDA13 artifact")
+	}
+	return build, nil
+}
+
+func newEvidence() evidence {
+	return evidence{Schema: "nanopore-cuda-half-capture/v1", ABI: 5, Status: "failed", Started: time.Now().UTC().Format(time.RFC3339Nano), Inputs: map[string]string{}, Runtime: map[string]string{}}
+}
+
+func (m evidence) checkCaptureManifest(prior evidence) error {
+	if prior.ABI != m.ABI || prior.Schema != m.Schema || len(prior.Cases) != 37 || !strings.HasPrefix(prior.Status, "source_capture_exact_repeat") {
+		return fmt.Errorf("unqualified source capture")
+	}
+	return nil
+}
+
 func main() {
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -66,7 +102,7 @@ func run() (ret error) {
 		return err
 	}
 	weight := flag.String("weight", "", "read-only real HAC weight for CPU contracts against the CUDA-enabled library")
-	backend := flag.String("backend", "", "ABI4 CUDA13 library produced by compile-only builder")
+	backend := flag.String("backend", "", "ABI5 CUDA13 library produced by compile-only builder")
 	capture := flag.String("capture", "", "saved capture manifest to replay; omitted creates fresh source capture")
 	out := flag.String("out", "", "new artifacts/tensor attempt")
 	admitted := flag.Bool("runtime-admitted", false, "coordinator has lifted the operational CUDA hold for this invocation")
@@ -88,7 +124,7 @@ func run() (ret error) {
 	if err != nil {
 		return err
 	}
-	m := evidence{Schema: "nanopore-cuda-half-capture/v1", ABI: 4, Status: "failed", Started: time.Now().UTC().Format(time.RFC3339Nano), Inputs: map[string]string{}, Runtime: map[string]string{}}
+	m := newEvidence()
 	defer func() {
 		m.Finished = time.Now().UTC().Format(time.RFC3339Nano)
 		if ret != nil {
@@ -113,24 +149,9 @@ func run() (ret error) {
 	}
 	defer lock.Close()
 	buildPath := filepath.Join(filepath.Dir(*backend), "manifest.json")
-	raw, err := os.ReadFile(buildPath)
+	build, err := readBuildManifest(buildPath)
 	if err != nil {
 		return err
-	}
-	var build struct {
-		ABI       int               `json:"abi_version"`
-		Family    string            `json:"cuda_family"`
-		Status    string            `json:"status"`
-		OutputSHA string            `json:"output_sha256"`
-		Inputs    map[string]string `json:"input_sha256"`
-		Runtime   map[string]string `json:"runtime_sha256"`
-		Torch     string            `json:"torch_root"`
-	}
-	if err = json.Unmarshal(raw, &build); err != nil {
-		return err
-	}
-	if build.ABI != 4 || build.Family != "13.0" || build.Status != "built" {
-		return fmt.Errorf("expected successfully built ABI4 CUDA13 artifact")
 	}
 	pin := func(path, want string) error {
 		got, err := runner.SHA(path)
@@ -317,8 +338,8 @@ func run() (ret error) {
 			return err
 		}
 		m.ProducerIdentity = prior.ProducerIdentity
-		if prior.Schema != m.Schema || len(prior.Cases) != 37 || !strings.HasPrefix(prior.Status, "source_capture_exact_repeat") {
-			return fmt.Errorf("unqualified source capture")
+		if err = m.checkCaptureManifest(prior); err != nil {
+			return err
 		}
 		if err = pin(*capture, ""); err != nil {
 			return err

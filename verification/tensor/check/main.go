@@ -27,6 +27,24 @@ type evidence struct {
 	Error    string            `json:"error,omitempty"`
 }
 
+func (m *evidence) checkBuildManifest(raw []byte) error {
+	var build struct {
+		ABI    int    `json:"abi_version"`
+		Family string `json:"cuda_family"`
+	}
+	if err := json.Unmarshal(raw, &build); err != nil {
+		return err
+	}
+	if build.ABI != 5 {
+		return fmt.Errorf("check requires an ABI5 build manifest")
+	}
+	if build.Family != "none" {
+		m.Status = "runtime_held"
+		return fmt.Errorf("CUDA backend loading requires the separate admitted CUDA capture/replay command; CPU check does not initialize CUDA")
+	}
+	return nil
+}
+
 func hash(path string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -128,19 +146,8 @@ func run() (ret error) {
 		if err != nil {
 			return err
 		}
-		var build struct {
-			ABI    int    `json:"abi_version"`
-			Family string `json:"cuda_family"`
-		}
-		if err = json.Unmarshal(rawBuild, &build); err != nil {
+		if err = m.checkBuildManifest(rawBuild); err != nil {
 			return err
-		}
-		if build.ABI != 4 {
-			return fmt.Errorf("check requires an ABI4 build manifest")
-		}
-		if build.Family != "none" {
-			m.Status = "runtime_held"
-			return fmt.Errorf("CUDA backend loading requires the separate admitted CUDA capture/replay command; CPU check does not initialize CUDA")
 		}
 		paths := []string{*backend, filepath.Join(filepath.Dir(*backend), "manifest.json")}
 		if *oldBackend != "" {
