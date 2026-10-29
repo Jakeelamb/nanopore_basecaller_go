@@ -74,8 +74,13 @@ def process_identity(pid, with_hash=False):
     except (FileNotFoundError, ProcessLookupError):
         return None
     after = process_stat(pid)
-    if not after or any(record[k] != after[k] for k in ('start_ticks', 'pgid', 'sid')):
+    if not after:
+        return None
+    if any(record[k] != after[k] for k in ('start_ticks', 'pgid', 'sid')):
         raise OwnershipError('process changed while reading identity: %d' % pid)
+    # Check identity before terminal state so a reused zombie cannot hide it.
+    if after['state'] == 'Z':
+        return None
     return record
 
 
