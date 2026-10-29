@@ -1,0 +1,292 @@
+// Selected A: future GPU/ownership APIs below remain Go-flavored pseudocode.
+// The implemented first unit is internal/packed/plan.go, which is authoritative
+// for host signatures: NewDefinition(DefinitionInput) (Definition,error),
+// PlanBatch(Definition,scheduler.Batch,[]Member) (Plan,error).
+// Actual Member has ChunkID, ParentID, ParentOffset and Raw, with no data buffer.
+// Actual opaque Plan is a value with Validate and public defensive-copy getters:
+// Members/Input/Decoder/Frames/HAC/SUP/Definition/Sequence/SourceOrder/
+// UnboundContracts. Definition.Input also copies. Every zero-Plan getter rejects.
+// Model may later wrap PlanBatch behind its Plan operation; there is no model
+// import, Scores, ForwardPacked, DecodePacked or invocation owner implementation.
+// Actual SUP first M is ordinary runner capacity N*chunk, not populated prefix.
+// MaxChunk separately pins basecaller maximum RoPE extent across full/short queues.
+// No NativeContract/program authentication or native initialized span is bound.
+// Module map (three readers suffice for input -> result):
+// internal/packed: immutable geometry, membership, source views and owner leases.
+// internal/model: private HAC/SUP graphs and weight transforms; consumes packed.
+// internal/gpudecode: segmented Go schedules/state/quality; consumes packed.
+// internal/tensor: narrow storage/kernel boundary used by the last two modules.
+// caller coordinates Plan/ForwardPacked/DecodePacked/publication, not ten stages.
+
+package packed
+
+// Distinct units; checked conversions live only in plan construction/lowering.
+type Samples int64
+type ParentOffset uint64
+type Blocks int64
+type RecurrentLane int32
+type RecurrentTime int64
+type EncoderTile int64
+type EncoderStep int64
+type ScoreRow int64
+type OutputOffset int64
+type GuideRow int64
+type Bytes uint64
+type Elements uint64
+type ChunkID string
+type LogicalID uint32
+type recurrentCoord struct { lane RecurrentLane; time RecurrentTime }
+type encoderCoord struct { tile EncoderTile; step EncoderStep }
+
+type Member struct { // boundary input; geometry copied, raw samples borrowed
+    ID ChunkID
+    Parent ParentOffset
+    Raw Samples
+    SamplesF16 []uint16 // length == Raw, borrowed only through synchronous Call
+}
+type member struct {
+    id ChunkID; parent ParentOffset
+    raw, rounded, inputStart Samples // SUP physical input start includes gaps
+    segment segment
+}
+type segment struct {
+    logical LogicalID
+    scoreStart, steps ScoreRow // dense logical order; independent of physical N
+    guideStart GuideRow       // prefix sum of (steps+1), not sum(steps)
+    outputStart OutputOffset  // prefix sum of steps
+    historyRows int64         // steps+1, including root and terminal
+}
+
+type Plan struct { // opaque, immutable; getters return scalars or defensive copies
+    identity planID
+    members []member
+    graph graphGeometry // sealed HAC or SUP variant; never both/optional pointers
+    decode decodeGeometry
+    profile profilePins // model/source/config identity, strides and chunk maximum
+}
+type graphGeometry interface { isGraphGeometry() } // private implementations only
+type hacGeometry struct {
+    lanes RecurrentLane
+    logicalCount int64
+    inputLogical, inputPhysical, inputCapacity Samples
+    scoreLogical, scoreCapacity ScoreRow
+    recurrentT RecurrentTime // TLSTM even: roundEven(configuredOutputT+2)
+    packing hacPacking
+    intervals initialIntervals // Aux.Intervals in concatenated sample units
+    convs []hacConvGeometry    // derived from model conv parameters, not stage list
+}
+type initialIntervals struct { bounds [][2]Samples }
+type intervalRevision struct { unit intervalUnit; bounds [][2]int64 }
+type hacPacking struct {
+    inLayout, outLayout, forward, backward []int32 // own independent CPU slices
+    inSpan, outSpan, forwardSpan, backwardSpan i32Extent
+}
+type i32Extent struct { initialized, capacity Elements }
+// Let L=TLSTM, P=physical lanes, Q=sum(t_i):
+// InLayout Q/Q; OutLayout P*L initialized / P*(L+1) capacity;
+// Forward P*L/P*L; Backward P*(L+1)/P*(L+1). OutLayout tail is NOT initialized.
+// Arrays uploaded once per batch and retained through scatter, recurrence/gather
+// and final stream fence. No mutation/repacking between forward/reverse calls.
+type hacConvGeometry struct {
+    input, output tensorShape
+    outputPadding RecurrentTime
+    repair repairGeometry // interval version/stride derived for this exact call
+}
+type repairGeometry struct { before, after intervalRevision; stride int64 }
+type intervalUnit uint8 // closed sample/layer-coordinate variants; no caller choice
+// Model owns a per-batch writable interval upload, distinct from immutable Plan.
+// Capture its state before/after every postprocess; qualify exact mutation/read
+// spans with the genuine producer, rather than assuming a const native operand.
+// CudaCaller.cpp:609 restores device intervals by *strideInner AFTER a forward
+// in repeated timing runs. Normal CudaModelRunner creates fresh aux each batch.
+// Existing RestoredIntervals expresses host multiplication, not proof of which
+// device revision is being restored. Never multiply pristine sample bounds again
+// for ordinary Call. A replay restoration derives from the consumed revision;
+// the before/after units and equality to pristine bounds must be proved first.
+// Native repair consumes intervals, logical count, activation/dtype, W/stride,
+// input/output, weights/bias; last conv also scatter and transposed repair weights.
+
+type supGeometry struct {
+    logicalCount int64
+    inputLogical, inputPhysical, inputCapacity Samples
+    firstGap, capacityGap Samples // FirstConvPadding versus MaxConvPadding
+    active, padded, maximum Blocks // padded=roundUp(active,4), <=maximum
+    blockT EncoderStep            // 64; block score rows derived from upsample
+    sampleTable [][2]Samples      // Aux.DeviceTable, immutable across all layers
+    decoderTable [][2]ScoreRow    // checked sampleTable/strideOut, separate upload
+    convs []supConvGeometry
+    rope ropeGeometry
+}
+type supConvGeometry struct {
+    granularityIn, granularityOut Samples // layer-local units, successive stride
+    mInput, mOutput, mCapacity int64       // elements along this layer's M axis
+    padding, nextPadding int64
+    lutEntries Blocks                    // active blocks, both load and store
+    input, output tensorShape
+    weights vcsWeightLayout
+}
+// Derive each conv from previous result and model params. When stride>1:
+// intermediate Mout=Min/stride + maximumBlocks*nextPadding;
+// final Mout=paddedBlocks*64. Otherwise Mout=Min. Backing may exceed Mout*Cout.
+// First input [Cin,M]; later [Cin/8,M,8]. LUT fill writes padding into later
+// inputs: exclusive write borrow required, not an immutable tensor operand.
+// First weights tile Cout by2; later tile window/channel; final SMEM_N=128.
+type ropeGeometry struct {
+    active, zeroInitialized Entries
+    maxPosition EncoderStep // maximum configured chunk/strideInner, not blockT
+}
+type Entries int64
+type vcsWeightLayout uint8
+// RoPE storage has paddedBlocks entries, all zero initialized before native fill.
+// Same sampleTable and filled LUT persist across all 18 layers: VCSAttention
+// consumes sampleTable; QKV consumes RoPE LUT. They are distinct operands.
+// N=paddedBlocks is not reads. Attention sees full logical chunk boundaries
+// across blocks; no window127/128 substitution or independent fixed T64 calls.
+
+type tensorShape struct { dtype DType; dims, strides []int64; tags []Tag; scale scaleSpec }
+type scaleSpec interface { isScaleSpec() } // closed noScale/boundScale variants
+type allocationSpan struct {
+    owner ownerID; allocation allocationID; device deviceID; stream streamID
+    offset, logicalBytes, physicalBytes, capacityBytes, backingBytes Bytes
+    initialized []byteRange // actual defined ranges, not allocation size
+    shape tensorShape
+}
+type byteRange struct { begin, end Bytes }
+// Every lowered operand carries explicit reads/writes and lifetime. Validate
+// overflow, alignment, dtype/tags/scale, byte overlap, initialized reads and
+// backing bounds before enqueue. Views cannot manufacture initialized bytes.
+// CPU I32 storage/reinterpret support already exists in ABI5; not a new feature.
+
+type decodeGeometry struct {
+    parameters decoderParameters // frozen clamp/blank/beam-cut/Q/movePad
+    programs numericProgramRequirements // independent identities, not runtime authority
+    frames activeFrameSchedule // derived member/local rows, no second geometry
+    states, beamWidth int64 // S=256 HAC,1024 SUP; score width=4*S
+    guideRows GuideRow     // sum_i(t_i+1), each terminal initialized explicitly
+    source sourceScoreLayout
+    post []posteriorSegment
+    scratch scratchGeometry
+    outputCapacity OutputOffset
+}
+type sourceScoreLayout interface { isSourceScoreLayout() } // compactHAC/blockSUP
+// HAC global row r -> NTC[0,r,c]; SUP r -> NTC[r/Tb,r%Tb,c], Tb=score rows/block.
+// Segment boundaries use table-derived starts, never encoder physical padding.
+// Recurrent coordinate maps derive from the four arrays; encoder coordinates
+// derive from block order/local step. Checked conversion methods are private;
+// no implicit cast from either coordinate pair into a parent or output offset.
+type posteriorSegment struct {
+    scoreBegin ScoreRow; steps ScoreRow
+    prefixElements, backingElements Elements // (t_i+1)*S versus t_i*4*S
+}
+// Source-layout working storage is a distinct copy of the same score layout,
+// NOT a new ragged score handoff. Prefix reuse requires t_i>=1 and checked
+// (t_i+1)*S <= t_i*4*S within that member's span. Zero-length chunks reject.
+// Read alpha inputs from immutable scores, never overwritten posterior prefix.
+type scratchGeometry struct {
+    goGuideElements, goAlphaElements, goHistoryCapacity Elements
+    nativeReference nativeScratch // comparison geometry, not inferred read masks
+}
+type nativeScratch interface { isNativeScratch() } // HAC/SUP variants
+// Source HAC: M=P*configuredOutputT, Ts=max(M+4P,Tb+logicalCount),
+// aux bytes Ts*(4*S+4*W), path Ts I32, output [3,M] I8;
+// descriptor/result rows max(logicalCount,4P), only logical prefix defined.
+// Source SUP: activeBlocks*(Tb+1)*(4*S+4*W) aux bytes,
+// path activeBlocks*(Tb+1) I32, output [3,activeBlocks*Tb] I8;
+// descriptor/result rows logicalCount. Go scratch instead derives explicit
+// guide/alpha/history spans; it never treats source scratch capacity as meaning.
+// Go guide elements=sum(t_i+1)*S; alpha elements=2*logicalCount*S;
+// history capacity=sum(t_i+1)*W records, with record bytes checked separately.
+// Path/output coordinates are indexed per segment, never source physical N.
+
+// APIs belonging to internal/model (shown together for readability).
+type PackedGPU interface {
+    Plan(scheduler.Batch, []Member) (*Plan, error)
+    ForwardPacked(context.Context, *Plan, []Member) (*Scores, error)
+}
+// Plan validates variable lane/config, unique IDs, raw samples, source rounded
+// placement offsets/gaps, capacities and overflow; reuses NewAux/PackLSTM.
+// It copies geometry; Forward revalidates membership and same model/owner planID.
+// Source batch admission includes HAC persistent subbatch accounting; do not
+// replace it with only sum(lengths)<=capacity. Derive decode geometry here once.
+type Scores struct { plan *Plan; storage sourceScoreStorage; lease *batchLease }
+func (*Scores) Close() error { /* request release after fence; not implemented */ }
+// HAC source storage [1,Q,1024]; SUP [paddedBlocks,Tb,4096]. No exposed raw handles.
+// HAC reserves maximum but publishes actual Q, with zeroed projection down
+// scratch L*P*K. Gather consumes OutLayout and input row3; no reshape substitute.
+// Seven FLSTMs: reverse uses BackwardEncoding, callT=L+1; forward uses
+// ForwardEncoding, callT=L. Backing remains [L+5,P,C], zero rows L+2,L+3;
+// callT is not backingT. Preserve first-reverse restriction, parity and literal
+// source predicate (layers/2)==0, not an invented even-layer test.
+
+// API belonging to internal/gpudecode.
+func (*PackedDecoder) DecodePacked(context.Context, *Scores) (Decoded, error) {
+    /* not implemented */
+}
+type Decoded struct { plan planID; chunks []decodedMember } // no padding members
+type decodedMember struct { logical LogicalID; moves []uint8; sequence, quality []byte }
+// Allocate guides sum(t_i+1)*S; terminal row per member, not one global T.
+// Active-row schedule derives directly from segment lengths; frame selections
+// retain (LogicalID,localTime,sourceRow). Numeric lanes never become membership.
+// Beam history rows 0..t_i; Go owns candidate generation, merges and traceback.
+// Keep ambiguous CRC collision order a typed error until authentic evidence
+// qualifies that case; never choose serial collision order to finish a result.
+// Posterior alpha[2] uses logical IDs; stop each member at its terminal row.
+// Quality reads its own prefix/history bounds; t_i moves, <=t_i bases and Q bytes.
+
+type invocationOwner struct {
+    stream ownedStream
+    state ownerState // accepting -> draining -> closed; failure retains resources
+    batches []*batchLease // registered before allocation; one writer, no global cache
+}
+type batchLease struct { plan *Plan; spans []allocationSpan; fence completion }
+// Shared immutable weights belong to model; per-invocation scratch/aux belong here.
+// No writable tensor crosses owners/streams. Call is synchronous and serialized
+// per Invocation. Cancellation stops enqueue/publication, retains all work until
+// an uncancelled drain fence; Drain idempotently releases views then owners,
+// joins release errors and never reuses a failed batch's buffers before completion.
+
+// Proposed native boundary families; internal/tensor owns wire lowering/validation.
+// PackedConvRepair; ScatterConvFast/ScatterLinearFallback; EncodedFLSTM;
+// GatherFactorisedLinear; VCSConvLUT/VCSCNN; VCSRoPELUT/QKV; VCSAttention;
+// block-geometry tiling/quantization/projection/norm/MLP and segmented numeric rows.
+type encodedLSTMCall struct {
+    arena readWriteSpan; encoding readOnlyI32
+    weights factorisedWeights; scratch exclusiveLSTMScratch
+    lanes RecurrentLane; backingT, callT RecurrentTime
+    direction direction; parity int32
+}
+type gatherCall struct {
+    input rowThreeRecurrentView; gather readOnlyI32
+    weights factorisedProjectionWeights; down exclusiveHalfSpan
+    output exclusiveHalfSpan; actualRows, reservedRows ScoreRow
+}
+type vcsAttentionCall struct {
+    qkv readOnlySpan; chunks sampleUnitI32Table
+    output exclusiveSpan; logicalCount int64; blocks Blocks
+}
+type segmentedFrameCall struct {
+    scores sourceRows; rows []activeRow
+    previous readOnlySpan; next exclusiveSpan; program authenticatedProgram
+}
+type activeRow struct { member LogicalID; local ScoreRow; source ScoreRow; guide GuideRow }
+// lowering(call) -> checked ABI6 handles/scalars + read/write regions; no raw
+// pointers escape tensor. Typed repairs additionally borrow mutable interval
+// revision; LUT fill borrows padding-write input; gather never writes layouts.
+// Each sealed operation derives operands/scalars/read-write specs/observer labels
+// from one typed descriptor; no duplicated hand-maintained stage catalog.
+// Graph loops derive 3/7 HAC and 5/18 SUP repetitions from validated model params.
+// Go chooses graph/fallback, numeric frame ordering, state, decisions/publication.
+// Native gets typed storage handles/geometry only, not whole-caller/model handles.
+// Freeze ABI5 and its mandatory exports/CPU13/SUP compiled tuple. Propose ABI6
+// with new required exports and explicit descriptors, separate loader/build pins,
+// consumer source custody and independent host/runtime qualification. Do not
+// widen ABI5 enums silently or cite mismatched CPU13 artifacts for ABI6 readiness.
+// Opaque Koi reads/writes/window/scratch/collisions remain unqualified. Operand
+// contracts cannot bind an executable backend until genuine producer/rejections
+// establish these spans. All identifiers lacking definitions are pseudocode.
+
+// Selected lifecycle graft: owner.Complete is a stream/error/retirement barrier
+// before publication; join errors rather than discarding Close. Failed active
+// batches retain owner+weight leases and reject computation until cleanup.
+// A preflight error before Begin does not poison an otherwise idle owner.
+// Source publication is a fallible collector loop, not atomic rollback.

@@ -1,12 +1,16 @@
 package supgpu
 
 import (
+	"context"
+	"debug/elf"
 	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"slices"
 
+	"github.com/Jakeelamb/nanopore_basecaller_go/verification/nativeproof"
 	"github.com/Jakeelamb/nanopore_basecaller_go/verification/tensor/runner"
 )
 
@@ -49,7 +53,27 @@ type GuardedRun struct {
 
 var phaseNameRE = regexp.MustCompile(`^[a-z][a-z0-9-]{0,63}$`)
 
+type guardMode uint8
+
+const (
+	phaseGuard guardMode = iota
+	metadataGuard
+)
+
+func contractMode(c PhaseContract) guardMode {
+	if c.Schema == "nanopore-audited-metadata-contract/v1" {
+		return metadataGuard
+	}
+	return phaseGuard
+}
+
 func validatePhaseContract(c PhaseContract) error {
+	if c.Schema == "nanopore-audited-metadata-contract/v1" {
+		if c.Role != "observer" || c.Action != "device-identity" || c.Names == nil || len(c.Names) != 0 {
+			return fmt.Errorf("invalid independently expected metadata contract")
+		}
+		return nil
+	}
 	if c.Schema != "nanopore-audited-phase-contract/v1" || (c.Role != "reference" && c.Role != "observer") || !phaseNameRE.MatchString(c.Action) || len(c.Names) < 1 || len(c.Names) > 32 || c.Names[0] != "pre-model" {
 		return fmt.Errorf("invalid independently expected phase contract")
 	}
@@ -107,10 +131,12 @@ func validateGuardPolicy(p RuntimePolicy) error {
 	allowed := map[string]Pin{}
 	paths := map[string]bool{}
 	for _, c := range p.Allowed {
-		if c.SONAME == "" || c.Tier == "" || allowed[c.SONAME].Path != "" || paths[c.Object.Path] {
+		if c.Tier == "" || (c.SONAME != "" && allowed[c.SONAME].Path != "") || paths[c.Object.Path] {
 			return fmt.Errorf("runtime allowed provider is missing/ambiguous")
 		}
-		allowed[c.SONAME] = c.Object
+		if c.SONAME != "" {
+			allowed[c.SONAME] = c.Object
+		}
 		paths[c.Object.Path] = true
 		pins = append(pins, c.Object)
 	}
@@ -136,6 +162,31 @@ func validateGuardPolicy(p RuntimePolicy) error {
 			return err
 		}
 	}
+	for _, c := range p.Allowed {
+		if c.SONAME != "" {
+			continue
+		}
+		if c.Startup || c.Object.Path == p.Reference.Path || c.Object.Path == p.Observer.Path || c.Object.Path == p.Audit.Path {
+			return fmt.Errorf("unnamed runtime image cannot be startup/root/audit code")
+		}
+		m, err := nativeproof.InspectELF(c.Object.Path)
+		if err != nil {
+			return fmt.Errorf("unnamed runtime image inspection: %w", err)
+		}
+		if m.Pin.Path != c.Object.Path || m.Pin.SHA256 != c.Object.SHA256 || m.Type != elf.ET_DYN || m.SONAME != "" || m.Interpreter != "" || !slices.Equal(m.Needed, c.Needed) {
+			return fmt.Errorf("unnamed runtime image differs from canonical ELF metadata")
+		}
+		// Recheck the sized pin after inspection; nil and [] Needed compare equal,
+		// but dependency order is retained and every name needs a named selection.
+		if err := verifyPin("", c.Object); err != nil {
+			return err
+		}
+		for _, name := range c.Needed {
+			if name == "" || allowed[name].Path == "" {
+				return fmt.Errorf("unnamed runtime dependency has no selected named provider: %q", name)
+			}
+		}
+	}
 	return nil
 }
 
@@ -154,18 +205,27 @@ func validateGuardCommand(command GuardCommand, p GuardPlan, c PhaseContract) er
 // loader/phase core. The caller must obtain its exact native-phase admission
 // before calling; this API does not invent a second boolean admission policy.
 // Output must be a fresh directory. Failure receipts and maps are retained.
-func ExecuteGuarded(planPin, contractPin Pin, command GuardCommand) (GuardedRun, error) {
-	return executeGuarded(planPin, contractPin, command, readCodeMaps)
+func ExecuteGuarded(ctx context.Context, planPin, contractPin Pin, command GuardCommand) (GuardedRun, error) {
+	return executeGuarded(ctx, planPin, contractPin, command, readCodeMaps)
 }
 
-func executeGuarded(planPin, contractPin Pin, command GuardCommand, readMaps mapReader) (run GuardedRun, err error) {
+func executeGuarded(ctx context.Context, planPin, contractPin Pin, command GuardCommand, readMaps mapReader) (run GuardedRun, err error) {
 	run = GuardedRun{Schema: "nanopore-audited-guard-run/v1", Plan: planPin, Contract: contractPin}
+	if ctx == nil {
+		return run, fmt.Errorf("nil guard context")
+	}
+	if err = ctx.Err(); err != nil {
+		return
+	}
 	p, c, err := readGuardPlan(planPin, contractPin)
 	if err != nil {
 		return run, err
 	}
 	if err = validateGuardCommand(command, p, c); err != nil {
 		return run, err
+	}
+	if err = ctx.Err(); err != nil {
+		return
 	}
 	if err = os.Mkdir(command.Output, 0755); err != nil {
 		return run, err
@@ -175,7 +235,7 @@ func executeGuarded(planPin, contractPin Pin, command GuardCommand, readMaps map
 			err = e
 		}
 	}()
-	run.Command, err = executeGuardCore(command.Directory, command.Output, c.Role, c.Action, command.Args, p.Policy, planPin, c.Names, readMaps)
+	run.Command, err = executeGuardCore(ctx, command.Directory, command.Output, c.Role, c.Action, command.Args, p.Policy, planPin, c.Names, contractMode(c), readMaps)
 	var e error
 	run.Transcript, e = pin(filepath.Join(command.Output, c.Role+"-guard.json"))
 	if err == nil {
@@ -213,5 +273,9 @@ func ReplayGuarded(planPin, contractPin Pin, command GuardCommand, run GuardedRu
 	if !reflect.DeepEqual(run.Command.Environment, expectedEnv) {
 		return nil, fmt.Errorf("guarded actual command environment differs")
 	}
-	return replayGuardCore(g, p.Policy, planPin, c.Role, c.Action, c.Names)
+	return replayGuardCore(g, p.Policy, planPin, c.Role, c.Action, c.Names, contractMode(c))
 }
+
+// SelectedModelEnvironment returns the exact clean loader environment used by
+// the shared execution core, for independently selected caller contracts.
+func SelectedModelEnvironment(p RuntimePolicy) []string { return modelEnvironment(p) }

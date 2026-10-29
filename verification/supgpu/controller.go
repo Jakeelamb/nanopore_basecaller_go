@@ -31,7 +31,11 @@ type GoController struct {
 
 type goEnvironment struct{ GOROOT, GOTOOLDIR, GOVERSION, GOOS, GOARCH, GOAMD64, CGO_ENABLED, GOFLAGS, GOWORK, GOENV string }
 type goPackage struct {
-	Dir                                                      string
+	Dir, Root, ImportPath string
+	Module                *struct {
+		Path, Dir, GoMod string
+		Main             bool
+	}
 	Standard                                                 bool
 	GoFiles, CgoFiles, SFiles, HFiles, SysoFiles, EmbedFiles []string
 	Error                                                    *struct{ Err string }
@@ -42,6 +46,14 @@ func hostGoEnvironment() []string {
 }
 
 func selectedGoInputs(deps, envRaw []byte, goExecutable string) ([]string, int, int, goEnvironment, error) {
+	root, err := os.Getwd()
+	if err != nil {
+		return nil, 0, 0, goEnvironment{}, err
+	}
+	return selectedGoInputsAtRoot(deps, envRaw, goExecutable, root)
+}
+
+func selectedGoInputsAtRoot(deps, envRaw []byte, goExecutable, root string) ([]string, int, int, goEnvironment, error) {
 	var env goEnvironment
 	if err := json.Unmarshal(envRaw, &env); err != nil {
 		return nil, 0, 0, env, err
@@ -102,11 +114,7 @@ func selectedGoInputs(deps, envRaw []byte, goExecutable string) ([]string, int, 
 	}
 	seen[goExecutable] = true
 	for _, path := range []string{"go.mod", "verification/supgpu/host-controls.sh"} {
-		abs, err := filepath.Abs(path)
-		if err != nil {
-			return nil, 0, 0, env, err
-		}
-		seen[abs] = true
+		seen[filepath.Join(root, path)] = true
 	}
 	paths := make([]string, 0, len(seen))
 	for path := range seen {
@@ -314,7 +322,16 @@ func readController(p Pin, current bool) (GoController, error) {
 	if err != nil {
 		return c, err
 	}
-	paths, ng, ne, env, err := selectedGoInputs(deps, envRaw, c.Commands[0].Args[0])
+	var root string
+	if current {
+		root, err = os.Getwd()
+	} else {
+		root, err = controllerSourceRoot(deps, "github.com/Jakeelamb/nanopore_basecaller_go/verification/supgpu/cmd")
+	}
+	if err != nil {
+		return c, err
+	}
+	paths, ng, ne, env, err := selectedGoInputsAtRoot(deps, envRaw, c.Commands[0].Args[0], root)
 	if err != nil {
 		return c, err
 	}

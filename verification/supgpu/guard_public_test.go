@@ -2,6 +2,7 @@ package supgpu
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -94,7 +95,7 @@ func TestGenericGuardExactPhasesAndGoClient(t *testing.T) {
 	for _, names := range [][]string{decoderPhases, {"pre-model", "pre-forward", "post-forward"}, {"pre-model"}} {
 		t.Run(fmt.Sprint(len(names)), func(t *testing.T) {
 			plan, phases, command, reader := genericGuardFixture(t, names)
-			run, err := executeGuarded(plan, phases, command, reader)
+			run, err := executeGuarded(context.Background(), plan, phases, command, reader)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -121,7 +122,7 @@ func TestGenericGuardRejectsWrongAndIncompleteLivePhases(t *testing.T) {
 				actual = append(actual, "unapproved-extra")
 			}
 			command.Args[3] = strings.Join(actual, ",")
-			run, err := executeGuarded(plan, phases, command, reader)
+			run, err := executeGuarded(context.Background(), plan, phases, command, reader)
 			if err == nil {
 				t.Fatal("inexact actual phase sequence qualified")
 			}
@@ -134,7 +135,7 @@ func TestGenericGuardRejectsWrongAndIncompleteLivePhases(t *testing.T) {
 
 func TestGenericGuardReplayCannotSelfAuthorize(t *testing.T) {
 	plan, phases, command, reader := genericGuardFixture(t, decoderPhases)
-	run, err := executeGuarded(plan, phases, command, reader)
+	run, err := executeGuarded(context.Background(), plan, phases, command, reader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +207,7 @@ func TestGenericGuardSourceAndContractFailBeforeChild(t *testing.T) {
 				t.Fatal(err)
 			}
 			plan, _ = pin(plan.Path)
-			if _, err := ExecuteGuarded(plan, phases, command); err == nil {
+			if _, err := ExecuteGuarded(context.Background(), plan, phases, command); err == nil {
 				t.Fatal("invalid custody/contract reached child")
 			}
 			if _, err := os.Stat(command.Output); !os.IsNotExist(err) {

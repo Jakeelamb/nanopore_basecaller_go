@@ -2,6 +2,7 @@ package supgpu
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -238,6 +239,7 @@ type gateState struct {
 	auditSequence uint64
 	phase         int
 	opened        map[uint64]Pin
+	approved      []Pin
 }
 
 func decideGate(q GateRequest, channel string, p RuntimePolicy, role, action string, pid int, s *gateState, o mapObservation) (GateDecision, error) {
@@ -353,8 +355,21 @@ func decideGatePhases(q GateRequest, channel string, p RuntimePolicy, role, acti
 		}
 		s.phase++
 	}
+	if d.Object.Path != "" && channel == "audit" && q.Kind != "close" {
+		s.approved = append(s.approved, d.Object)
+	}
 	d.Approved = true
 	return d, nil
+}
+
+func completeGuard(s gateState, p RuntimePolicy, role string, phases []string, mode guardMode) error {
+	if !s.hello || s.phase != len(phases) {
+		return fmt.Errorf("target exited without complete loader/model gates")
+	}
+	if mode == metadataGuard {
+		return requireSelectedMappings(s.approved, p, role, true)
+	}
+	return nil
 }
 
 type gateEvent struct {
@@ -366,10 +381,10 @@ type gateEvent struct {
 // executeAttested is used only after the public exact-phase admission guards.
 // Tests inject a map reader and a static Go protocol peer, never a native DSO.
 func executeAttested(cwd, out, role, action string, args []string, r RuntimePlan, runtimePin Pin, readMaps mapReader) (receipt runner.CommandReceipt, err error) {
-	return executeGuardCore(cwd, out, role, action, args, r.Policy, runtimePin, supPhaseNames(role, action), readMaps)
+	return executeGuardCore(context.Background(), cwd, out, role, action, args, r.Policy, runtimePin, supPhaseNames(role, action), phaseGuard, readMaps)
 }
 
-func executeGuardCore(cwd, out, role, action string, args []string, policy RuntimePolicy, runtimePin Pin, phases []string, readMaps mapReader) (receipt runner.CommandReceipt, err error) {
+func executeGuardCore(ctx context.Context, cwd, out, role, action string, args []string, policy RuntimePolicy, runtimePin Pin, phases []string, mode guardMode, readMaps mapReader) (receipt runner.CommandReceipt, err error) {
 	receipt = runner.CommandReceipt{Args: args, Environment: append([]string{"SUPGPU_COMMAND_CWD=" + cwd, "SUPGPU_GATE_FDS=3,4,5,6"}, modelEnvironment(policy)...), Started: time.Now().UTC().Format(time.RFC3339Nano), Exit: -1, Stdout: filepath.Join(out, role+".stdout"), Stderr: filepath.Join(out, role+".stderr")}
 	g := GuardReceipt{Schema: "nanopore-supgpu-loader-transcript/v1", RuntimePlan: runtimePin, Role: role, Action: action, Decisions: []GateDecision{}}
 	defer func() {
@@ -434,6 +449,9 @@ func executeGuardCore(cwd, out, role, action string, args []string, policy Runti
 	cmd.Stderr = stderr
 	cmd.ExtraFiles = child
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pdeathsig: syscall.SIGKILL}
+	if e = ctx.Err(); e != nil {
+		return receipt, e
+	}
 	if e = cmd.Start(); e != nil {
 		return receipt, e
 	}
@@ -478,8 +496,16 @@ func executeGuardCore(cwd, out, role, action string, args []string, policy Runti
 	var grace <-chan time.Time
 	waited := false
 	count := 0
+	cancelled := ctx.Done()
 	for stream != nil || !waited {
 		select {
+		case <-cancelled:
+			cancelled = nil
+			failure = errors.Join(failure, ctx.Err(), killProcessGroup(&g.Group))
+			for _, rd := range requests {
+				rd.Close()
+			}
+			grace = time.After(5 * time.Second)
 		case event, ok := <-stream:
 			if !ok {
 				stream = nil
@@ -571,8 +597,8 @@ func executeGuardCore(cwd, out, role, action string, args []string, policy Runti
 	if e := finishProcessGroup(&g.Group); e != nil && failure == nil {
 		failure = e
 	}
-	if failure == nil && (!s.hello || s.phase != len(phases)) {
-		failure = fmt.Errorf("target exited without complete loader/model gates")
+	if failure == nil {
+		failure = completeGuard(s, policy, role, phases, mode)
 	}
 	return receipt, failure
 }
@@ -602,10 +628,10 @@ func writeGateProgress(path string, g GuardReceipt) error {
 }
 
 func verifyGuard(g GuardReceipt, r RuntimePlan, runtimePin Pin, role, action string) ([]Pin, error) {
-	return replayGuardCore(g, r.Policy, runtimePin, role, action, supPhaseNames(role, action))
+	return replayGuardCore(g, r.Policy, runtimePin, role, action, supPhaseNames(role, action), phaseGuard)
 }
 
-func replayGuardCore(g GuardReceipt, policy RuntimePolicy, runtimePin Pin, role, action string, phases []string) ([]Pin, error) {
+func replayGuardCore(g GuardReceipt, policy RuntimePolicy, runtimePin Pin, role, action string, phases []string, mode guardMode) ([]Pin, error) {
 	if g.Schema != "nanopore-supgpu-loader-transcript/v1" || g.RuntimePlan != runtimePin || g.Role != role || g.Action != action || g.PID <= 0 || g.Error != "" {
 		return nil, fmt.Errorf("incomplete/mismatched loader transcript")
 	}
@@ -656,8 +682,8 @@ func replayGuardCore(g GuardReceipt, policy RuntimePolicy, runtimePin Pin, role,
 			}
 		}
 	}
-	if !s.hello || s.phase != len(phases) {
-		return nil, fmt.Errorf("missing pre-model/forward gates")
+	if err := completeGuard(s, policy, role, phases, mode); err != nil {
+		return nil, err
 	}
 	return actual, nil
 }
