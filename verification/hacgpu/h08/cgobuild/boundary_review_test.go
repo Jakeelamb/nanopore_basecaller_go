@@ -275,48 +275,40 @@ func TestNativeReaderReparsesDepAndExactOutputTarget(t *testing.T) {
 		t.Fatal(e)
 	}
 	dir := filepath.Dir(filepath.Dir(op.Commands[0].Stdout))
-	if e = verifyNativeOperation(p, s, op, dir, derived); e != nil {
+	if e = verifyNativeOperation(p, s, op, dir, derived, attestedQueryResources{}); e != nil {
 		t.Fatal(e)
 	}
 	bad := op
 	bad.Output = p.CC
-	if verifyNativeOperation(p, s, bad, dir, derived) == nil {
+	if verifyNativeOperation(p, s, bad, dir, derived, attestedQueryResources{}) == nil {
 		t.Fatal("unrelated output accepted")
 	}
 	bad = op
 	bad.Commands = slices.Clone(op.Commands)
 	bad.Commands[1].Args = []string{"/bin/true"}
-	if verifyNativeOperation(p, s, bad, dir, derived) == nil {
+	if verifyNativeOperation(p, s, bad, dir, derived, attestedQueryResources{}) == nil {
 		t.Fatal("unrelated compile command accepted")
 	}
 	if e = os.WriteFile(op.ActualDep.Path, []byte("native: /not/the/frozen/source.c\n"), 0600); e != nil {
 		t.Fatal(e)
 	}
 	op.ActualDep, _ = closedPin(op.ActualDep.Path)
-	if verifyNativeOperation(p, s, op, dir, derived) == nil {
+	if verifyNativeOperation(p, s, op, dir, derived, attestedQueryResources{}) == nil {
 		t.Fatal("rehashed mismatching MD accepted")
 	}
 }
 
 func TestFinalOutputAndGeneratedProducerCannotBeRebound(t *testing.T) {
-	p, s, l, _ := fakeFixture(t)
-	final := filepath.Join(p.Options.WorkRoot, "h08")
-	if e := os.WriteFile(final, []byte("final link bytes"), 0600); e != nil {
-		t.Fatal(e)
-	}
-	q, _ := closedPin(final)
-	r := Receipt{Output: q}
-	ops := map[string]operation{"native": {Role: "go-link", Output: q}, "go": {Role: "go-tool-link", Output: q}}
+	_, s, l, _ := fakeFixture(t)
+	p, r, ops := finalLinkFixture(t)
 	if e := finalOutputBindings(p, r, ops); e != nil {
 		t.Fatal(e)
 	}
-	if e := os.WriteFile(final, []byte("mutated final bytes"), 0600); e != nil {
-		t.Fatal(e)
-	}
-	r.Output, _ = closedPin(final)
+	r.Output.SHA256 = digest([]byte("unrelated final output"))
 	if finalOutputBindings(p, r, ops) == nil {
 		t.Fatal("rehashed final output unrelated to link bytes accepted")
 	}
+	q := r.Output
 	d := filepath.Join(s.Directory, "producer")
 	if e := os.Mkdir(d, 0700); e != nil {
 		t.Fatal(e)
@@ -350,13 +342,13 @@ func TestRecordedLinkMapAndTraceMustMatchBeforeChildObjects(t *testing.T) {
 		t.Fatal(e)
 	}
 	op := operation{Directory: p.Options.Root, Request: &ccRequest{Inputs: inputs}, Inputs: inputs, Snapshots: snapshots}
-	if e = recordedLinkEvidence(object+"\n", "LOAD "+object+"\n", op); e != nil {
+	if e = recordedLinkEvidence(object+"\n", "LOAD "+object+"\n", op, attestedQueryResources{}); e != nil {
 		t.Fatal(e)
 	}
-	if recordedLinkEvidence(object+"\n", "LOAD /foreign/new.o\n", op) == nil {
+	if recordedLinkEvidence(object+"\n", "LOAD /foreign/new.o\n", op, attestedQueryResources{}) == nil {
 		t.Fatal("foreign rehashed map accepted")
 	}
-	if recordedLinkEvidence(object+"\n", "\n", op) == nil {
+	if recordedLinkEvidence(object+"\n", "\n", op, attestedQueryResources{}) == nil {
 		t.Fatal("empty rehashed map accepted")
 	}
 }

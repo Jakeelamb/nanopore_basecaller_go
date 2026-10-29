@@ -123,15 +123,25 @@ func SelectSources(root, goRoot string) ([]Package, map[string]string, error) {
 	return selectSources(root, goRoot, H08Command)
 }
 func selectSources(root, goRoot string, role BuildRole) ([]Package, map[string]string, error) {
+	role, err := normalizedRole(role)
+	if err != nil {
+		return nil, nil, err
+	}
 	ctx := build.Default
 	ctx.GOOS, ctx.GOARCH, ctx.Compiler, ctx.CgoEnabled, ctx.GOROOT, ctx.GOPATH = "linux", "amd64", "gc", true, goRoot, ""
 	inputs := map[string]string{}
 	if _, e := pinned(filepath.Join(root, "go.mod"), inputs); e != nil {
 		return nil, nil, e
 	}
-	queue := []string{Target}
+	var queue []string
 	if role == CPU13Tests {
 		queue = []string{TensorPackage, Module + "/verification/hacgpu/h08", "os", "reflect", "testing", "testing/internal/testdeps"}
+	} else {
+		target, _, e := commandTarget(role)
+		if e != nil {
+			return nil, nil, e
+		}
+		queue = []string{target}
 	}
 	seen := map[string]bool{}
 	packages := []Package{}

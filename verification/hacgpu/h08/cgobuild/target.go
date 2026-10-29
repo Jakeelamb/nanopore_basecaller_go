@@ -23,11 +23,12 @@ import (
 type BuildRole string
 
 const (
-	H08Command    BuildRole = "h08-command"
-	CPU13Tests    BuildRole = "cpu13-tensor-tests"
-	TensorPackage           = Module + "/internal/tensor"
-	testSuffix              = " [" + TensorPackage + ".test]"
-	OverlayName             = "h08_phase_main_test.go"
+	H08Command      BuildRole = "h08-command"
+	CPU13Tests      BuildRole = "cpu13-tensor-tests"
+	SUPGraphCommand BuildRole = "sup-graph-command"
+	TensorPackage             = Module + "/internal/tensor"
+	testSuffix                = " [" + TensorPackage + ".test]"
+	OverlayName               = "h08_phase_main_test.go"
 )
 
 type CPU13Profile struct {
@@ -42,15 +43,34 @@ func normalizedRole(role BuildRole) (BuildRole, error) {
 	if role == "" {
 		role = H08Command
 	}
-	if role != H08Command && role != CPU13Tests {
+	if role != H08Command && role != CPU13Tests && role != SUPGraphCommand {
 		return "", fmt.Errorf("unadmitted fixed build role %q", role)
 	}
 	return role, nil
 }
+func commandTarget(role BuildRole) (importPath, basename string, err error) {
+	switch role {
+	case H08Command:
+		return Target, "h08", nil
+	case SUPGraphCommand:
+		return Module + "/verification/supgpu/graph/cmd", "sup-graph", nil
+	default:
+		return "", "", fmt.Errorf("unadmitted command role %q", role)
+	}
+}
+func commandArgument(role BuildRole) string {
+	path, _, e := commandTarget(role)
+	if e != nil {
+		return ""
+	}
+	return "./" + strings.TrimPrefix(path, Module+"/")
+}
 func outputPath(p Plan) string {
-	name := "h08"
+	_, name, e := commandTarget(p.Role)
 	if p.Role == CPU13Tests {
 		name = "tensor.test"
+	} else if e != nil {
+		return ""
 	}
 	return filepath.Join(p.Options.WorkRoot, name)
 }
@@ -92,19 +112,19 @@ func listArgs(p Plan) []string {
 	if p.Role == CPU13Tests {
 		return append(args, "-test", "-overlay="+p.CPU13.OverlayPath, "./internal/tensor")
 	}
-	return append(args, "./verification/hacgpu/h08/cmd")
+	return append(args, commandArgument(p.Role))
 }
 func plannedBuildArgs(p Plan) []string {
 	args := []string{filepath.Join(p.Options.GoRoot, "bin/go"), "build"}
 	if p.Role == CPU13Tests {
 		args[1] = "test"
-		args = append(args, "-c")
+		args = append(args, "-c", "-vet=off")
 	}
 	args = append(args, "-a", "-x", "-work", "-p=1", "-pgo=off", "-trimpath", "-buildvcs=false", "-toolexec=<SEALED_CURRENT_INTERPOSER_TOOL>", "-ldflags=-linkmode=external -compressdwarf=false -buildid= -extld=<SEALED_CURRENT_INTERPOSER_CC>")
 	if p.Role == CPU13Tests {
 		return append(args, "-overlay="+p.CPU13.OverlayPath, "-o", outputPath(p), "./internal/tensor")
 	}
-	return append(args, "-o", outputPath(p), "./verification/hacgpu/h08/cmd")
+	return append(args, "-o", outputPath(p), commandArgument(p.Role))
 }
 func sourcePackage(p Plan, name string) (Package, bool) {
 	for _, q := range p.Packages {
@@ -307,9 +327,12 @@ func validateTarget(p Plan) error {
 	if p.Schema != "nanopore-h08-cgo-build-plan/v2" || e != nil || role != p.Role || p.Options.Role != p.Role {
 		return fmt.Errorf("explicit plan role differs")
 	}
-	if role == H08Command {
+	if role != CPU13Tests {
+		if _, _, e := commandTarget(role); e != nil {
+			return e
+		}
 		if p.CPU13 != nil {
-			return fmt.Errorf("ordinary H08 cannot carry a test overlay")
+			return fmt.Errorf("ordinary command cannot carry a test overlay")
 		}
 	} else {
 		c := p.CPU13

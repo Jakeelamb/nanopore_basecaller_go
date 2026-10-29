@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -16,8 +17,10 @@ import (
 )
 
 func run() error {
-	mode := flag.String("mode", "plan", "plan, queries, build, cc, tool, or forbidden-cxx")
-	role := flag.String("role", string(cgobuild.H08Command), "fixed h08-command or cpu13-tensor-tests build role")
+	mode := flag.String("mode", "plan", "plan, queries, build, cc, tool, forbidden-cxx, observe-compiled, or check-controller")
+	observationRequest := flag.String("observation-request", "", "independently selected observation request")
+	observationRequestSHA := flag.String("observation-request-sha", "", "independently selected observation request digest")
+	role := flag.String("role", string(cgobuild.H08Command), "fixed h08-command, cpu13-tensor-tests, or sup-graph-command build role")
 	session := flag.String("session", "", "immutable native session")
 	sessionSHA := flag.String("session-sha", "", "independent native session digest")
 	controller := flag.String("controller", "", "sealed CGO0 interposer custody")
@@ -38,6 +41,24 @@ func run() error {
 	flag.Parse()
 	sp := cgobuild.Pin{Path: *session, SHA256: *sessionSHA}
 	switch *mode {
+	case "observe-compiled":
+		if !*admitted {
+			return fmt.Errorf("%w: host observation admission required", runner.ErrAdmissionBlocked)
+		}
+		if err := runner.CheckRoot(); err != nil {
+			return err
+		}
+		if _, err := closedbuild.Limits(); err != nil {
+			return err
+		}
+		if *observationRequest == "" || *observationRequestSHA == "" || *out == "" || len(flag.Args()) != 0 {
+			return fmt.Errorf("explicit observation request path/hash and fresh out required")
+		}
+		pin, err := cgobuild.ObserveCompiled(cgobuild.Pin{Path: *observationRequest, SHA256: *observationRequestSHA}, *out)
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(os.Stdout).Encode(pin)
 	case "cc", "forbidden-cxx":
 		args := flag.Args()
 		if *mode == "forbidden-cxx" {
