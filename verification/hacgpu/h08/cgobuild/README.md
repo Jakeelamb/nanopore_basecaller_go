@@ -323,7 +323,7 @@ role. `ReadBuild`/`ReadH08Build` accept only the ordinary command and
 before opening its plan. An accepted compiler artifact still carries
 `RuntimeHeld=true`; it supplies no fixture or runtime authorization.
 
-The CPU13 command is fixed to `go test -c ... ./internal/tensor`, output
+The CPU13 command is fixed to `go test -c -vet=off ... ./internal/tensor`, output
 `tensor.test`. Its single add-only Go overlay maps
 `internal/tensor/h08_phase_main_test.go` to the pinned
 `verification/hacgpu/h08/cpu13/testmain.go.txt`. The destination must not exist.
@@ -331,6 +331,15 @@ The overlay imports H08's external `tensor_test` TestMain wrapper; it copies no
 maintained test bodies. The build does not execute a test binary or choose the
 genuine/fake runtime selector. Those selectors remain the existing eleven
 audited genuine tests and two separately qualified fake-loader tests.
+
+The actual `cpu13-abi5-source-build-003` attempt failed with exit 1 after
+linking: `go test -c` invoked default vet, which the compile-only interposer
+rejected as `Go tool not used by fixed H08 build`. That failed receipt remains
+failed; no CPU13 output is qualified by it. Explicit `-vet=off` belongs only to
+this compile-only recipe. Ordinary H08 `go build`, ordinary `go test ./...`,
+maintained parity and separate host vet remain unchanged. This source correction
+requires fresh controller/plan/query and H08/CPU13 target qualification; it
+claims no successful CPU13 execution, native runtime or GPU acceptance.
 
 Static source selection includes the actual CGO-enabled tensor test files and
 their imports, the wrapper imports, and Go's four testmain dependencies. Go's
