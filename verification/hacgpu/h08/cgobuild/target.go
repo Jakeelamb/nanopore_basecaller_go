@@ -98,7 +98,7 @@ func plannedBuildArgs(p Plan) []string {
 	args := []string{filepath.Join(p.Options.GoRoot, "bin/go"), "build"}
 	if p.Role == CPU13Tests {
 		args[1] = "test"
-		args = append(args, "-c")
+		args = append(args, "-c", "-vet=off")
 	}
 	args = append(args, "-a", "-x", "-work", "-p=1", "-pgo=off", "-trimpath", "-buildvcs=false", "-toolexec=<SEALED_CURRENT_INTERPOSER_TOOL>", "-ldflags=-linkmode=external -compressdwarf=false -buildid= -extld=<SEALED_CURRENT_INTERPOSER_CC>")
 	if p.Role == CPU13Tests {

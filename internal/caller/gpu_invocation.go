@@ -31,6 +31,9 @@ type gpuInvocation struct {
 
 func newGPUInvocation(r *gpuRun, profile int) (owner scheduler.Invocation, err error) {
 	p := r.recipes[profile]
+	if err := r.bundle.record.validatePartialProfiles(); err != nil {
+		return nil, err
+	}
 	key := gpuProfileKey{string(r.spec.Architecture), int(p.chunkSize), r.cfg.BatchSize, p.variable}
 	if !r.bundle.record.profiles[key] {
 		return nil, fmt.Errorf("%w: no native qualification for %s chunk%d N%d variable=%t", ErrGPUUnqualified, key.lane, key.chunk, key.batch, key.variable)
@@ -117,33 +120,9 @@ func (i *gpuInvocation) Call(ctx context.Context, b scheduler.Batch) (err error)
 		return err
 	}
 	p, r := i.run.recipes[i.profile], i.run
-	wantLane := gpubatch.HAC
-	if r.spec.Architecture == model.SUP {
-		wantLane = gpubatch.SUP
-	}
-	if b.Variable || b.Lane != wantLane || b.PaddedSlots != r.cfg.BatchSize || b.PaddedSamples != r.cfg.BatchSize*int(p.chunkSize) || len(b.Placements) != b.Real {
-		return errors.New("GPU invocation geometry differs from its profile")
-	}
-	if b.Real != b.PaddedSlots {
-		return fmt.Errorf("%w: genuine partial fixed batches require graph and decoder independence qualification", ErrGPUUnqualified)
-	}
-	data := make([]byte, b.PaddedSamples*2)
-	for slot, placement := range b.Placements {
-		ref, ok := r.pending[placement.Chunk.ID]
-		if !ok || ref.parent.profile != i.profile || placement.Slot != slot || placement.Offset != slot*int(p.chunkSize) || placement.Length != int(p.chunkSize) {
-			return errors.New("GPU input placement changed profile, identity or fixed slot")
-		}
-		c := ref.parent.chunks[ref.index]
-		if placement.Chunk.Length != int(c.rawLength) {
-			return errors.New("GPU input changed unpadded chunk length")
-		}
-		padded, e := chunk.RepeatPad(ref.parent.normalized.Samples[c.offset:c.offset+c.rawLength], uint64(placement.Length))
-		if e != nil {
-			return e
-		}
-		for j, value := range padded {
-			binary.LittleEndian.PutUint16(data[(placement.Offset+j)*2:], value)
-		}
+	data, err := i.prepareInput(b)
+	if err != nil {
+		return err
 	}
 	if i.input == nil {
 		i.input, err = r.device.NewStorage(i.stream, tensor.DTypeF16, []int64{int64(b.PaddedSlots), 1, int64(p.chunkSize)}, []tensor.KoiTag{tensor.TagN, tensor.TagC, tensor.TagT}, data)
@@ -163,7 +142,7 @@ func (i *gpuInvocation) Call(ctx context.Context, b scheduler.Batch) (err error)
 	var qscale, qbias, blank, clamp float32
 	var stateLen int64
 	if r.hac != nil {
-		result, e := r.hac.Forward(ctx, i.stream, i.input, i.hacPlan, model.HACGPUBatch{ActiveSlots: b.Real})
+		result, e := r.hac.Forward(ctx, i.stream, i.input, i.hacPlan, model.HACGPUBatch{ActiveSlots: b.PaddedSlots})
 		if result != nil {
 			scores = result.Scores
 			owners = append(owners, scores)
@@ -238,18 +217,9 @@ func (i *gpuInvocation) Call(ctx context.Context, b scheduler.Batch) (err error)
 	if e != nil {
 		return e
 	}
-	if len(quality.Chunks) != b.Real {
-		return errors.New("GPU decoder result count differs from real batch")
-	}
-	work := make([]DecodedWork, b.Real)
-	for j, decoded := range quality.Chunks {
-		ref := r.pending[b.Placements[j].Chunk.ID]
-		c := ref.parent.chunks[ref.index]
-		sequence, qstring, extractErr := gpuExtractChunk(decoded)
-		if extractErr != nil {
-			return extractErr
-		}
-		work[j] = DecodedWork{ReadID: ref.parent.read.ID.String(), ChunkIndex: ref.index, Offset: c.offset, RawLength: c.rawLength, Granularity: c.granularity, Sequence: sequence, Qstring: qstring, Moves: decoded.Moves}
+	work, e := i.decodedWork(b, quality)
+	if e != nil {
+		return e
 	}
 	if err = ctx.Err(); err != nil {
 		return err
@@ -268,6 +238,84 @@ func (i *gpuInvocation) Call(ctx context.Context, b scheduler.Batch) (err error)
 		return err
 	}
 	return r.publish(b, work)
+}
+
+func (i *gpuInvocation) validateBatch(b scheduler.Batch) error {
+	p, r := i.run.recipes[i.profile], i.run
+	wantLane := gpubatch.HAC
+	if r.spec.Architecture == model.SUP {
+		wantLane = gpubatch.SUP
+	}
+	if b.Variable || b.Lane != wantLane || b.PaddedSlots != r.cfg.BatchSize || b.PaddedSamples != r.cfg.BatchSize*int(p.chunkSize) || b.Real < 1 || b.Real > b.PaddedSlots || len(b.Placements) != b.Real {
+		return errors.New("GPU invocation geometry differs from its profile")
+	}
+	if err := r.bundle.record.validatePartialProfiles(); err != nil {
+		return err
+	}
+	key := gpuProfileKey{string(r.spec.Architecture), int(p.chunkSize), r.cfg.BatchSize, p.variable}
+	if b.Real < b.PaddedSlots && !r.bundle.record.partialProfiles[key] {
+		return fmt.Errorf("%w: partial fixed profile requires independent publication qualification", ErrGPUUnqualified)
+	}
+	seen := make(map[string]bool, b.Real)
+	for slot, placement := range b.Placements {
+		ref, ok := r.pending[placement.Chunk.ID]
+		if !ok || seen[placement.Chunk.ID] || ref.parent == nil || ref.parent.profile != i.profile || ref.index < 0 || ref.index >= len(ref.parent.chunks) || placement.Slot != slot || placement.Offset != slot*int(p.chunkSize) || placement.Length != int(p.chunkSize) {
+			return errors.New("GPU input placement changed profile, identity or fixed slot")
+		}
+		seen[placement.Chunk.ID] = true
+		c := ref.parent.chunks[ref.index]
+		samples := uint64(len(ref.parent.normalized.Samples))
+		if c.rawLength == 0 || c.rawLength > p.chunkSize || c.offset > samples || c.rawLength > samples-c.offset || placement.Chunk.Length != int(c.rawLength) {
+			return errors.New("GPU input changed unpadded chunk length")
+		}
+	}
+	return nil
+}
+
+// Every upload replaces the complete physical input, including absent rows.
+func (i *gpuInvocation) prepareInput(b scheduler.Batch) ([]byte, error) {
+	if err := i.validateBatch(b); err != nil {
+		return nil, err
+	}
+	data := make([]byte, b.PaddedSamples*2)
+	for _, placement := range b.Placements {
+		ref := i.run.pending[placement.Chunk.ID]
+		c := ref.parent.chunks[ref.index]
+		padded, e := chunk.RepeatPad(ref.parent.normalized.Samples[c.offset:c.offset+c.rawLength], uint64(placement.Length))
+		if e != nil {
+			return nil, e
+		}
+		for j, value := range padded {
+			binary.LittleEndian.PutUint16(data[(placement.Offset+j)*2:], value)
+		}
+	}
+	return data, nil
+}
+
+// Decode all physical rows before selecting real membership. Errors from graph,
+// beam and quality computation remain fatal, including errors in absent lanes.
+func (i *gpuInvocation) decodedWork(b scheduler.Batch, physical gpudecode.QualityBatch) ([]DecodedWork, error) {
+	if err := i.validateBatch(b); err != nil {
+		return nil, err
+	}
+	if len(physical.Chunks) != b.PaddedSlots {
+		return nil, errors.New("GPU decoder result count differs from physical batch")
+	}
+	work := make([]DecodedWork, b.Real)
+	for j := range work {
+		decoded := physical.Chunks[j]
+		ref := i.run.pending[b.Placements[j].Chunk.ID]
+		c := ref.parent.chunks[ref.index]
+		if len(decoded.Moves) != b.Placements[j].Length/int(i.run.spec.Stride) {
+			return nil, errors.New("GPU decoder move extent differs from physical profile")
+		}
+		sequence, qstring, err := gpuExtractChunk(decoded)
+		if err != nil {
+			return nil, err
+		}
+		work[j] = DecodedWork{ReadID: ref.parent.read.ID.String(), ChunkIndex: ref.index, Offset: c.offset, RawLength: c.rawLength, Granularity: c.granularity, Sequence: sequence, Qstring: qstring, Moves: decoded.Moves}
+	}
+	return work, nil
 }
 
 // The source allocates T sequence/Q bytes but only sum(moves) bytes are live.
