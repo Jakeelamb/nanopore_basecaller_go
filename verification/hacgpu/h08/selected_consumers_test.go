@@ -15,7 +15,6 @@ import (
 
 	"github.com/Jakeelamb/nanopore_basecaller_go/verification/hacgpu/h08/cgobuild"
 	"github.com/Jakeelamb/nanopore_basecaller_go/verification/supgpu"
-	"github.com/Jakeelamb/nanopore_basecaller_go/verification/tensor/runner"
 )
 
 func rejectedBuildPair(t *testing.T, role cgobuild.BuildRole) (Pin, Pin) {
@@ -321,38 +320,17 @@ func TestH08NumericalReceiptBindsSelectedPair(t *testing.T) {
 
 func TestH08FakeProofRequiresSelectedPair(t *testing.T) {
 	dir := t.TempDir()
-	build, selection := rejectedBuildPair(t, cgobuild.CPU13Tests)
+	r := syntheticFakeProof(t, 39)
+	build, selection, target := r.ControllerBuild, r.ControllerBuildSelection, r.Target
 	_, other := rejectedBuildPair(t, cgobuild.CPU13Tests)
 	_, wrongRole := rejectedBuildPair(t, cgobuild.H08Command)
 	file := func(name, body string) Pin {
 		t.Helper()
-		path := filepath.Join(dir, name)
-		if err := os.WriteFile(path, []byte(body), 0600); err != nil {
-			t.Fatal(err)
-		}
-		return Pin{Path: path, SHA256: digest([]byte(body))}
+		return fakeProofHostFile(t, dir, name, body)
 	}
-	target, logger, compiler := file("target", "target fixture"), file("logger", "logger fixture"), file("compiler", "compiler fixture")
-	var raw strings.Builder
-	for _, name := range fakeNames {
-		fmt.Fprintf(&raw, "=== RUN   %s\n--- PASS: %s (0.00s)\n", name, name)
-	}
-	stdout, stderr := file("stdout", raw.String()), file("stderr", "")
-	command := runner.CommandReceipt{Started: "2026-10-28T00:00:00Z", Finished: "2026-10-28T00:00:01Z", Stdout: stdout.Path, StdoutSHA: stdout.SHA256, Stderr: stderr.Path, StderrSHA: stderr.SHA256}
-	r := FakeProof{Schema: "nanopore-h08-fake-loader-proof/v2", Status: "two_fake_loader_tests_passed", ControllerBuild: build, ControllerBuildSelection: selection, Target: target, Logger: logger, Compiler: compiler, Command: command, Inputs: map[string]string{}, Tests: map[string]string{}}
-	r.Command.Args = fakeCommand(target)
-	for _, pin := range []Pin{build, selection, target, logger, compiler} {
-		r.Inputs[pin.Path] = pin.SHA256
-	}
-	for _, name := range fakeNames {
-		r.Tests[name] = "pass"
-	}
-	source := file("source.c", "int host_fixture;\n")
-	for i := 0; i < 34; i++ {
-		output := file(fmt.Sprintf("output-%d", i), "host fixture bytes")
-		c := FakeCompile{Source: source, SourceBefore: source, Output: output, OutputSnapshot: output, Command: command}
-		c.Command.Args = []string{compiler.Path, "-shared", "-fPIC", source.Path, "-o", output.Path}
-		r.Compiles = append(r.Compiles, c)
+	raw, err := readPin(Pin{Path: r.Command.Stdout, SHA256: r.Command.StdoutSHA})
+	if err != nil {
+		t.Fatal(err)
 	}
 	check := func(proof FakeProof) error {
 		_, err := readFakeProof(hostJSON(t, filepath.Join(dir, "proof.json"), proof), target, build, selection)
@@ -388,16 +366,16 @@ func TestH08FakeProofRequiresSelectedPair(t *testing.T) {
 				delete(mutant.Inputs, selection.Path)
 				want = "fake input custody omitted"
 			case "compile-count":
-				mutant.Compiles = r.Compiles[:33]
+				mutant.Compiles = r.Compiles[:38]
 			case "test-skip":
-				mutant.Command.Stdout = file("skip-stdout", strings.Replace(raw.String(), "--- PASS:", "--- SKIP:", 1)).Path
-				mutant.Command.StdoutSHA = digest([]byte(strings.Replace(raw.String(), "--- PASS:", "--- SKIP:", 1)))
+				mutant.Command.Stdout = file("skip-stdout", strings.Replace(string(raw), "--- PASS:", "--- SKIP:", 1)).Path
+				mutant.Command.StdoutSHA = digest([]byte(strings.Replace(string(raw), "--- PASS:", "--- SKIP:", 1)))
 				want = "fake-only raw test result differs"
 			}
 			requireSelectionError(t, check(mutant), want)
 		})
 	}
 	r.ControllerBuildSelection = Pin{}
-	_, err := readFakeProof(hostJSON(t, filepath.Join(dir, "missing-both.json"), r), target, build, Pin{})
+	_, err = readFakeProof(hostJSON(t, filepath.Join(dir, "missing-both.json"), r), target, build, Pin{})
 	requireSelectionError(t, err, "fake input custody omitted")
 }

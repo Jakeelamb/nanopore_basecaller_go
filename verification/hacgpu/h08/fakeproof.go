@@ -28,6 +28,10 @@ type FakeCompile struct {
 	Source, SourceBefore, Output, OutputSnapshot Pin
 }
 
+// The fixed ABI5 pair compiles four initial loader rejections, 34 missing-symbol
+// cases (45 symbols, skipping the first 11), and one close-failure case.
+const abi5FakeLoaderCompileCount = 39
+
 func fakeCommand(target Pin) []string {
 	return []string{target.Path, "-h08-profile", "fake", "-test.v", "-test.count=1", "-test.run", "^(" + strings.Join(fakeNames, "|") + ")$"}
 }
@@ -50,7 +54,7 @@ func readFakeProof(pin, target, build, selection Pin) (r FakeProof, err error) {
 	if err = pinnedJSON(pin, &r); err != nil {
 		return
 	}
-	if r.Schema != "nanopore-h08-fake-loader-proof/v2" || r.Status != "two_fake_loader_tests_passed" || r.Target != target || r.ControllerBuild != build || r.ControllerBuildSelection != selection || !slices.Equal(r.Command.Args, fakeCommand(target)) || len(r.Compiles) != 34 {
+	if r.Schema != "nanopore-h08-fake-loader-proof/v2" || r.Status != "two_fake_loader_tests_passed" || r.Target != target || r.ControllerBuild != build || r.ControllerBuildSelection != selection || !slices.Equal(r.Command.Args, fakeCommand(target)) || len(r.Compiles) != abi5FakeLoaderCompileCount {
 		return r, fmt.Errorf("fake-only target/selection/custody differs")
 	}
 	for _, p := range []Pin{target, build, selection, r.Logger, r.Compiler} {

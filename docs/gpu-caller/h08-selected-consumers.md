@@ -32,10 +32,35 @@ its numerical attempt.
 For CPU13, the parent pair selects `h08-command`, while the request pair selects
 `cpu13-tensor-tests`. Each goes through its own role reader. All four pins are
 required guard inputs. The fake proof binds the CPU13 test pair and output,
-retains exactly 34 C-only compilation records, and requires the same two named
+retains exactly 39 C-only compilation records, and requires the same two named
 fake loader tests. Genuine TestMain validates the request schema and CPU13
 selector before reading fixtures, installing backend environment variables,
 requesting a phase checkpoint, or calling the maintained tests.
+
+The previous fake-proof predicate and synthetic host fixture incorrectly required
+34 records. The current ABI5 source produces four initial cases in
+`TestNativeLoaderABIRejections`, plus 34 missing-symbol cases (45 symbols with
+the first 11 excluded), plus one `TestNativeCloseFailureRetainsLibrary` compile:
+`4 + (45 - 11) + 1 = 39`. The reader now pins that exact profile; 34, 38 and 40
+records reject. Do not truncate complete native evidence to satisfy an old count.
+The count must be reviewed with the selected source whenever these tests change.
+
+`TestH08ABI5FakeProofProfile` independently constructs 39 command records and
+checks count, target/selection, compiler/logger membership, C-only recipe,
+source-before/output snapshot hashes and availability, duplicate outputs,
+framework-source rejection, command exits/clocks/logs and exact test results.
+The selected-pair regression also uses this fixture and retains its version,
+partial/swapped/wrong-role and membership controls. Both are CPU/metadata tests:
+target/compiler/logger identities and output snapshots are synthetic text,
+original source/output paths are absent, and nothing is compiled or loaded.
+The controller reproduced rejection of the complete 39-record fixture against
+the original reader, then passed the corrected profile and selected-pair
+regressions, including the count and custody rejection controls. The retained
+attempts are `h08-fakecount-original-001` and `h08-fakecount-corrected-001`.
+No real fake-profile producer was run to find this defect. Future acceptance still requires a separately admitted real run of
+the exact selected pair with all 39 compiler receipts, pinned compiler/logger,
+source-before/output snapshots and raw passing test logs. A synthetic proof
+accepted by the metadata reader is not selected-build or runtime acceptance.
 
 `GuardedConsumer` (`nanopore-h08-guarded-consumer/v1`) and `CPU13Receipt`
 (`nanopore-h08-cpu13/v1`) retain their wrapper schemas. Their readers require the
